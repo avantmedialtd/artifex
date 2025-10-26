@@ -42,6 +42,7 @@ After linking, the `zap` command will be available globally in your terminal.
 ### Platform Support
 
 Zap works on:
+
 - macOS
 - Linux
 - Windows
@@ -57,6 +58,7 @@ zap npm upgrade
 ```
 
 This command will:
+
 1. Read your `package.json` file
 2. Check the npm registry for the latest version of each dependency
 3. Update both `dependencies` and `devDependencies` to the latest versions
@@ -71,6 +73,7 @@ zap npm upgrade
 ```
 
 **Output:**
+
 ```
 Upgrading dependencies in package.json...
   express: ^4.18.0 → ^4.19.2
@@ -90,6 +93,7 @@ zap spec propose <proposal-text>
 This command provides a convenient wrapper for initiating an OpenSpec proposal workflow. It automatically executes `claude --permission-mode acceptEdits "/openspec:proposal <proposal-text>"` for you.
 
 **Prerequisites:**
+
 - [Claude Code CLI](https://claude.com/claude-code) must be installed and available in your PATH
 - Your project must have OpenSpec configured
 
@@ -104,6 +108,7 @@ zap spec propose Add new API endpoints for user management
 ```
 
 This will:
+
 1. Check if Claude Code CLI is available
 2. Invoke the OpenSpec proposal workflow
 3. Create a new change proposal with AI assistance
@@ -119,6 +124,7 @@ zap spec archive <spec-id>
 This command provides a convenient wrapper for invoking Claude Code's OpenSpec archive workflow. It automatically executes `claude --permission-mode acceptEdits "/openspec:archive <spec-id>"` for you.
 
 **Prerequisites:**
+
 - [Claude Code CLI](https://claude.com/claude-code) must be installed and available in your PATH
 - The OpenSpec change must exist in your project's `openspec/changes` directory
 
@@ -130,6 +136,7 @@ zap spec archive add-user-authentication
 ```
 
 This will:
+
 1. Check if Claude Code CLI is available
 2. Invoke the OpenSpec archive workflow
 3. Archive the change and update related specifications
@@ -165,6 +172,16 @@ npm run test:watch
 npm run test:coverage
 ```
 
+### Code Formatting
+
+```bash
+# Format all files
+npm run format
+
+# Check formatting without making changes
+npm run format:check
+```
+
 ### Linting
 
 ```bash
@@ -177,21 +194,22 @@ npm run lint:fix
 
 ### Git Hooks
 
-Set up a pre-push hook to run linting automatically before pushing:
+Set up a pre-push hook to run both linting and formatting checks before pushing:
 
 ```bash
-printf '#!/bin/sh\nnpm run lint\n' > .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+printf '#!/bin/sh\nnpm run lint && npm run format:check\n' > .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 ```
 
-This ensures code is linted before it gets pushed to the repository.
+This ensures code is linted and properly formatted before it gets pushed to the repository.
 
 ### Making Changes
 
 1. Make your changes to the code
-2. Run tests to ensure everything works: `npm test`
-3. Run the linter: `npm run lint`
-4. Test your changes locally using the linked `zap` command
-5. Commit your changes and submit a pull request
+2. Format your code: `npm run format`
+3. Run tests to ensure everything works: `npm test`
+4. Run the linter: `npm run lint`
+5. Test your changes locally using the linked `zap` command
+6. Commit your changes and submit a pull request
 
 ### Project Structure
 
@@ -210,6 +228,7 @@ Found a bug or have an idea for a new feature?
 - **Request features**: [GitHub Issues](https://github.com/avantmedialtd/zap/issues)
 
 When reporting a bug, please include:
+
 - Your operating system and Node.js version
 - Steps to reproduce the issue
 - Expected vs actual behavior

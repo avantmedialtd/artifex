@@ -72,7 +72,7 @@ export async function getOutdatedPackages(): Promise<string[]> {
  * Upgrade a single package to its latest version
  */
 export async function upgradePackage(packageName: string): Promise<UpgradeResult> {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
         console.log(`\nUpgrading ${packageName}...`);
 
         const npmProcess = spawn('npm', ['install', `${packageName}@latest`], {

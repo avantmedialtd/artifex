@@ -3,57 +3,59 @@ import { spawn } from 'child_process';
 
 // Create a test helper to run zap commands
 function runZap(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    const proc = spawn('node', ['main.ts', ...args]);
-    let stdout = '';
-    let stderr = '';
+    return new Promise(resolve => {
+        const proc = spawn('node', ['main.ts', ...args]);
+        let stdout = '';
+        let stderr = '';
 
-    proc.stdout?.on('data', (data) => {
-      stdout += data.toString();
-    });
+        proc.stdout?.on('data', data => {
+            stdout += data.toString();
+        });
 
-    proc.stderr?.on('data', (data) => {
-      stderr += data.toString();
-    });
+        proc.stderr?.on('data', data => {
+            stderr += data.toString();
+        });
 
-    proc.on('close', (exitCode) => {
-      resolve({ exitCode: exitCode ?? 1, stdout, stderr });
+        proc.on('close', exitCode => {
+            resolve({ exitCode: exitCode ?? 1, stdout, stderr });
+        });
     });
-  });
 }
 
 describe('zap spec archive', () => {
-  describe('command validation', () => {
-    it('should error when spec command has no subcommand', async () => {
-      const result = await runZap(['spec']);
+    describe('command validation', () => {
+        it('should error when spec command has no subcommand', async () => {
+            const result = await runZap(['spec']);
 
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('Error: spec command requires a subcommand (e.g., archive)');
+            expect(result.exitCode).toBe(1);
+            expect(result.stderr).toContain(
+                'Error: spec command requires a subcommand (e.g., archive)',
+            );
+        });
+
+        it('should error when spec has unknown subcommand', async () => {
+            const result = await runZap(['spec', 'unknown']);
+
+            expect(result.exitCode).toBe(1);
+            expect(result.stderr).toContain('Error: Unknown spec subcommand: unknown');
+        });
+
+        it('should error when spec archive has no spec-id', async () => {
+            const result = await runZap(['spec', 'archive']);
+
+            expect(result.exitCode).toBe(1);
+            expect(result.stderr).toContain('Error: spec archive requires a spec-id argument');
+            expect(result.stderr).toContain('Usage: zap spec archive <spec-id>');
+        });
     });
 
-    it('should error when spec has unknown subcommand', async () => {
-      const result = await runZap(['spec', 'unknown']);
-
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('Error: Unknown spec subcommand: unknown');
+    describe('Claude Code integration', () => {
+        it.skip('should attempt to check for claude availability', async () => {
+            // Skip this test because if Claude Code is installed, it will run interactively
+            // and hang the test. This is tested in the integration test instead.
+            expect(true).toBe(true);
+        });
     });
-
-    it('should error when spec archive has no spec-id', async () => {
-      const result = await runZap(['spec', 'archive']);
-
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('Error: spec archive requires a spec-id argument');
-      expect(result.stderr).toContain('Usage: zap spec archive <spec-id>');
-    });
-  });
-
-  describe('Claude Code integration', () => {
-    it.skip('should attempt to check for claude availability', async () => {
-      // Skip this test because if Claude Code is installed, it will run interactively
-      // and hang the test. This is tested in the integration test instead.
-      expect(true).toBe(true);
-    });
-  });
 });
 
 // Note: More detailed unit tests with mocks could be added here in the future

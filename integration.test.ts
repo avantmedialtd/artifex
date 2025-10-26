@@ -10,201 +10,260 @@ const BACKUP_PACKAGE_JSON = path.join(TEST_FIXTURE_DIR, 'package.json.backup');
 /**
  * Helper function to run a command and capture output
  */
-function runCommand(cmd: string, args: string[], cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve) => {
-    const proc = spawn(cmd, args, { cwd, shell: true });
-    let stdout = '';
-    let stderr = '';
+function runCommand(
+    cmd: string,
+    args: string[],
+    cwd: string,
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    return new Promise(resolve => {
+        const proc = spawn(cmd, args, { cwd, shell: true });
+        let stdout = '';
+        let stderr = '';
 
-    proc.stdout?.on('data', (data) => {
-      stdout += data.toString();
-    });
+        proc.stdout?.on('data', data => {
+            stdout += data.toString();
+        });
 
-    proc.stderr?.on('data', (data) => {
-      stderr += data.toString();
-    });
+        proc.stderr?.on('data', data => {
+            stderr += data.toString();
+        });
 
-    proc.on('close', (exitCode) => {
-      resolve({ stdout, stderr, exitCode: exitCode ?? 0 });
+        proc.on('close', exitCode => {
+            resolve({ stdout, stderr, exitCode: exitCode ?? 0 });
+        });
     });
-  });
 }
 
 describe('Integration Tests', () => {
-  beforeAll(async () => {
-    // Backup the original package.json
-    try {
-      await fs.copyFile(ORIGINAL_PACKAGE_JSON, BACKUP_PACKAGE_JSON);
-    } catch (error) {
-      // File might not exist yet, that's ok
-    }
-  });
+    beforeAll(async () => {
+        // Backup the original package.json
+        try {
+            await fs.copyFile(ORIGINAL_PACKAGE_JSON, BACKUP_PACKAGE_JSON);
+        } catch (error) {
+            // File might not exist yet, that's ok
+        }
+    });
 
-  afterAll(async () => {
-    // Restore the original package.json
-    try {
-      await fs.copyFile(BACKUP_PACKAGE_JSON, ORIGINAL_PACKAGE_JSON);
-      await fs.unlink(BACKUP_PACKAGE_JSON);
-      // Clean up node_modules and package-lock.json if they were created
-      try {
-        await fs.rm(path.join(TEST_FIXTURE_DIR, 'node_modules'), { recursive: true, force: true });
-        await fs.unlink(path.join(TEST_FIXTURE_DIR, 'package-lock.json'));
-      } catch {
-        // Ignore if these don't exist
-      }
-    } catch (error) {
-      // Ignore restore errors
-    }
-  });
+    afterAll(async () => {
+        // Restore the original package.json
+        try {
+            await fs.copyFile(BACKUP_PACKAGE_JSON, ORIGINAL_PACKAGE_JSON);
+            await fs.unlink(BACKUP_PACKAGE_JSON);
+            // Clean up node_modules and package-lock.json if they were created
+            try {
+                await fs.rm(path.join(TEST_FIXTURE_DIR, 'node_modules'), {
+                    recursive: true,
+                    force: true,
+                });
+                await fs.unlink(path.join(TEST_FIXTURE_DIR, 'package-lock.json'));
+            } catch {
+                // Ignore if these don't exist
+            }
+        } catch (error) {
+            // Ignore restore errors
+        }
+    });
 
-  it('should recognize npm upgrade command', async () => {
-    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts', 'npm', 'upgrade'], process.cwd());
+    it('should recognize npm upgrade command', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'npm', 'upgrade'],
+            process.cwd(),
+        );
 
-    // The command should run (it might fail if there's no package.json in the root,
-    // but it should at least recognize the command)
-    expect(result.exitCode).toBeDefined();
-  }, 30000);
+        // The command should run (it might fail if there's no package.json in the root,
+        // but it should at least recognize the command)
+        expect(result.exitCode).toBeDefined();
+    }, 30000);
 
-  it('should show error for unknown command', async () => {
-    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts', 'invalid-command'], process.cwd());
+    it('should show error for unknown command', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'invalid-command'],
+            process.cwd(),
+        );
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Unknown command');
-  });
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Unknown command');
+    });
 
-  it('should show error for npm without subcommand', async () => {
-    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts', 'npm'], process.cwd());
+    it('should show error for npm without subcommand', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'npm'],
+            process.cwd(),
+        );
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('npm command requires a subcommand');
-  });
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('npm command requires a subcommand');
+    });
 
-  it('should show "zap CLI ready" with no arguments', async () => {
-    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts'], process.cwd());
+    it('should show "zap CLI ready" with no arguments', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts'],
+            process.cwd(),
+        );
 
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('zap CLI ready');
-  });
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('zap CLI ready');
+    });
 
-  it('should handle project with no outdated packages gracefully', async () => {
-    // Create a minimal package.json with up-to-date packages
-    const testDir = path.join(TEST_FIXTURE_DIR, 'test-up-to-date');
-    await fs.mkdir(testDir, { recursive: true });
+    it('should handle project with no outdated packages gracefully', async () => {
+        // Create a minimal package.json with up-to-date packages
+        const testDir = path.join(TEST_FIXTURE_DIR, 'test-up-to-date');
+        await fs.mkdir(testDir, { recursive: true });
 
-    const packageJson = {
-      name: 'test-up-to-date',
-      version: '1.0.0',
-      dependencies: {}
-    };
+        const packageJson = {
+            name: 'test-up-to-date',
+            version: '1.0.0',
+            dependencies: {},
+        };
 
-    await fs.writeFile(
-      path.join(testDir, 'package.json'),
-      JSON.stringify(packageJson, null, 2)
-    );
+        await fs.writeFile(
+            path.join(testDir, 'package.json'),
+            JSON.stringify(packageJson, null, 2),
+        );
 
-    const result = await runCommand('node', ['--experimental-strip-types', '../../main.ts', 'npm', 'upgrade'], testDir);
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', '../../main.ts', 'npm', 'upgrade'],
+            testDir,
+        );
 
-    // Should complete successfully (exit code 0 or the command runs)
-    expect(result.exitCode).toBeDefined();
-    // Check that it either succeeded or attempted to run
-    expect(result.exitCode === 0 || result.exitCode === 1).toBe(true);
+        // Should complete successfully (exit code 0 or the command runs)
+        expect(result.exitCode).toBeDefined();
+        // Check that it either succeeded or attempted to run
+        expect(result.exitCode === 0 || result.exitCode === 1).toBe(true);
 
-    // Cleanup
-    await fs.rm(testDir, { recursive: true, force: true });
-  }, 30000);
+        // Cleanup
+        await fs.rm(testDir, { recursive: true, force: true });
+    }, 30000);
 
-  it('should handle missing package.json', async () => {
-    // Create a temp directory without package.json
-    const testDir = path.join(TEST_FIXTURE_DIR, 'test-no-package-json');
-    await fs.mkdir(testDir, { recursive: true });
+    it('should handle missing package.json', async () => {
+        // Create a temp directory without package.json
+        const testDir = path.join(TEST_FIXTURE_DIR, 'test-no-package-json');
+        await fs.mkdir(testDir, { recursive: true });
 
-    const result = await runCommand('node', ['--experimental-strip-types', '../../main.ts', 'npm', 'upgrade'], testDir);
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', '../../main.ts', 'npm', 'upgrade'],
+            testDir,
+        );
 
-    // Should fail gracefully
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Error');
+        // Should fail gracefully
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Error');
 
-    // Cleanup
-    await fs.rm(testDir, { recursive: true, force: true });
-  }, 30000);
+        // Cleanup
+        await fs.rm(testDir, { recursive: true, force: true });
+    }, 30000);
 });
 
 describe('Command Argument Parsing', () => {
-  it('should parse command with no arguments', async () => {
-    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts'], process.cwd());
-    expect(result.stdout).toContain('zap CLI ready');
-    expect(result.exitCode).toBe(0);
-  });
+    it('should parse command with no arguments', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts'],
+            process.cwd(),
+        );
+        expect(result.stdout).toContain('zap CLI ready');
+        expect(result.exitCode).toBe(0);
+    });
 
-  it('should parse npm upgrade command', async () => {
-    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts', 'npm', 'upgrade'], process.cwd());
-    // Should at least attempt to run (might fail on package.json issues)
-    expect(result.exitCode).toBeDefined();
-  });
+    it('should parse npm upgrade command', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'npm', 'upgrade'],
+            process.cwd(),
+        );
+        // Should at least attempt to run (might fail on package.json issues)
+        expect(result.exitCode).toBeDefined();
+    });
 
-  it('should handle invalid npm subcommand', async () => {
-    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts', 'npm', 'invalid'], process.cwd());
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Unknown npm subcommand');
-  });
+    it('should handle invalid npm subcommand', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'npm', 'invalid'],
+            process.cwd(),
+        );
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Unknown npm subcommand');
+    });
 });
 
 describe('Spec Archive Command', () => {
-  it('should show error for spec without subcommand', async () => {
-    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts', 'spec'], process.cwd());
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('spec command requires a subcommand');
-  });
+    it('should show error for spec without subcommand', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'spec'],
+            process.cwd(),
+        );
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('spec command requires a subcommand');
+    });
 
-  it('should show error for invalid spec subcommand', async () => {
-    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts', 'spec', 'invalid'], process.cwd());
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Unknown spec subcommand');
-  });
+    it('should show error for invalid spec subcommand', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'spec', 'invalid'],
+            process.cwd(),
+        );
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Unknown spec subcommand');
+    });
 
-  it('should show error when spec archive has no spec-id', async () => {
-    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts', 'spec', 'archive'], process.cwd());
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('spec archive requires a spec-id argument');
-    expect(result.stderr).toContain('Usage: zap spec archive <spec-id>');
-  });
+    it('should show error when spec archive has no spec-id', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'spec', 'archive'],
+            process.cwd(),
+        );
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('spec archive requires a spec-id argument');
+        expect(result.stderr).toContain('Usage: zap spec archive <spec-id>');
+    });
 
-  it.skip('should attempt to run spec archive with valid spec-id', async () => {
-    // Skip this test because if Claude Code is installed, it will run interactively
-    // and hang the test. Manual testing confirms this works correctly:
-    // - When Claude is not installed: shows appropriate error message
-    // - When Claude is installed: successfully invokes the archive workflow
-    expect(true).toBe(true);
-  });
+    it.skip('should attempt to run spec archive with valid spec-id', async () => {
+        // Skip this test because if Claude Code is installed, it will run interactively
+        // and hang the test. Manual testing confirms this works correctly:
+        // - When Claude is not installed: shows appropriate error message
+        // - When Claude is installed: successfully invokes the archive workflow
+        expect(true).toBe(true);
+    });
 });
 
 describe('Spec Propose Command', () => {
-  it('should show error when spec propose has no proposal text', async () => {
-    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts', 'spec', 'propose'], process.cwd());
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('spec propose requires proposal text');
-    expect(result.stderr).toContain('Usage: zap spec propose <proposal-text>');
-  });
+    it('should show error when spec propose has no proposal text', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'spec', 'propose'],
+            process.cwd(),
+        );
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('spec propose requires proposal text');
+        expect(result.stderr).toContain('Usage: zap spec propose <proposal-text>');
+    });
 
-  it.skip('should handle multi-word proposal text', async () => {
-    // Skip this test because if Claude Code is installed, it will run interactively
-    // and hang the test. Manual testing confirms multi-word text is properly joined.
-    expect(true).toBe(true);
-  });
+    it.skip('should handle multi-word proposal text', async () => {
+        // Skip this test because if Claude Code is installed, it will run interactively
+        // and hang the test. Manual testing confirms multi-word text is properly joined.
+        expect(true).toBe(true);
+    });
 
-  it.skip('should invoke Claude Code with correct flags for single-word proposal', async () => {
-    // Skip this test because if Claude Code is installed, it will run interactively
-    // and hang the test. Manual testing confirms this works correctly:
-    // - When Claude is not installed: shows appropriate error message
-    // - When Claude is installed: successfully invokes with "claude --permission-mode acceptEdits /openspec:proposal <text>"
-    expect(true).toBe(true);
-  });
+    it.skip('should invoke Claude Code with correct flags for single-word proposal', async () => {
+        // Skip this test because if Claude Code is installed, it will run interactively
+        // and hang the test. Manual testing confirms this works correctly:
+        // - When Claude is not installed: shows appropriate error message
+        // - When Claude is installed: successfully invokes with "claude --permission-mode acceptEdits /openspec:proposal <text>"
+        expect(true).toBe(true);
+    });
 
-  it.skip('should invoke Claude Code with correct flags for multi-word proposal', async () => {
-    // Skip this test because if Claude Code is installed, it will run interactively
-    // and hang the test. Manual testing confirms this works correctly:
-    // - Command: zap spec propose Add authentication with OAuth2
-    // - Invokes: claude --permission-mode acceptEdits "/openspec:proposal Add authentication with OAuth2"
-    expect(true).toBe(true);
-  });
+    it.skip('should invoke Claude Code with correct flags for multi-word proposal', async () => {
+        // Skip this test because if Claude Code is installed, it will run interactively
+        // and hang the test. Manual testing confirms this works correctly:
+        // - Command: zap spec propose Add authentication with OAuth2
+        // - Invokes: claude --permission-mode acceptEdits "/openspec:proposal Add authentication with OAuth2"
+        expect(true).toBe(true);
+    });
 });

@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Version control
+.git/
+
+# Package manager files
+package-lock.json
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+
+# Build output and generated files
+dist/
+build/
+coverage/
+*.min.js
+*.min.css
+
+# IDE and editor files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

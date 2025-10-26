@@ -21,6 +21,9 @@
     "type": "module",
     "main": "main.ts",
     "scripts": {
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "format:write": "prettier --write .",
         "lint": "oxlint .",
         "lint:fix": "oxlint . --fix",
         "lint:check": "oxlint .",
@@ -32,6 +35,7 @@
         "@types/node": "^24.9.1",
         "@vitest/ui": "^4.0.3",
         "oxlint": "^1.24.0",
+        "prettier": "^3.6.2",
         "vitest": "^4.0.3"
     }
 }
