@@ -38,6 +38,9 @@ if (command === 'npm') {
 } else if (command === 'propose') {
     const proposalText = args.slice(1).join(' ');
     await runSpecPropose(proposalText);
+} else if (command === 'archive') {
+    const specId = args[1];
+    await runSpecArchive(specId);
 } else {
     console.error(`Error: Unknown command: ${command}`);
     process.exit(1);

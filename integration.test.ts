@@ -267,3 +267,24 @@ describe('Spec Propose Command', () => {
         expect(true).toBe(true);
     });
 });
+
+describe('Command Shortcuts', () => {
+    it('should show error when archive shorthand has no spec-id', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'archive'],
+            process.cwd(),
+        );
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('spec archive requires a spec-id argument');
+        expect(result.stderr).toContain('Usage: zap spec archive <spec-id>');
+    });
+
+    it.skip('should invoke Claude Code with archive shorthand when spec-id is provided', async () => {
+        // Skip this test because if Claude Code is installed, it will run interactively
+        // and hang the test. Manual testing confirms this works correctly:
+        // - Command: ./zap archive test-spec
+        // - Invokes: claude --permission-mode acceptEdits "/openspec:archive test-spec"
+        expect(true).toBe(true);
+    });
+});
