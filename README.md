@@ -79,6 +79,35 @@ Running npm install...
 Done! All dependencies upgraded.
 ```
 
+### Propose OpenSpec Changes
+
+Create a new OpenSpec change proposal using Claude Code:
+
+```bash
+zap spec propose <proposal-text>
+```
+
+This command provides a convenient wrapper for initiating an OpenSpec proposal workflow. It automatically executes `claude --permission-mode acceptEdits "/openspec:proposal <proposal-text>"` for you.
+
+**Prerequisites:**
+- [Claude Code CLI](https://claude.com/claude-code) must be installed and available in your PATH
+- Your project must have OpenSpec configured
+
+**Examples:**
+
+```bash
+# Create a proposal with single-word text
+zap spec propose "Add user authentication"
+
+# Create a proposal with multi-word text (quotes optional)
+zap spec propose Add new API endpoints for user management
+```
+
+This will:
+1. Check if Claude Code CLI is available
+2. Invoke the OpenSpec proposal workflow
+3. Create a new change proposal with AI assistance
+
 ### Archive OpenSpec Changes
 
 Archive a deployed OpenSpec change using Claude Code:

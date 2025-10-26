@@ -25,6 +25,9 @@ if (command === 'npm') {
   if (subcommand === 'archive') {
     const specId = args[2];
     await runSpecArchive(specId);
+  } else if (subcommand === 'propose') {
+    const proposalText = args.slice(2).join(' ');
+    await runSpecPropose(proposalText);
   } else if (!subcommand) {
     console.error('Error: spec command requires a subcommand (e.g., archive)');
     process.exit(1);
@@ -104,6 +107,39 @@ async function runSpecArchive(specId: string | undefined) {
 
   // Build and execute the claude command
   const claudeArgs = ['--permission-mode', 'acceptEdits', `/openspec:archive ${specId}`];
+  const claudeProcess = spawn('claude', claudeArgs, {
+    stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
+  });
+
+  // Wait for the process to complete and exit with its status code
+  claudeProcess.on('close', (code) => {
+    process.exit(code ?? 1);
+  });
+
+  claudeProcess.on('error', (error) => {
+    console.error(`Error executing claude command: ${error.message}`);
+    process.exit(1);
+  });
+}
+
+async function runSpecPropose(proposalText: string) {
+  // Validate that proposalText is provided
+  if (!proposalText || proposalText.trim() === '') {
+    console.error('Error: spec propose requires proposal text');
+    console.error('Usage: zap spec propose <proposal-text>');
+    process.exit(1);
+  }
+
+  // Check if Claude Code is available
+  const isClaudeAvailable = await checkClaudeAvailable();
+  if (!isClaudeAvailable) {
+    console.error('Error: Claude Code CLI is not installed or not in PATH');
+    console.error('Please install Claude Code from: https://claude.com/claude-code');
+    process.exit(1);
+  }
+
+  // Build and execute the claude command
+  const claudeArgs = ['--permission-mode', 'acceptEdits', `/openspec:proposal ${proposalText}`];
   const claudeProcess = spawn('claude', claudeArgs, {
     stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
   });
