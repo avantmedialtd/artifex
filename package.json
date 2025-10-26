@@ -12,6 +12,12 @@
   },
   "license": "UNLICENSED",
   "author": "István Antal <istvan@antal.xyz>",
+  "bin": {
+    "zap": "./zap"
+  },
+  "engines": {
+    "node": ">=22.6.0"
+  },
   "type": "module",
   "main": "main.ts",
   "scripts": {

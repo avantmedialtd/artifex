@@ -2,13 +2,13 @@
 
 ## Implementation Order
 
-- [ ] **Add basic content to main.ts**
+- [x] **Add basic content to main.ts**
   - Add a simple console.log or CLI output to main.ts (e.g., "zap CLI ready")
   - Ensure the file has valid TypeScript syntax
   - **Validation**: File has valid TypeScript code
   - **Dependencies**: None
 
-- [ ] **Create zap executable file**
+- [x] **Create zap executable file**
   - Create `zap` file (no extension) in project root
   - Add shebang line: `#!/usr/bin/env node --experimental-strip-types`
   - Add import statement to load main.ts: `import './main.ts';`
@@ -16,32 +16,32 @@
   - **Validation**: File exists and has execute permissions (`ls -la zap`)
   - **Dependencies**: Task 1 (main.ts should exist)
 
-- [ ] **Update package.json with bin field**
+- [x] **Update package.json with bin field**
   - Add `"bin": { "zap": "./zap" }` to package.json
   - **Validation**: package.json has correct bin field syntax
   - **Dependencies**: Task 2 (executable file must exist)
 
-- [ ] **Test local npm link functionality**
+- [x] **Test local npm link functionality**
   - Run `npm link` in project directory
   - Verify `zap` command is available in terminal
   - Test that executing `zap` runs main.ts correctly
   - **Validation**: `which zap` shows symlink path; `zap` command executes and shows output from main.ts
   - **Dependencies**: Task 3 (package.json bin configuration required)
 
-- [ ] **Verify git permissions are preserved**
+- [x] **Verify git permissions are preserved**
   - Stage the zap executable file
   - Verify git tracks the execute permissions: `git ls-files -s zap`
   - **Validation**: `git ls-files -s` shows mode 100755 for zap file
   - **Dependencies**: Task 2 (executable must exist with permissions)
   - **Can run in parallel with**: Task 4
 
-- [ ] **Test cross-platform compatibility**
+- [x] **Test cross-platform compatibility**
   - Verify the command works on the current platform (macOS)
   - Confirm npm will auto-generate .cmd wrapper for Windows (verify in package.json docs)
   - **Validation**: `zap` command executes successfully
   - **Dependencies**: Task 4 (npm link must work)
 
-- [ ] **Update project documentation**
+- [x] **Update project documentation**
   - Add Node.js version requirement (22.6+) to package.json or README
   - Document the `npm link` workflow for local development
   - Note that the executable uses `--experimental-strip-types`
