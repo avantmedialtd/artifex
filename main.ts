@@ -1,5 +1,5 @@
-import { getOutdatedPackages, upgradeAllPackages } from './npm-upgrade.ts';
 import { spawn } from 'node:child_process';
+import { getOutdatedPackages, upgradeAllPackages } from './npm-upgrade.ts';
 
 // Parse command-line arguments
 const args = process.argv.slice(2);
@@ -35,6 +35,9 @@ if (command === 'npm') {
         console.error(`Error: Unknown spec subcommand: ${subcommand}`);
         process.exit(1);
     }
+} else if (command === 'propose') {
+    const proposalText = args.slice(1).join(' ');
+    await runSpecPropose(proposalText);
 } else {
     console.error(`Error: Unknown command: ${command}`);
     process.exit(1);
