@@ -2,7 +2,7 @@
 
 ## Implementation Tasks
 
-- [ ] **Add command-line argument parsing**
+- [x] **Add command-line argument parsing**
   - **Priority**: High
   - **Dependencies**: None
   - **Validation**: Run `zap` and `zap npm upgrade` - should recognize the command
@@ -11,7 +11,7 @@
   - Display helpful error for unknown subcommands
   - Test: `zap` with no args, `zap npm upgrade`, `zap npm`, `zap invalid-command`
 
-- [ ] **Implement npm outdated execution and parsing**
+- [x] **Implement npm outdated execution and parsing**
   - **Priority**: High
   - **Dependencies**: Task 1
   - **Validation**: Unit tests for parsing npm outdated output
@@ -21,7 +21,7 @@
   - Handle npm command failures (missing package.json, network errors)
   - Test: Valid output with outdated packages, empty output, error cases
 
-- [ ] **Implement package upgrade loop**
+- [x] **Implement package upgrade loop**
   - **Priority**: High
   - **Dependencies**: Task 2
   - **Validation**: Integration test with test project
@@ -33,7 +33,7 @@
   - Continue with remaining packages if one fails
   - Test: Multiple packages, single package, failed installation
 
-- [ ] **Add error handling and reporting**
+- [x] **Add error handling and reporting**
   - **Priority**: High
   - **Dependencies**: Tasks 2-3
   - **Validation**: Test various error scenarios
@@ -43,7 +43,7 @@
   - Exit with appropriate code based on upgrade results
   - Test: All succeed, all fail, partial success, npm outdated fails
 
-- [ ] **Add user-facing output and progress reporting**
+- [x] **Add user-facing output and progress reporting**
   - **Priority**: Medium
   - **Dependencies**: Tasks 2-4
   - **Validation**: Manual testing for output clarity
@@ -54,7 +54,7 @@
   - Handle case where no upgrades are available
   - Test: Multiple packages, no upgrades available, partial failures
 
-- [ ] **Set up Vitest test configuration**
+- [x] **Set up Vitest test configuration**
   - **Priority**: High
   - **Dependencies**: None (can be done early)
   - **Validation**: `npm test` runs successfully
@@ -64,7 +64,7 @@
   - Create basic smoke test to verify setup works
   - Test: Run `npm test` and verify it executes
 
-- [ ] **Add unit tests for core functions**
+- [x] **Add unit tests for core functions**
   - **Priority**: High
   - **Dependencies**: Tasks 2-5, 6
   - **Validation**: `npm test` passes with good coverage
@@ -74,7 +74,7 @@
   - Test error handling for various failure scenarios
   - Aim for >80% code coverage on core logic
 
-- [ ] **Add integration tests**
+- [x] **Add integration tests**
   - **Priority**: High
   - **Dependencies**: Tasks 6-7
   - **Validation**: Integration tests pass
@@ -84,7 +84,7 @@
   - Test edge cases: no upgrades needed, all packages fail to upgrade
   - Verify npm updates package.json and package-lock.json correctly
 
-- [ ] **Update main.ts entry point**
+- [x] **Update main.ts entry point**
   - **Priority**: High
   - **Dependencies**: Tasks 1-5
   - **Validation**: End-to-end test with real package.json
@@ -93,7 +93,7 @@
   - Ensure proper error handling and exit codes throughout
   - Test: Run against real project to upgrade its dependencies
 
-- [ ] **Manual testing and refinement**
+- [x] **Manual testing and refinement**
   - **Priority**: Medium
   - **Dependencies**: All above
   - **Validation**: Successfully upgrade dependencies in zap project itself
