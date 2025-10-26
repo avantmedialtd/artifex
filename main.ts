@@ -1,4 +1,5 @@
 import { getOutdatedPackages, upgradeAllPackages } from './npm-upgrade.ts';
+import { spawn } from 'node:child_process';
 
 // Parse command-line arguments
 const args = process.argv.slice(2);
@@ -18,6 +19,17 @@ if (command === 'npm') {
     process.exit(1);
   } else {
     console.error(`Error: Unknown npm subcommand: ${subcommand}`);
+    process.exit(1);
+  }
+} else if (command === 'spec') {
+  if (subcommand === 'archive') {
+    const specId = args[2];
+    await runSpecArchive(specId);
+  } else if (!subcommand) {
+    console.error('Error: spec command requires a subcommand (e.g., archive)');
+    process.exit(1);
+  } else {
+    console.error(`Error: Unknown spec subcommand: ${subcommand}`);
     process.exit(1);
   }
 } else {
@@ -72,4 +84,61 @@ async function runNpmUpgrade() {
     }
     process.exit(1);
   }
+}
+
+async function runSpecArchive(specId: string | undefined) {
+  // Validate that specId is provided
+  if (!specId) {
+    console.error('Error: spec archive requires a spec-id argument');
+    console.error('Usage: zap spec archive <spec-id>');
+    process.exit(1);
+  }
+
+  // Check if Claude Code is available
+  const isClaudeAvailable = await checkClaudeAvailable();
+  if (!isClaudeAvailable) {
+    console.error('Error: Claude Code CLI is not installed or not in PATH');
+    console.error('Please install Claude Code from: https://claude.com/claude-code');
+    process.exit(1);
+  }
+
+  // Build and execute the claude command
+  const claudeArgs = ['--permission-mode', 'acceptEdits', `/openspec:archive ${specId}`];
+  const claudeProcess = spawn('claude', claudeArgs, {
+    stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
+  });
+
+  // Wait for the process to complete and exit with its status code
+  claudeProcess.on('close', (code) => {
+    process.exit(code ?? 1);
+  });
+
+  claudeProcess.on('error', (error) => {
+    console.error(`Error executing claude command: ${error.message}`);
+    process.exit(1);
+  });
+}
+
+async function checkClaudeAvailable(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const checkProcess = spawn('claude', ['--version'], {
+      stdio: 'ignore', // Suppress output
+    });
+
+    // Add timeout to prevent hanging
+    const timeout = setTimeout(() => {
+      checkProcess.kill();
+      resolve(false);
+    }, 3000); // 3 second timeout
+
+    checkProcess.on('close', (code) => {
+      clearTimeout(timeout);
+      resolve(code === 0);
+    });
+
+    checkProcess.on('error', () => {
+      clearTimeout(timeout);
+      resolve(false);
+    });
+  });
 }

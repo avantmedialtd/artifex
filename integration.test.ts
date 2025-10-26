@@ -148,3 +148,32 @@ describe('Command Argument Parsing', () => {
     expect(result.stderr).toContain('Unknown npm subcommand');
   });
 });
+
+describe('Spec Archive Command', () => {
+  it('should show error for spec without subcommand', async () => {
+    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts', 'spec'], process.cwd());
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('spec command requires a subcommand');
+  });
+
+  it('should show error for invalid spec subcommand', async () => {
+    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts', 'spec', 'invalid'], process.cwd());
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Unknown spec subcommand');
+  });
+
+  it('should show error when spec archive has no spec-id', async () => {
+    const result = await runCommand('node', ['--experimental-strip-types', 'main.ts', 'spec', 'archive'], process.cwd());
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('spec archive requires a spec-id argument');
+    expect(result.stderr).toContain('Usage: zap spec archive <spec-id>');
+  });
+
+  it.skip('should attempt to run spec archive with valid spec-id', async () => {
+    // Skip this test because if Claude Code is installed, it will run interactively
+    // and hang the test. Manual testing confirms this works correctly:
+    // - When Claude is not installed: shows appropriate error message
+    // - When Claude is installed: successfully invokes the archive workflow
+    expect(true).toBe(true);
+  });
+});

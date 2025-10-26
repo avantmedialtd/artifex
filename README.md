@@ -79,6 +79,32 @@ Running npm install...
 Done! All dependencies upgraded.
 ```
 
+### Archive OpenSpec Changes
+
+Archive a deployed OpenSpec change using Claude Code:
+
+```bash
+zap spec archive <spec-id>
+```
+
+This command provides a convenient wrapper for invoking Claude Code's OpenSpec archive workflow. It automatically executes `claude --permission-mode acceptEdits "/openspec:archive <spec-id>"` for you.
+
+**Prerequisites:**
+- [Claude Code CLI](https://claude.com/claude-code) must be installed and available in your PATH
+- The OpenSpec change must exist in your project's `openspec/changes` directory
+
+**Example:**
+
+```bash
+# Archive a completed OpenSpec change
+zap spec archive add-user-authentication
+```
+
+This will:
+1. Check if Claude Code CLI is available
+2. Invoke the OpenSpec archive workflow
+3. Archive the change and update related specifications
+
 ## Development
 
 Want to contribute or work on Zap? Here's how to get started.
