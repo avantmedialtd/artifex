@@ -1,8 +1,11 @@
 # spec-archive-cli Specification
 
 ## Purpose
+
 TBD - created by archiving change add-spec-archive-command. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Spec command namespace exists
 
 The zap CLI MUST support a `spec` command that serves as a namespace for OpenSpec-related utilities.
@@ -97,4 +100,3 @@ The `spec` command MUST handle unknown subcommands gracefully.
 - **WHEN** they execute `zap spec unknown-command`
 - **THEN** the CLI displays an error message: "Error: Unknown spec subcommand: unknown-command"
 - **AND** exits with status code 1
-

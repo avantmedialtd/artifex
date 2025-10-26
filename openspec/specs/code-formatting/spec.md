@@ -1,8 +1,11 @@
 # code-formatting Specification
 
 ## Purpose
+
 TBD - created by archiving change add-prettier. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Prettier package installation
 
 The project MUST include Prettier as a development dependency to provide automated code formatting.
@@ -337,4 +340,3 @@ cat CLAUDE.md | grep -i prettier
 **When** reading CLAUDE.md development guidance
 **Then** it mentions running format checks as part of the development workflow
 **And** explains that formatting is enforced in CI and pre-commit hooks
-

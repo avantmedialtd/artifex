@@ -17,9 +17,9 @@ Archiving an OpenSpec change currently requires developers to manually invoke Cl
 
 - **Affected specs**: `spec-archive-cli` (newly created)
 - **Affected code**:
-  - `main.ts` - Add `spec` command namespace and `archive` subcommand routing
-  - New command handler for executing Claude Code process
-  - Error handling and validation logic
+    - `main.ts` - Add `spec` command namespace and `archive` subcommand routing
+    - New command handler for executing Claude Code process
+    - Error handling and validation logic
 
 ## Dependencies
 
@@ -29,9 +29,9 @@ Archiving an OpenSpec change currently requires developers to manually invoke Cl
 ## Risks and Mitigations
 
 - **Risk**: Claude Code not installed or not in PATH
-  - **Mitigation**: Provide clear error message directing user to install Claude Code
+    - **Mitigation**: Provide clear error message directing user to install Claude Code
 - **Risk**: Invalid spec-id provided
-  - **Mitigation**: Claude Code's archive command will validate the spec-id and provide feedback
+    - **Mitigation**: Claude Code's archive command will validate the spec-id and provide feedback
 
 ## Alternatives Considered
 

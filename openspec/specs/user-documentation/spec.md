@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change 2025-10-26-add-user-friendly-readme. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: README.md file exists at project root
 
 The project MUST provide a README.md file at the root directory that serves as the primary user-facing documentation.
@@ -135,4 +137,3 @@ The README MUST provide information on how to get help, report issues, and contr
 - **THEN** they find information about how contributions are managed
 - **AND** they understand where to find contribution guidelines if they exist
 - **AND** they feel encouraged to participate
-

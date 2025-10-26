@@ -1,8 +1,11 @@
 # cli-command-shortcuts Specification
 
 ## Purpose
+
 TBD - created by archiving change add-propose-shorthand. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Top-level propose command
 
 The CLI MUST support `propose` as a top-level command that delegates to the spec propose functionality.
@@ -82,4 +85,3 @@ The CLI MUST handle unknown top-level commands gracefully without breaking exist
 - **WHEN** a developer executes `zap unknown-command`
 - **THEN** the CLI displays an error message: "Error: Unknown command: unknown-command"
 - **AND** exits with status code 1
-

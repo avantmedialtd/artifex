@@ -22,4 +22,4 @@ $ARGUMENTS
 **Reference**
 
 - Inspect refreshed specs with `openspec list --specs` and address any validation issues before handing off.
-  <!-- OPENSPEC:END -->
+    <!-- OPENSPEC:END -->
