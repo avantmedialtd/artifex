@@ -7,12 +7,14 @@
 - **TypeScript** - Primary development language
 - **Node.js** - Runtime environment (ES modules)
 - **Vitest** - Testing framework
+- **OXLint** - Fast Rust-based linter for code quality
 - **Prettier** - Code formatting
 
 ## Project Conventions
 
 ### Code Style
 - **Formatting**: Prettier with default settings
+- **Linting**: OXLint for static code analysis and quality checks
 - **Module system**: ES modules (type: "module" in package.json)
 - **File naming**: lowercase with hyphens for multi-word files (e.g., `my-utility.ts`)
 - **Imports**: Use `.js` extensions in TypeScript imports for ES module compatibility
@@ -29,11 +31,23 @@
 - **Test files**: Co-locate test files with source files using `.test.ts` suffix
 - Run tests with `npm test` (once configured)
 
+### Linting and Code Quality
+- **Linter**: OXLint - Fast, Rust-based linter with TypeScript support
+- **Configuration**: See `.oxlintrc.json` for rule configuration
+- **Commands**:
+  - `npm run lint` - Check code for issues
+  - `npm run lint:fix` - Auto-fix issues where possible
+  - `npm run lint:check` - Run comprehensive lint check
+- **Performance**: Linting completes in <1 second for fast feedback
+- **Rules**: Comprehensive set including correctness, suspicious patterns, and TypeScript-specific checks
+- **Integration**: Linting runs automatically in CI/CD pipeline
+
 ### Git Workflow
 - **Branch**: Currently working on `master` branch
 - **Commits**: Descriptive commit messages that explain the "why" not just the "what"
 - **No force pushes** to main/master branch
 - Keep commits focused and atomic
+- **Pre-commit hooks**: Not currently used - linting runs in CI (Jenkinsfile), allowing developers flexibility in local workflow while ensuring quality gates before merge
 
 ## Domain Context
 This is a developer-focused tool, so the target audience is software engineers who work in the command line regularly. The tool should prioritize:
