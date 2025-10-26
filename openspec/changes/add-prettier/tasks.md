@@ -44,6 +44,25 @@
   - Place format check before or alongside lint for early feedback
   - **Validation:** `cat Jenkinsfile | grep format` shows the new stage
 
+- [ ] Update pre-push git hook to include format checking
+  - Modify `.git/hooks/pre-push` to run both `npm run lint` and `npm run format:check`
+  - Ensure hook fails if either command exits with non-zero code
+  - Keep hook executable
+  - **Validation:** `cat .git/hooks/pre-push` shows both lint and format:check commands
+
+- [ ] Update CLAUDE.md with Prettier documentation
+  - Add Prettier to the project overview/tech stack section
+  - Document the format commands (format, format:check, format:write)
+  - Explain the custom Prettier configuration (tabWidth: 4, printWidth: 100, etc.)
+  - Mention that formatting is enforced in CI and pre-push hooks
+  - **Validation:** `cat CLAUDE.md | grep -i prettier` shows Prettier documentation
+
+- [ ] Update README.md with pre-push hook instructions
+  - Update the "Git Hooks" section to include format checking
+  - Modify the pre-push hook setup command to include both lint and format:check
+  - Explain that formatting is checked before pushing
+  - **Validation:** `cat README.md | grep -A 5 "pre-push"` shows format checking in hook
+
 - [ ] Update openspec/project.md if needed
   - Review project.md to ensure Prettier configuration is documented
   - Update "Code Style" section to reflect custom config instead of "default settings"

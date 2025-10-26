@@ -18,6 +18,8 @@ Install Prettier as a dev dependency and add npm scripts for formatting code. Co
 Additionally:
 - Add Prettier VSCode extension to recommended extensions for better developer experience
 - Integrate format checking into CI pipeline (Jenkinsfile) to fail builds on formatting violations
+- Update pre-push git hook to run format checking alongside linting
+- Update CLAUDE.md and README.md to document formatting workflow
 
 ## Scope
 - **In scope:**
@@ -27,10 +29,12 @@ Additionally:
   - Create `.prettierignore` to exclude generated/external files
   - Add `.vscode/extensions.json` with Prettier extension recommendation
   - Add format check stage to Jenkinsfile CI pipeline
+  - Update pre-push git hook to include format checking
+  - Update CLAUDE.md to document Prettier configuration and formatting workflow
+  - Update README.md to document pre-push hook with format checking
   - Verify formatting works on existing TypeScript codebase
 
 - **Out of scope:**
-  - Pre-commit hooks for auto-formatting
   - Auto-save formatting configuration (developer preference)
   - Reformatting existing codebase (can be done in separate change)
 

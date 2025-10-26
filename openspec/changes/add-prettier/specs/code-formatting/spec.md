@@ -222,3 +222,58 @@ cat Jenkinsfile | grep format
 **When** the format check stage runs in CI
 **Then** it completes quickly without significantly increasing build time
 **And** provides clear output about formatting status
+
+### Requirement: Pre-push hook integration
+
+The project MUST provide a pre-push git hook that runs format checking to prevent pushing unformatted code.
+
+#### Scenario: Pre-push hook includes format check
+```bash
+cat .git/hooks/pre-push
+```
+**Then** the file exists and is executable
+**And** the script runs both `npm run lint` and `npm run format:check`
+
+#### Scenario: Pre-push hook prevents pushing unformatted code
+**When** a developer attempts to push code with formatting violations
+**And** the pre-push hook runs `npm run format:check`
+**Then** the push is blocked
+**And** the developer sees a message about formatting issues
+
+#### Scenario: Pre-push hook allows pushing formatted code
+**When** a developer pushes properly formatted code
+**And** the pre-push hook runs `npm run format:check`
+**Then** the push proceeds successfully
+**And** no formatting errors are reported
+
+#### Scenario: README documents pre-push hook setup
+```bash
+cat README.md | grep -A 5 "pre-push"
+```
+**Then** the README includes instructions for setting up the pre-push hook
+**And** the instructions show how to create the hook to run both linting and format checking
+**And** developers understand formatting will be checked before pushing
+
+### Requirement: Project documentation updates
+
+Project documentation MUST be updated to reflect the addition of Prettier and formatting requirements.
+
+#### Scenario: CLAUDE.md documents formatting commands
+```bash
+cat CLAUDE.md | grep -i format
+```
+**Then** CLAUDE.md includes information about code formatting
+**And** documents the npm format commands (format, format:check, format:write)
+**And** explains the Prettier configuration
+
+#### Scenario: CLAUDE.md includes Prettier in tech stack
+```bash
+cat CLAUDE.md | grep -i prettier
+```
+**Then** CLAUDE.md lists Prettier in the project's tooling/tech stack
+**And** mentions the custom configuration settings
+
+#### Scenario: Development workflow includes formatting
+**When** reading CLAUDE.md development guidance
+**Then** it mentions running format checks as part of the development workflow
+**And** explains that formatting is enforced in CI and pre-commit hooks
