@@ -48,11 +48,11 @@ The existing `zap spec archive` command path MUST continue to work identically t
 - **AND** both execute the same claude command
 - **AND** both have identical error handling
 
-### Requirement: Claude Code availability check in shorthand
+### Requirement: Claude Code availability check in archive shorthand
 
 The archive shorthand MUST verify that Claude Code is available before attempting to execute it.
 
-#### Scenario: Claude Code is not installed when using shorthand
+#### Scenario: Claude Code is not installed when using archive shorthand
 
 - **GIVEN** the `claude` command is not available in the user's PATH
 - **WHEN** the developer executes `zap archive <spec-id>`
