@@ -3,9 +3,7 @@
 ## Purpose
 
 TBD - created by archiving change 2025-10-26-add-user-friendly-readme. Update Purpose after archive.
-
 ## Requirements
-
 ### Requirement: README.md file exists at project root
 
 The project MUST provide a README.md file at the root directory that serves as the primary user-facing documentation.
@@ -57,23 +55,15 @@ The README MUST provide clear installation instructions appropriate for the proj
 
 ### Requirement: Usage examples and available commands
 
-The README MUST document the available commands with clear usage examples that users can immediately try.
+Documentation MUST include command shortcuts where they exist to help users discover the most ergonomic command forms.
 
-#### Scenario: Developer wants to know what commands are available
+#### Scenario: Developer wants to know about propose command options
 
-- **GIVEN** a developer has installed Zap
-- **WHEN** they read the usage section
-- **THEN** they find a list of available commands
-- **AND** each command includes a practical example
-- **AND** they can copy and run these examples
-
-#### Scenario: Developer wants to upgrade npm dependencies
-
-- **GIVEN** a developer has a project with outdated dependencies
-- **WHEN** they read about the npm upgrade command in README
-- **THEN** they find the exact command syntax (`zap npm upgrade`)
-- **AND** they understand what the command does
-- **AND** they can run it successfully in their project
+- **GIVEN** the README.md file is open
+- **WHEN** the developer reads the "Available Commands" section
+- **THEN** they see both `zap propose <proposal-text>` and `zap spec propose <proposal-text>` listed
+- **AND** the documentation indicates they are equivalent
+- **AND** the shorthand `zap propose` is presented as the preferred form for brevity
 
 ### Requirement: Development setup instructions
 
@@ -145,3 +135,4 @@ The README MUST provide information on how to get help, report issues, and contr
 - **THEN** they find information about how contributions are managed
 - **AND** they understand where to find contribution guidelines if they exist
 - **AND** they feel encouraged to participate
+
