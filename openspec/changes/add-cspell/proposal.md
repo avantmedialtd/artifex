@@ -18,9 +18,9 @@ The project currently lacks spell checking capabilities, which can lead to typos
 
 - Affected specs: Creates new `spell-checking` capability
 - Affected code:
-  - `package.json` - Add CSpell dependency and npm script
-  - `.cspell.json` - New configuration file
-  - `Jenkinsfile` - Add spell check stage
-  - `.vscode/extensions.json` - Add extension recommendation
-  - `CLAUDE.md` - Document spell checking
-  - `openspec/project.md` - Document spell checking conventions
+    - `package.json` - Add CSpell dependency and npm script
+    - `.cspell.json` - New configuration file
+    - `Jenkinsfile` - Add spell check stage
+    - `.vscode/extensions.json` - Add extension recommendation
+    - `CLAUDE.md` - Document spell checking
+    - `openspec/project.md` - Document spell checking conventions

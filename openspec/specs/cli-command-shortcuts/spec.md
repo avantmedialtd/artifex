@@ -3,7 +3,9 @@
 ## Purpose
 
 TBD - created by archiving change add-propose-shorthand. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Top-level propose command
 
 The CLI MUST support `propose` as a top-level command that delegates to the spec propose functionality.
@@ -141,4 +143,3 @@ The archive shorthand MUST verify that Claude Code is available before attemptin
 - **THEN** the CLI displays an error message: "Error: Claude Code CLI is not installed or not in PATH"
 - **AND** displays help text: "Please install Claude Code from: https://claude.com/claude-code"
 - **AND** exits with status code 1
-

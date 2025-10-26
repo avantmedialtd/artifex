@@ -31,6 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **TypeScript** for type-safe code
 - **Prettier** for automated code formatting
 - **OXLint** for fast JavaScript/TypeScript linting
+- **CSpell** for automated spell checking
 - **Vitest** for testing
 
 ## Project Structure
@@ -66,6 +67,21 @@ The project uses Prettier with custom configuration for automated code formattin
 - `npm run lint` - Check code for linting errors
 - `npm run lint:fix` - Auto-fix linting errors
 - `npm run lint:check` - Check code for linting errors (same as `lint`)
+
+### Spell Checking
+
+The project uses CSpell for automated spell checking:
+
+- `npm run spell:check` - Check spelling in all files
+
+**CSpell Configuration:**
+
+- Configuration is in `.cspell.json`
+- Checks TypeScript, JavaScript, Markdown, and JSON files
+- Custom dictionary for project-specific terms and proper names
+- Ignores `node_modules`, `.git`, and build outputs
+
+**Enforcement:** Spell checking is enforced in CI (Jenkinsfile). All code must pass `npm run spell:check` before being merged.
 
 ### Testing
 

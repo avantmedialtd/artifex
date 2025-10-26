@@ -27,6 +27,7 @@
         "lint": "oxlint .",
         "lint:fix": "oxlint . --fix",
         "lint:check": "oxlint .",
+        "spell:check": "cspell \"**\"",
         "test": "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage"
@@ -34,6 +35,7 @@
     "devDependencies": {
         "@types/node": "^24.9.1",
         "@vitest/ui": "^4.0.3",
+        "cspell": "^9.2.2",
         "oxlint": "^1.24.0",
         "prettier": "^3.6.2",
         "vitest": "^4.0.3"

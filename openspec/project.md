@@ -11,6 +11,7 @@
 - **Vitest** - Testing framework
 - **OXLint** - Fast Rust-based linter for code quality
 - **Prettier** - Code formatting
+- **CSpell** - Automated spell checking for code and documentation
 
 ## Project Conventions
 
@@ -58,6 +59,17 @@
 - **Performance**: Linting completes in <1 second for fast feedback
 - **Rules**: Comprehensive set including correctness, suspicious patterns, and TypeScript-specific checks
 - **Integration**: Linting runs automatically in CI/CD pipeline and pre-push hooks
+
+### Spell Checking
+
+- **Tool**: CSpell - Automated spell checker for code, comments, and documentation
+- **Configuration**: See `.cspell.json` for custom dictionary and ignore patterns
+- **Commands**:
+    - `npm run spell:check` - Check spelling in all files
+- **Scope**: Checks TypeScript, JavaScript, Markdown, and JSON files
+- **Custom Dictionary**: Project-specific terms, technical names, and proper nouns
+- **Performance**: Spell checking completes quickly by ignoring node_modules and build outputs
+- **Integration**: Spell checking runs automatically in CI/CD pipeline to catch typos before merge
 
 ### Git Workflow
 

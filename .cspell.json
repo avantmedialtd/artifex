@@ -1,0 +1,18 @@
+{
+    "version": "0.2",
+    "language": "en-US",
+    "ignorePaths": ["node_modules", ".git", "package-lock.json", "dist", "build", "*.log"],
+    "words": [
+        "Antal",
+        "Discarder",
+        "esbenp",
+        "istvan",
+        "István",
+        "OPENSPEC",
+        "openspec",
+        "Overpromising",
+        "oxlint",
+        "oxlintrc",
+        "pasteable"
+    ]
+}

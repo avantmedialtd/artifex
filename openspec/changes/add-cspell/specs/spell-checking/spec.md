@@ -57,33 +57,47 @@ CSpell MUST check spelling in TypeScript, JavaScript, Markdown, and JSON files.
 
 #### Scenario: Check TypeScript files
 
+<!-- cspell:disable -->
+
 **When** a TypeScript file contains a misspelled word in a comment
+
 ```typescript
 // This is a mispeled comment
 const x = 1;
 ```
+
+<!-- cspell:enable -->
+
 **Then** CSpell reports the spelling error
 **And** shows the file path and line number
 **And** suggests corrections if available
 
 #### Scenario: Check Markdown files
 
+<!-- cspell:disable -->
+
 **When** a Markdown file contains spelling errors
+
 ```markdown
 # Inroduction
 
 This is a mispeled paragraph.
 ```
+
+<!-- cspell:enable -->
+
 **Then** CSpell reports both spelling errors
 **And** provides clear feedback about the issues
 
 #### Scenario: Code-aware checking
 
 **When** a file contains camelCase or snake_case identifiers
+
 ```typescript
 const myVariableName = 1; // camelCase
 const another_variable_name = 2; // snake_case
 ```
+
 **Then** CSpell correctly splits compound words
 **And** checks each component word for spelling
 **And** does not flag properly spelled compound identifiers
