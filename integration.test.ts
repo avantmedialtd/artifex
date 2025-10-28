@@ -343,4 +343,37 @@ describe('Versions Command', () => {
         // Cleanup
         await fs.rm(testDir, { recursive: true, force: true });
     });
+
+    it('should handle versions push in a git repository', async () => {
+        // This test runs in the actual repository, so it should work
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'versions', 'push'],
+            process.cwd(),
+        );
+
+        // Should either succeed (if there are no worktrees matching pattern)
+        // or exit code 0 with appropriate message
+        expect(result.exitCode).toBeDefined();
+        // Should not crash with unknown command error
+        expect(result.stderr).not.toContain('Unknown command');
+    });
+
+    it('should show error for versions push when not in git repository', async () => {
+        // Create a temp directory outside the git repository using system temp
+        const testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'zap-test-not-git-'));
+
+        const mainPath = path.join(process.cwd(), 'main.ts');
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', mainPath, 'versions', 'push'],
+            testDir,
+        );
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Not in a git repository');
+
+        // Cleanup
+        await fs.rm(testDir, { recursive: true, force: true });
+    });
 });

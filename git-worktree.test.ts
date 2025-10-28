@@ -6,6 +6,7 @@ import {
     listWorktrees,
     getWorktreeBranch,
     hasUncommittedChanges,
+    pushWorktree,
     resetWorktree,
 } from './git-worktree.js';
 
@@ -204,6 +205,39 @@ branch refs/heads/master`;
 
             expect(() => resetWorktree('/path/to/worktree', 'invalid')).toThrow(
                 "Failed to reset worktree '/path/to/worktree': fatal: invalid object name",
+            );
+        });
+    });
+
+    describe('pushWorktree', () => {
+        it('should execute git push --force with correct parameters', () => {
+            mockExecSync.mockReturnValue('');
+
+            pushWorktree('/path/to/worktree');
+
+            expect(mockExecSync).toHaveBeenCalledWith('git push --force', {
+                cwd: '/path/to/worktree',
+                stdio: 'ignore',
+            });
+        });
+
+        it('should throw error when git push fails', () => {
+            mockExecSync.mockImplementation(() => {
+                throw new Error('fatal: unable to access remote repository');
+            });
+
+            expect(() => pushWorktree('/path/to/worktree')).toThrow(
+                "Failed to push worktree '/path/to/worktree': fatal: unable to access remote repository",
+            );
+        });
+
+        it('should throw error with generic message when error is not an Error instance', () => {
+            mockExecSync.mockImplementation(() => {
+                throw 'string error';
+            });
+
+            expect(() => pushWorktree('/path/to/worktree')).toThrow(
+                "Failed to push worktree '/path/to/worktree'",
             );
         });
     });

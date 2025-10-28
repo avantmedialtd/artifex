@@ -162,3 +162,23 @@ export function resetWorktree(worktreePath: string, revision: string): void {
         throw new Error(`Failed to reset worktree '${worktreePath}'`);
     }
 }
+
+/**
+ * Force-pushes a worktree to its remote repository.
+ *
+ * @param worktreePath The path to the worktree to push
+ * @throws Error if the push operation fails
+ */
+export function pushWorktree(worktreePath: string): void {
+    try {
+        execSync('git push --force', {
+            cwd: worktreePath,
+            stdio: 'ignore',
+        });
+    } catch (error) {
+        if (error instanceof Error) {
+            throw new Error(`Failed to push worktree '${worktreePath}': ${error.message}`);
+        }
+        throw new Error(`Failed to push worktree '${worktreePath}'`);
+    }
+}

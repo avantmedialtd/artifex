@@ -1,8 +1,11 @@
 # versions-reset Specification
 
 ## Purpose
+
 TBD - created by archiving change add-versions-reset-command. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: Versions reset command invocation
 
 The system SHALL provide a `versions reset` command that resets git worktrees matching a specific pattern.
@@ -195,4 +198,3 @@ The system SHALL handle git command failures gracefully with informative error m
 - **WHEN** the command tries to operate on the worktree
 - **THEN** it displays an error message with the worktree path
 - **AND** exits with code 1
-

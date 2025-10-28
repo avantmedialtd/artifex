@@ -5,6 +5,7 @@ import {
     hasUncommittedChanges,
     isGitRepository,
     listWorktrees,
+    pushWorktree,
     resetWorktree,
 } from './git-worktree.ts';
 
@@ -51,6 +52,8 @@ if (command === 'npm') {
 } else if (command === 'versions') {
     if (subcommand === 'reset') {
         await runVersionsReset();
+    } else if (subcommand === 'push') {
+        await runVersionsPush();
     } else if (!subcommand) {
         console.error('Error: versions command requires a subcommand (e.g., reset)');
         process.exit(1);
@@ -205,6 +208,69 @@ async function checkClaudeAvailable(): Promise<boolean> {
             resolve(false);
         });
     });
+}
+
+/**
+ * Force-pushes all version worktrees (matching /v\d+/ pattern) to their remote repositories.
+ *
+ * Usage: zap versions push
+ *
+ * This command:
+ * 1. Validates the current directory is a git repository
+ * 2. Enumerates all worktrees and filters those with branches matching /v\d+/
+ * 3. Force-pushes each matching worktree to its remote repository
+ * 4. Reports progress and results
+ *
+ * @throws Exits with code 1 if:
+ *   - Not in a git repository
+ *   - Git push commands fail
+ */
+async function runVersionsPush() {
+    try {
+        // 1. Validate we're in a git repository
+        if (!isGitRepository()) {
+            console.error('Error: Not in a git repository');
+            process.exit(1);
+        }
+
+        // 2. Enumerate worktrees and filter by /v\d+/ pattern
+        const allWorktrees = listWorktrees();
+        const versionPattern = /^v\d+$/;
+        const matchingWorktrees = allWorktrees.filter(wt => versionPattern.test(wt.branch));
+
+        // Handle case where no matching worktrees are found
+        if (matchingWorktrees.length === 0) {
+            console.log('No worktrees with branches matching /v\\d+/ pattern found.');
+            process.exit(0);
+        }
+
+        // 3. Push each worktree
+        for (const worktree of matchingWorktrees) {
+            console.log(`Pushing worktree ${worktree.branch}...`);
+            try {
+                pushWorktree(worktree.path);
+            } catch (error) {
+                if (error instanceof Error) {
+                    console.error(error.message);
+                } else {
+                    console.error(`Failed to push worktree '${worktree.branch}'`);
+                }
+                process.exit(1);
+            }
+        }
+
+        // 4. Display success summary
+        const branchNames = matchingWorktrees.map(wt => wt.branch).join(', ');
+        console.log(`Successfully pushed ${matchingWorktrees.length} worktree(s): ${branchNames}`);
+        process.exit(0);
+    } catch (error) {
+        if (error instanceof Error) {
+            console.error(`Error: ${error.message}`);
+        } else {
+            console.error('An unexpected error occurred');
+        }
+        process.exit(1);
+    }
 }
 
 /**

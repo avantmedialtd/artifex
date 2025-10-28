@@ -141,6 +141,68 @@ This will:
 2. Invoke the OpenSpec archive workflow
 3. Archive the change and update related specifications
 
+### Version Worktree Management
+
+Zap provides commands to manage git worktrees for version branches (branches matching the pattern `v1`, `v2`, `v10`, etc.).
+
+#### Reset Version Worktrees
+
+Reset all version worktrees to the current branch HEAD:
+
+```bash
+zap versions reset
+```
+
+This command will:
+
+1. Find all git worktrees with branch names matching `/v\d+/` (e.g., `v1`, `v2`, `v10`)
+2. Check each worktree for uncommitted changes
+3. If all worktrees are clean, reset each to the current branch's HEAD commit
+4. Display a success summary showing all reset worktrees
+
+**Example:**
+
+```bash
+# On the master branch at commit abc123
+zap versions reset
+# Output: Successfully reset 3 worktree(s): v1, v2, v3
+```
+
+**Requirements:**
+
+- Must be run from within a git repository
+- All matching worktrees must have no uncommitted changes
+
+#### Push Version Worktrees
+
+Force-push all version worktrees to their remote repositories:
+
+```bash
+zap versions push
+```
+
+This command will:
+
+1. Find all git worktrees with branch names matching `/v\d+/` (e.g., `v1`, `v2`, `v10`)
+2. Force-push each worktree to its remote repository
+3. Stop on first failure with clear error reporting
+4. Display a success summary showing all pushed worktrees
+
+**Example:**
+
+```bash
+# After resetting version worktrees
+zap versions push
+# Output: Successfully pushed 3 worktree(s): v1, v2, v3
+```
+
+**Requirements:**
+
+- Must be run from within a git repository
+- Each worktree must have an upstream branch configured
+
+**Note:** This command uses `--force` push. It's designed to work in conjunction with `versions reset` to synchronize version branches after updates.
+
 ## Development
 
 Want to contribute or work on Zap? Here's how to get started.
