@@ -14,6 +14,7 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
         usage: 'zap spec <subcommand> [args]',
         examples: [
             'zap spec propose "Add new feature"  # Create a new proposal',
+            'zap spec apply my-change-id         # Apply a change',
             'zap spec archive my-change-id       # Archive a change',
         ],
     },
@@ -21,6 +22,14 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
         description: 'Create a new OpenSpec proposal (shorthand for "spec propose")',
         usage: 'zap propose <proposal-text>',
         examples: ['zap propose "Add dark mode support"'],
+    },
+    apply: {
+        description: 'Apply an approved OpenSpec change (shorthand for "spec apply")',
+        usage: 'zap apply [change-id]',
+        examples: [
+            'zap apply my-change-id  # Apply a specific change',
+            'zap apply               # Interactively select a change',
+        ],
     },
     archive: {
         description: 'Archive an OpenSpec change (shorthand for "spec archive")',
@@ -54,8 +63,10 @@ function showGeneralHelp(): void {
     section('COMMANDS');
     listItem('npm upgrade            Upgrade all outdated npm packages');
     listItem('spec propose <text>    Create a new OpenSpec proposal');
+    listItem('spec apply [id]        Apply an approved OpenSpec change');
     listItem('spec archive <id>      Archive an OpenSpec change');
     listItem('propose <text>         Shorthand for "spec propose"');
+    listItem('apply [id]             Shorthand for "spec apply"');
     listItem('archive <id>           Shorthand for "spec archive"');
     listItem('versions reset         Reset version worktrees to HEAD');
     listItem('versions push          Force push version worktrees');

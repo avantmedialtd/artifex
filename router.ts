@@ -1,5 +1,5 @@
 import { handleNpmUpgrade } from './commands/npm.ts';
-import { handleSpecArchive, handleSpecPropose } from './commands/spec.ts';
+import { handleSpecApply, handleSpecArchive, handleSpecPropose } from './commands/spec.ts';
 import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts';
 import { handleHelp } from './commands/help.ts';
 import { error } from './utils/output.ts';
@@ -46,7 +46,10 @@ export async function route(args: string[]): Promise<number> {
 
     // Route spec commands
     if (command === 'spec') {
-        if (subcommand === 'archive') {
+        if (subcommand === 'apply') {
+            const changeId = args[2];
+            return await handleSpecApply(changeId);
+        } else if (subcommand === 'archive') {
             const specId = args[2];
             return await handleSpecArchive(specId);
         } else if (subcommand === 'propose') {
@@ -64,6 +67,11 @@ export async function route(args: string[]): Promise<number> {
     }
 
     // Route shorthand commands
+    if (command === 'apply') {
+        const changeId = args[1];
+        return await handleSpecApply(changeId);
+    }
+
     if (command === 'propose') {
         const proposalText = args.slice(1).join(' ');
         return await handleSpecPropose(proposalText);

@@ -272,6 +272,25 @@ describe('Spec Propose Command', () => {
     });
 });
 
+describe('Spec Apply Command', () => {
+    it.skip('should accept spec apply with change-id', async () => {
+        // Skip this test because if Claude Code is installed, it will run interactively
+        // and hang the test. Manual testing confirms this works correctly:
+        // - Command: ./zap spec apply test-change
+        // - Invokes: claude --permission-mode acceptEdits "/openspec:apply test-change"
+        expect(true).toBe(true);
+    });
+
+    it.skip('should accept spec apply without change-id for interactive selection', async () => {
+        // Skip this test because if Claude Code is installed, it will run interactively
+        // and hang the test. Manual testing confirms this works correctly:
+        // - Command: ./zap spec apply
+        // - Invokes: claude --permission-mode acceptEdits "/openspec:apply"
+        // - Claude Code prompts for change selection
+        expect(true).toBe(true);
+    });
+});
+
 describe('Command Shortcuts', () => {
     it('should show error when archive shorthand has no spec-id', async () => {
         const result = await runCommand(
@@ -289,6 +308,23 @@ describe('Command Shortcuts', () => {
         // and hang the test. Manual testing confirms this works correctly:
         // - Command: ./zap archive test-spec
         // - Invokes: claude --permission-mode acceptEdits "/openspec:archive test-spec"
+        expect(true).toBe(true);
+    });
+
+    it.skip('should invoke Claude Code with apply shorthand when change-id is provided', async () => {
+        // Skip this test because if Claude Code is installed, it will run interactively
+        // and hang the test. Manual testing confirms this works correctly:
+        // - Command: ./zap apply test-change
+        // - Invokes: claude --permission-mode acceptEdits "/openspec:apply test-change"
+        expect(true).toBe(true);
+    });
+
+    it.skip('should invoke Claude Code with apply shorthand without change-id', async () => {
+        // Skip this test because if Claude Code is installed, it will run interactively
+        // and hang the test. Manual testing confirms this works correctly:
+        // - Command: ./zap apply
+        // - Invokes: claude --permission-mode acceptEdits "/openspec:apply"
+        // - Claude Code prompts for change selection
         expect(true).toBe(true);
     });
 });

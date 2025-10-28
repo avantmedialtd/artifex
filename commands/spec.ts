@@ -45,6 +45,43 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
 }
 
 /**
+ * Handle the 'spec apply [change-id]' command.
+ * Applies an approved OpenSpec change by invoking Claude Code with the openspec:apply command.
+ *
+ * @param changeId - Optional change ID to apply (Claude prompts if omitted)
+ * @returns Exit code (0 for success, 1 for error)
+ */
+export async function handleSpecApply(changeId: string | undefined): Promise<number> {
+    // Check if Claude Code is available
+    const isClaudeAvailable = await checkClaudeAvailable();
+    if (!isClaudeAvailable) {
+        error('Error: Claude Code CLI is not installed or not in PATH');
+        console.error('Please install Claude Code from: https://claude.com/claude-code');
+        return 1;
+    }
+
+    // Build and execute the claude command
+    // If changeId is provided, include it; otherwise, let Claude prompt interactively
+    const slashCommand = changeId ? `/openspec:apply ${changeId}` : '/openspec:apply';
+    const claudeArgs = ['--permission-mode', 'acceptEdits', slashCommand];
+    const claudeProcess = spawn('claude', claudeArgs, {
+        stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
+    });
+
+    // Wait for the process to complete and return its status code
+    return new Promise(resolve => {
+        claudeProcess.on('close', code => {
+            resolve(code ?? 1);
+        });
+
+        claudeProcess.on('error', err => {
+            error(`Error executing claude command: ${err.message}`);
+            resolve(1);
+        });
+    });
+}
+
+/**
  * Handle the 'spec propose <text>' command.
  * Creates a new spec proposal by invoking Claude Code with the openspec:proposal command.
  *
