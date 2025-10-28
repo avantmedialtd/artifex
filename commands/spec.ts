@@ -32,7 +32,7 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
     });
 
     // Wait for the process to complete and return its status code
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
         claudeProcess.on('close', code => {
             resolve(code ?? 1);
         });
@@ -74,7 +74,7 @@ export async function handleSpecPropose(proposalText: string): Promise<number> {
     });
 
     // Wait for the process to complete and return its status code
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
         claudeProcess.on('close', code => {
             resolve(code ?? 1);
         });
