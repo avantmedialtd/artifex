@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process';
-import { getOutdatedPackages, upgradeAllPackages } from './npm-upgrade.ts';
 import {
     getCurrentHeadCommit,
     hasUncommittedChanges,
@@ -8,6 +7,7 @@ import {
     pushWorktree,
     resetWorktree,
 } from './git-worktree.ts';
+import { getOutdatedPackages, upgradeAllPackages } from './npm-upgrade.ts';
 
 // Parse command-line arguments
 const args = process.argv.slice(2);
@@ -131,13 +131,7 @@ async function runSpecArchive(specId: string | undefined) {
     }
 
     // Build and execute the claude command
-    const claudeArgs = [
-        '-p',
-        '--include-partial-messages',
-        '--permission-mode',
-        'acceptEdits',
-        `/openspec:archive ${specId}`,
-    ];
+    const claudeArgs = ['-p', '--permission-mode', 'acceptEdits', `/openspec:archive ${specId}`];
     const claudeProcess = spawn('claude', claudeArgs, {
         stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
     });
