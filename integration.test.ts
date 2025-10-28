@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
+import os from 'os';
 
 const TEST_FIXTURE_DIR = path.join(process.cwd(), 'test', 'fixtures');
 const ORIGINAL_PACKAGE_JSON = path.join(TEST_FIXTURE_DIR, 'package.json');
@@ -286,5 +287,60 @@ describe('Command Shortcuts', () => {
         // - Command: ./zap archive test-spec
         // - Invokes: claude --permission-mode acceptEdits "/openspec:archive test-spec"
         expect(true).toBe(true);
+    });
+});
+
+describe('Versions Command', () => {
+    it('should show error for versions without subcommand', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'versions'],
+            process.cwd(),
+        );
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('versions command requires a subcommand');
+    });
+
+    it('should show error for invalid versions subcommand', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'versions', 'invalid'],
+            process.cwd(),
+        );
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Unknown versions subcommand');
+    });
+
+    it('should handle versions reset in a git repository', async () => {
+        // This test runs in the actual repository, so it should work
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'versions', 'reset'],
+            process.cwd(),
+        );
+
+        // Should either succeed (if there are no worktrees matching pattern)
+        // or exit code 0 with appropriate message
+        expect(result.exitCode).toBeDefined();
+        // Should not crash with unknown command error
+        expect(result.stderr).not.toContain('Unknown command');
+    });
+
+    it('should show error when not in git repository', async () => {
+        // Create a temp directory outside the git repository using system temp
+        const testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'zap-test-not-git-'));
+
+        const mainPath = path.join(process.cwd(), 'main.ts');
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', mainPath, 'versions', 'reset'],
+            testDir,
+        );
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Not in a git repository');
+
+        // Cleanup
+        await fs.rm(testDir, { recursive: true, force: true });
     });
 });

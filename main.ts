@@ -1,5 +1,12 @@
 import { spawn } from 'node:child_process';
 import { getOutdatedPackages, upgradeAllPackages } from './npm-upgrade.ts';
+import {
+    getCurrentHeadCommit,
+    hasUncommittedChanges,
+    isGitRepository,
+    listWorktrees,
+    resetWorktree,
+} from './git-worktree.ts';
 
 // Parse command-line arguments
 const args = process.argv.slice(2);
@@ -41,6 +48,16 @@ if (command === 'npm') {
 } else if (command === 'archive') {
     const specId = args[1];
     await runSpecArchive(specId);
+} else if (command === 'versions') {
+    if (subcommand === 'reset') {
+        await runVersionsReset();
+    } else if (!subcommand) {
+        console.error('Error: versions command requires a subcommand (e.g., reset)');
+        process.exit(1);
+    } else {
+        console.error(`Error: Unknown versions subcommand: ${subcommand}`);
+        process.exit(1);
+    }
 } else {
     console.error(`Error: Unknown command: ${command}`);
     process.exit(1);
@@ -188,4 +205,105 @@ async function checkClaudeAvailable(): Promise<boolean> {
             resolve(false);
         });
     });
+}
+
+/**
+ * Resets all version worktrees (matching /v\d+/ pattern) to the current branch HEAD.
+ *
+ * Usage: zap versions reset
+ *
+ * This command:
+ * 1. Validates the current directory is a git repository
+ * 2. Gets the current HEAD commit hash
+ * 3. Enumerates all worktrees and filters those with branches matching /v\d+/
+ * 4. Checks each matching worktree for uncommitted changes
+ * 5. If all worktrees are clean, resets each to the current HEAD
+ * 6. Reports progress and results
+ *
+ * @throws Exits with code 1 if:
+ *   - Not in a git repository
+ *   - Any worktree has uncommitted changes
+ *   - Git commands fail
+ */
+async function runVersionsReset() {
+    try {
+        // 1. Validate we're in a git repository
+        if (!isGitRepository()) {
+            console.error('Error: Not in a git repository');
+            process.exit(1);
+        }
+
+        // 2. Get current HEAD commit
+        const targetRevision = getCurrentHeadCommit();
+
+        // 3. Enumerate worktrees and filter by /v\d+/ pattern
+        const allWorktrees = listWorktrees();
+        const versionPattern = /^v\d+$/;
+        const matchingWorktrees = allWorktrees.filter(wt => versionPattern.test(wt.branch));
+
+        // Handle case where no matching worktrees are found
+        if (matchingWorktrees.length === 0) {
+            console.log('No worktrees with branches matching /v\\d+/ pattern found.');
+            process.exit(0);
+        }
+
+        // 4. Check each worktree for uncommitted changes
+        const worktreesWithChanges: string[] = [];
+        for (const worktree of matchingWorktrees) {
+            try {
+                if (hasUncommittedChanges(worktree.path)) {
+                    worktreesWithChanges.push(worktree.branch);
+                }
+            } catch (error) {
+                if (error instanceof Error) {
+                    console.error(error.message);
+                } else {
+                    console.error(`Failed to check worktree '${worktree.branch}'`);
+                }
+                process.exit(1);
+            }
+        }
+
+        // 5. If any worktree has uncommitted changes, report and exit
+        if (worktreesWithChanges.length > 0) {
+            console.error('Error: Cannot reset worktrees with uncommitted changes');
+            for (const worktree of matchingWorktrees) {
+                if (worktreesWithChanges.includes(worktree.branch)) {
+                    console.error(
+                        `Worktree '${worktree.branch}' at ${worktree.path} has uncommitted changes`,
+                    );
+                }
+            }
+            console.error('\nPlease commit or stash changes and try again.');
+            console.error('You can check the status by running: git status');
+            process.exit(1);
+        }
+
+        // 6. Reset each worktree
+        for (const worktree of matchingWorktrees) {
+            console.log(`Resetting worktree ${worktree.branch}...`);
+            try {
+                resetWorktree(worktree.path, targetRevision);
+            } catch (error) {
+                if (error instanceof Error) {
+                    console.error(error.message);
+                } else {
+                    console.error(`Failed to reset worktree '${worktree.branch}'`);
+                }
+                process.exit(1);
+            }
+        }
+
+        // 7. Display success summary
+        const branchNames = matchingWorktrees.map(wt => wt.branch).join(', ');
+        console.log(`Successfully reset ${matchingWorktrees.length} worktree(s): ${branchNames}`);
+        process.exit(0);
+    } catch (error) {
+        if (error instanceof Error) {
+            console.error(`Error: ${error.message}`);
+        } else {
+            console.error('An unexpected error occurred');
+        }
+        process.exit(1);
+    }
 }

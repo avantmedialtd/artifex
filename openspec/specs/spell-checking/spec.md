@@ -1,8 +1,11 @@
 # spell-checking Specification
 
 ## Purpose
+
 TBD - created by archiving change add-cspell. Update Purpose after archive.
+
 ## Requirements
+
 ### Requirement: CSpell package installation
 
 The project MUST include CSpell as a development dependency to provide automated spell checking for code, comments, and documentation.
@@ -269,4 +272,3 @@ cat openspec/project.md | grep -i spell
 **Then** project.md includes spell checking in the code quality section
 **And** documents the spell:check command
 **And** explains that spelling is enforced in CI pipeline
-
