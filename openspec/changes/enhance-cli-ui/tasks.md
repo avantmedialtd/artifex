@@ -299,20 +299,20 @@ This document outlines the implementation tasks in dependency order. Tasks are d
 - Output may differ cosmetically (colors, formatting) but functionality is same
 
 ### Manual Testing Checklist
-- [ ] `zap` - Shows ready message
-- [ ] `zap help` - Shows help
-- [ ] `zap --help` - Shows help
-- [ ] `zap -h` - Shows help
-- [ ] `zap help npm` - Shows npm help
-- [ ] `zap npm upgrade` - Works with improved output
-- [ ] `zap spec propose <text>` - Works with improved output
-- [ ] `zap propose <text>` - Shorthand works
-- [ ] `zap spec archive <id>` - Works with improved output
-- [ ] `zap archive <id>` - Shorthand works
-- [ ] `zap versions reset` - Works with improved output
-- [ ] `zap versions push` - Works with improved output
-- [ ] `zap unknown` - Shows helpful error
-- [ ] All error conditions - Show improved error messages
+- [x] `zap` - Shows ready message
+- [x] `zap help` - Shows help
+- [x] `zap --help` - Shows help
+- [x] `zap -h` - Shows help
+- [x] `zap help npm` - Shows npm help
+- [x] `zap npm upgrade` - Works with improved output
+- [x] `zap spec propose <text>` - Works with improved output
+- [x] `zap propose <text>` - Shorthand works
+- [x] `zap spec archive <id>` - Works with improved output
+- [x] `zap archive <id>` - Shorthand works
+- [x] `zap versions reset` - Works with improved output
+- [x] `zap versions push` - Works with improved output
+- [x] `zap unknown` - Shows helpful error
+- [x] All error conditions - Show improved error messages
 
 ## Dependencies Between Tasks
 

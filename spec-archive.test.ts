@@ -28,9 +28,7 @@ describe('zap spec archive', () => {
             const result = await runZap(['spec']);
 
             expect(result.exitCode).toBe(1);
-            expect(result.stderr).toContain(
-                'Error: spec command requires a subcommand (e.g., archive)',
-            );
+            expect(result.stderr).toContain('Error: spec command requires a subcommand');
         });
 
         it('should error when spec has unknown subcommand', async () => {

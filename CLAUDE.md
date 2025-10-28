@@ -36,10 +36,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Structure
 
-This is a new project with minimal structure:
+The project follows a modular command-based architecture:
 
-- `main.ts` - Entry point for the application
-- `package.json` - Project configuration and dependencies
+```
+main.ts              - Entry point (~8 lines, delegates to router)
+router.ts            - Command routing logic
+commands/            - Command handler modules
+├── npm.ts           - npm upgrade command
+├── spec.ts          - spec archive/propose commands
+├── versions.ts      - versions push/reset commands
+└── help.ts          - help command
+utils/               - Utility modules
+├── output.ts        - Terminal output formatting with ANSI colors
+└── claude.ts        - Claude Code CLI availability check
+```
+
+### Key Files
+
+- `main.ts` - Minimal entry point that delegates to the router
+- `router.ts` - Parses command-line arguments and routes to appropriate command handler
+- `commands/*.ts` - Each command in its own module for maintainability and testability
+- `utils/output.ts` - Consistent output formatting using ANSI color codes (no external dependencies)
 
 ## Development Commands
 
@@ -89,6 +106,69 @@ The project uses CSpell for automated spell checking:
 - `npm run test:watch` - Run tests in watch mode
 - `npm run test:coverage` - Run tests with coverage report
 
-## Architecture Notes
+## Architecture
 
-This project is in early stages. No architectural patterns have been established yet.
+### Command-Based Architecture
+
+The CLI follows a modular command-based architecture where each command is implemented in its own module. This provides:
+
+- **Separation of concerns** - Each command module is self-contained
+- **Easy testing** - Command handlers can be tested in isolation
+- **Maintainability** - Adding new commands doesn't require modifying existing code
+- **Consistent error handling** - All commands use shared output utilities
+
+### Command Handler Pattern
+
+All command handlers follow this pattern:
+
+```typescript
+export async function handleCommandName(args...): Promise<number> {
+    // 1. Validate inputs
+    // 2. Perform command logic
+    // 3. Return exit code (0 = success, 1 = error)
+}
+```
+
+### Output Utilities
+
+The `utils/output.ts` module provides consistent terminal output:
+
+- **Color functions**: `success()`, `error()`, `info()`, `warn()`
+- **Formatting functions**: `header()`, `section()`, `listItem()`
+- **Built-in ANSI colors** - No external dependencies
+- **Graceful degradation** - Works in terminals without color support
+
+### Adding New Commands
+
+To add a new command:
+
+1. Create a command handler in `commands/your-command.ts`
+2. Export an async handler function that returns exit code
+3. Add routing logic to `router.ts`
+4. Update help content in `commands/help.ts`
+5. Add tests for the new command
+
+Example:
+
+```typescript
+// commands/your-command.ts
+import { success, error } from '../utils/output.ts';
+
+export async function handleYourCommand(arg: string): Promise<number> {
+    if (!arg) {
+        error('Error: argument required');
+        return 1;
+    }
+    // ... command logic
+    success('Command completed!');
+    return 0;
+}
+
+// router.ts
+import { handleYourCommand } from './commands/your-command.ts';
+
+// Add routing:
+if (command === 'your-command') {
+    return await handleYourCommand(subcommand);
+}
+```
