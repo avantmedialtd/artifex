@@ -2,6 +2,7 @@ import { handleNpmUpgrade } from './commands/npm.ts';
 import { handleSpecApply, handleSpecArchive, handleSpecPropose } from './commands/spec.ts';
 import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts';
 import { handleHelp } from './commands/help.ts';
+import { handleChanges } from './commands/changes.ts';
 import { error } from './utils/output.ts';
 
 /**
@@ -80,6 +81,12 @@ export async function route(args: string[]): Promise<number> {
     if (command === 'archive') {
         const specId = args[1];
         return await handleSpecArchive(specId);
+    }
+
+    if (command === 'changes') {
+        // Pass true if any additional arguments were provided
+        const hasArgs = args.length > 1;
+        return await handleChanges(hasArgs);
     }
 
     // Route versions commands
