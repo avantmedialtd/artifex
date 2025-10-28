@@ -26,7 +26,7 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
     }
 
     // Build and execute the claude command
-    const claudeArgs = ['-p', '--permission-mode', 'acceptEdits', `/openspec:archive ${specId}`];
+    const claudeArgs = ['--permission-mode', 'acceptEdits', `/openspec:archive ${specId}`];
     const claudeProcess = spawn('claude', claudeArgs, {
         stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
     });
