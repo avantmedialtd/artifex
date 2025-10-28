@@ -12,10 +12,9 @@ import { error } from './utils/output.ts';
  * @returns Exit code (0 for success, 1 for error)
  */
 export async function route(args: string[]): Promise<number> {
-    // Handle no arguments
+    // Handle no arguments - show help
     if (args.length === 0) {
-        console.log('zap CLI ready');
-        return 0;
+        return await handleHelp();
     }
 
     const [command, subcommand] = args;

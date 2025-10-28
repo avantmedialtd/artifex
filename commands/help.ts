@@ -1,4 +1,4 @@
-import { header, section, listItem, info, error } from '../utils/output.ts';
+import { header, section, listItem, error } from '../utils/output.ts';
 
 /**
  * Help content for all commands

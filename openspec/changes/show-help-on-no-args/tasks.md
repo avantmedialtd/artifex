@@ -2,32 +2,32 @@
 
 ## Task List
 
-1. **Update router to show help on no arguments**
-   - Modify `router.ts` line 16-18 to call `handleHelp()` instead of printing "zap CLI ready"
-   - Change `return 0` to `return await handleHelp()`
-   - **Validation**: Run `./zap` and verify help page is displayed
+- [x] **Update router to show help on no arguments**
+  - Modified `router.ts` line 16-18 to call `handleHelp()` instead of printing "zap CLI ready"
+  - Changed `return 0` to `return await handleHelp()`
+  - **Validation**: Ran `./zap` and verified help page is displayed
 
-2. **Add unit tests for no-args behavior**
-   - Create or update router tests to verify `route([])` calls help handler
-   - Verify exit code is 0
-   - Verify output matches `route(['help'])` output
-   - **Validation**: Run `npm test` and ensure new tests pass
+- [x] **Add unit tests for no-args behavior**
+  - Updated integration tests to verify no args displays help
+  - Verified exit code is 0
+  - Verified output matches `./zap help` output
+  - **Validation**: Ran `npm test` and all tests pass
 
-3. **Verify help output consistency**
-   - Manually test `./zap`, `./zap help`, and `./zap --help` produce identical output
-   - Verify all commands are listed in the help
-   - **Validation**: Visual inspection of terminal output
+- [x] **Verify help output consistency**
+  - Manually tested `./zap`, `./zap help`, and `./zap --help` produce identical output
+  - Verified all commands are listed in the help
+  - **Validation**: All outputs are identical
 
-4. **Run formatting and linting**
-   - Run `npm run format` to format code changes
-   - Run `npm run lint` to check for linting issues
-   - Run `npm run spell:check` to verify spelling
-   - **Validation**: All checks pass with no errors
+- [x] **Run formatting and linting**
+  - Ran `npm run format:check` - all files formatted correctly
+  - Ran `npm run lint` - no errors or warnings
+  - Ran `npm run spell:check` - no spelling issues
+  - **Validation**: All checks pass with no errors
 
-5. **Update CLAUDE.md if needed**
-   - Review if documentation needs updating to reflect new behavior
-   - Update any examples showing "zap CLI ready" output
-   - **Validation**: Documentation accurately describes current behavior
+- [x] **Update CLAUDE.md if needed**
+  - Reviewed documentation - no updates needed
+  - CLAUDE.md does not mention "zap CLI ready" behavior
+  - **Validation**: Documentation is accurate
 
 ## Dependencies
 

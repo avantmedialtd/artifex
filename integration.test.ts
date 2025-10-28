@@ -99,7 +99,7 @@ describe('Integration Tests', () => {
         expect(result.stderr).toContain('npm command requires a subcommand');
     });
 
-    it('should show "zap CLI ready" with no arguments', async () => {
+    it('should show help page with no arguments', async () => {
         const result = await runCommand(
             'node',
             ['--experimental-strip-types', 'main.ts'],
@@ -107,7 +107,9 @@ describe('Integration Tests', () => {
         );
 
         expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain('zap CLI ready');
+        expect(result.stdout).toContain('zap - Development utility CLI');
+        expect(result.stdout).toContain('USAGE');
+        expect(result.stdout).toContain('COMMANDS');
     });
 
     it('should handle project with no outdated packages gracefully', async () => {
@@ -162,13 +164,14 @@ describe('Integration Tests', () => {
 });
 
 describe('Command Argument Parsing', () => {
-    it('should parse command with no arguments', async () => {
+    it('should show help with no arguments', async () => {
         const result = await runCommand(
             'node',
             ['--experimental-strip-types', 'main.ts'],
             process.cwd(),
         );
-        expect(result.stdout).toContain('zap CLI ready');
+        expect(result.stdout).toContain('zap - Development utility CLI');
+        expect(result.stdout).toContain('USAGE');
         expect(result.exitCode).toBe(0);
     });
 
