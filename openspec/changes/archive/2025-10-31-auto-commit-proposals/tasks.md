@@ -40,7 +40,7 @@
   - Update README.md to document auto-commit behavior
   - Update any user-facing documentation about `zap propose`
 
-- [ ] Manual testing
+- [x] Manual testing
   - Test `zap propose` creates proposal and commits automatically
   - Verify commit message format is correct
   - Test with various proposal titles
