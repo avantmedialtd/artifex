@@ -49,6 +49,10 @@ export function getLatestChangeId(changesDir: string = 'openspec/changes'): stri
         let latestId: string | null = null;
 
         for (const entry of entries) {
+            if (entry === 'archive') {
+                continue;
+            }
+
             const fullPath = join(changesDir, entry);
             const stats = statSync(fullPath);
 
