@@ -80,3 +80,9 @@ describe('zap archive (shorthand)', () => {
 // if we need to verify the exact command construction without spawning processes.
 // For now, the command validation tests above cover the main error cases,
 // and manual testing confirms the full execution flow works correctly.
+//
+// Auto-commit functionality:
+// - The git utility functions (stageAndCommit, stageDirectory, createCommit) are unit tested in utils/git.test.ts
+// - The proposal title extraction is tested in utils/proposal.test.ts
+// - The integration of these utilities in handleSpecArchive is verified through manual testing
+// - Auto-commit behavior matches the existing pattern used in handleSpecPropose

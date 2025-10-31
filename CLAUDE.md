@@ -138,6 +138,34 @@ The `utils/output.ts` module provides consistent terminal output:
 - **Built-in ANSI colors** - No external dependencies
 - **Graceful degradation** - Works in terminals without color support
 
+### OpenSpec Commands with Auto-Commit
+
+The spec commands integrate with OpenSpec for managing specification changes. Two commands automatically commit their changes after successful completion:
+
+#### `zap spec propose <text>`
+Creates a new OpenSpec proposal and automatically commits it with the message format:
+```
+Propose: <Title>
+```
+Where `<Title>` is extracted from the first line of the proposal.md file (stripping `#` and optional "Proposal: " prefix).
+
+#### `zap spec archive <spec-id>`
+Archives a spec to the specs directory and automatically commits it with the message format:
+```
+Archive: <Title>
+```
+Where `<Title>` is extracted from the archived proposal.md file.
+
+#### `zap spec apply [change-id]`
+Applies an approved OpenSpec change (does not auto-commit, as changes are applied during implementation).
+
+**Auto-Commit Behavior:**
+- Only commits files in the affected directory (changes or specs)
+- Shows warning messages if commit fails, but command still succeeds (exit code 0)
+- Uses the `stageAndCommit` utility from `utils/git.ts`
+- Title extraction uses `extractProposalTitle` from `utils/proposal.ts`
+- Provides consistent developer experience across spec workflow
+
 ### Adding New Commands
 
 To add a new command:

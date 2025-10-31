@@ -7,6 +7,7 @@ import { stageAndCommit } from '../utils/git.ts';
 /**
  * Handle the 'spec archive <id>' command.
  * Archives a spec by invoking Claude Code with the openspec:archive command.
+ * After successful archival, automatically commits the archived spec files.
  *
  * @param specId - The spec ID to archive
  * @returns Exit code (0 for success, 1 for error)
@@ -36,7 +37,37 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
     // Wait for the process to complete and return its status code
     return new Promise(resolve => {
         claudeProcess.on('close', code => {
-            resolve(code ?? 1);
+            // If Claude process failed, return the error code
+            if (code !== 0) {
+                resolve(code ?? 1);
+                return;
+            }
+
+            // Archive completed successfully, now auto-commit
+            // After archive, the spec is located at openspec/specs/<spec-id>/
+            const specDir = `openspec/specs/${specId}`;
+            const proposalPath = `${specDir}/proposal.md`;
+
+            const title = extractProposalTitle(proposalPath);
+            if (!title) {
+                warn('Warning: Could not extract proposal title for auto-commit');
+                warn('Archive completed but not committed. Please commit manually.');
+                resolve(0);
+                return;
+            }
+
+            const commitMessage = `Archive: ${title}`;
+            const result = stageAndCommit(specDir, commitMessage);
+
+            if (!result.success) {
+                warn(`Warning: Failed to auto-commit archive: ${result.error}`);
+                warn('Archive completed but not committed. Please commit manually.');
+                resolve(0);
+                return;
+            }
+
+            success(`Archive committed: ${commitMessage}`);
+            resolve(0);
         });
 
         claudeProcess.on('error', err => {
