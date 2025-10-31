@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { checkClaudeAvailable } from '../utils/claude.ts';
-import { error } from '../utils/output.ts';
+import { error, success, warn } from '../utils/output.ts';
+import { extractProposalTitle, getLatestChangeId } from '../utils/proposal.ts';
+import { stageAndCommit } from '../utils/git.ts';
 
 /**
  * Handle the 'spec archive <id>' command.
@@ -84,6 +86,7 @@ export async function handleSpecApply(changeId: string | undefined): Promise<num
 /**
  * Handle the 'spec propose <text>' command.
  * Creates a new spec proposal by invoking Claude Code with the openspec:proposal command.
+ * After successful proposal creation, automatically commits the proposal files.
  *
  * @param proposalText - The proposal text
  * @returns Exit code (0 for success, 1 for error)
@@ -113,7 +116,43 @@ export async function handleSpecPropose(proposalText: string): Promise<number> {
     // Wait for the process to complete and return its status code
     return new Promise(resolve => {
         claudeProcess.on('close', code => {
-            resolve(code ?? 1);
+            // If Claude process failed, return the error code
+            if (code !== 0) {
+                resolve(code ?? 1);
+                return;
+            }
+
+            // Proposal created successfully, now auto-commit
+            const changeId = getLatestChangeId();
+            if (!changeId) {
+                warn('Warning: Could not determine change ID for auto-commit');
+                warn('Proposal created but not committed. Please commit manually.');
+                resolve(0);
+                return;
+            }
+
+            const proposalPath = `openspec/changes/${changeId}/proposal.md`;
+            const title = extractProposalTitle(proposalPath);
+            if (!title) {
+                warn('Warning: Could not extract proposal title for auto-commit');
+                warn('Proposal created but not committed. Please commit manually.');
+                resolve(0);
+                return;
+            }
+
+            const commitMessage = `Propose: ${title}`;
+            const changeDir = `openspec/changes/${changeId}`;
+            const result = stageAndCommit(changeDir, commitMessage);
+
+            if (!result.success) {
+                warn(`Warning: Failed to auto-commit proposal: ${result.error}`);
+                warn('Proposal created but not committed. Please commit manually.');
+                resolve(0);
+                return;
+            }
+
+            success(`Proposal committed: ${commitMessage}`);
+            resolve(0);
         });
 
         claudeProcess.on('error', err => {

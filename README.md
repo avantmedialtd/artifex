@@ -112,6 +112,7 @@ This will:
 1. Check if Claude Code CLI is available
 2. Invoke the OpenSpec proposal workflow
 3. Create a new change proposal with AI assistance
+4. Automatically commit the proposal files with message format: "Propose: <Title>"
 
 ### Archive OpenSpec Changes
 
