@@ -1,5 +1,5 @@
 import { watch } from 'node:fs';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { readdir, readFile } from 'node:fs/promises';
 import { error, colors } from '../utils/output.ts';
 
@@ -125,6 +125,58 @@ function displayChange(changeData: ChangeTaskData): void {
     console.log('');
 }
 
+export function getProjectName(): string {
+    const cwd = process.cwd();
+    const projectName = basename(cwd);
+    return projectName || 'root';
+}
+
+export interface AggregateMetrics {
+    totalChanges: number;
+    totalTasks: number;
+    completedTasks: number;
+}
+
+export function calculateAggregateMetrics(changes: ChangeTaskData[]): AggregateMetrics {
+    return {
+        totalChanges: changes.length,
+        totalTasks: changes.reduce((sum, change) => sum + change.totalTasks, 0),
+        completedTasks: changes.reduce((sum, change) => sum + change.completedTasks, 0),
+    };
+}
+
+export function renderProgressBar(completed: number, total: number): string {
+    if (total === 0) {
+        return `${colors.gray}${'░'.repeat(20)}${colors.reset} ${colors.gray}N/A${colors.reset}`;
+    }
+
+    const percentage = Math.round((completed / total) * 100);
+    const barWidth = 20;
+    const filledWidth = Math.round((completed / total) * barWidth);
+
+    const filledBar = '█'.repeat(filledWidth);
+    const emptyBar = '░'.repeat(barWidth - filledWidth);
+
+    const barColor = percentage === 100 ? colors.green : colors.green;
+    const emptyColor = colors.gray;
+
+    return `${barColor}${filledBar}${colors.reset}${emptyColor}${emptyBar}${colors.reset} ${colors.gray}${percentage}%${colors.reset}`;
+}
+
+function displayStatusBar(changes: ChangeTaskData[]): void {
+    const projectName = getProjectName();
+    const metrics = calculateAggregateMetrics(changes);
+    const progressBar = renderProgressBar(metrics.completedTasks, metrics.totalTasks);
+
+    const changeText = metrics.totalChanges === 1 ? 'change' : 'changes';
+    const statusLine = `Project: ${colors.cyan}${projectName}${colors.reset} ${colors.gray}|${colors.reset} ${colors.gray}${metrics.totalChanges}${colors.reset} ${changeText} ${colors.gray}|${colors.reset} ${colors.gray}${metrics.completedTasks}/${metrics.totalTasks}${colors.reset} tasks ${colors.gray}|${colors.reset} ${progressBar}`;
+
+    const borderLength = 100;
+    console.log(`${colors.blue}┌${'─'.repeat(borderLength)}${colors.reset}`);
+    console.log(`${colors.blue}│${colors.reset} ${statusLine}`);
+    console.log(`${colors.blue}└${'─'.repeat(borderLength)}${colors.reset}`);
+}
+
 async function displayTodos(): Promise<void> {
     // Clear screen and position cursor at top-left
     process.stdout.write('\x1b[2J\x1b[H');
@@ -140,16 +192,17 @@ async function displayTodos(): Promise<void> {
 
     if (changes.length === 0) {
         console.log('No active changes found.');
+        // Display status bar even with 0 changes
+        displayStatusBar([]);
         return;
     }
+
+    // Collect all change data for status bar
+    const allChangesData: ChangeTaskData[] = [];
 
     for (const changeId of changes) {
         const tasksPath = join(process.cwd(), 'openspec', 'changes', changeId, 'tasks.md');
         const { sections, totalTasks, completedTasks } = await parseTasksFile(tasksPath);
-
-        if (totalTasks === 0) {
-            continue;
-        }
 
         const changeData: ChangeTaskData = {
             changeId,
@@ -158,8 +211,17 @@ async function displayTodos(): Promise<void> {
             completedTasks,
         };
 
-        displayChange(changeData);
+        // Add to collection for status bar (even if no tasks)
+        allChangesData.push(changeData);
+
+        // Only display if there are tasks
+        if (totalTasks > 0) {
+            displayChange(changeData);
+        }
     }
+
+    // Display status bar at the bottom
+    displayStatusBar(allChangesData);
 }
 
 export async function handleWatch(hasArgs: boolean): Promise<number> {
