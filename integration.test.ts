@@ -217,15 +217,11 @@ describe('Spec Archive Command', () => {
         expect(result.stderr).toContain('Unknown spec subcommand');
     });
 
-    it('should show error when spec archive has no spec-id', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'spec', 'archive'],
-            process.cwd(),
-        );
-        expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain('spec archive requires a spec-id argument');
-        expect(result.stderr).toContain('Usage: zap spec archive <spec-id>');
+    it.skip('should allow spec archive without spec-id for interactive selection', async () => {
+        // Skip this test because if Claude Code is installed, it will run interactively
+        // and hang the test. The behavior is: when no spec-id is provided, Claude prompts
+        // interactively for spec selection. This is tested manually.
+        expect(true).toBe(true);
     });
 
     it.skip('should attempt to run spec archive with valid spec-id', async () => {
@@ -292,15 +288,11 @@ describe('Spec Apply Command', () => {
 });
 
 describe('Command Shortcuts', () => {
-    it('should show error when archive shorthand has no spec-id', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'archive'],
-            process.cwd(),
-        );
-        expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain('spec archive requires a spec-id argument');
-        expect(result.stderr).toContain('Usage: zap spec archive <spec-id>');
+    it.skip('should allow archive shorthand without spec-id for interactive selection', async () => {
+        // Skip this test because if Claude Code is installed, it will run interactively
+        // and hang the test. The behavior is: when no spec-id is provided, Claude prompts
+        // interactively for spec selection. This is tested manually.
+        expect(true).toBe(true);
     });
 
     it.skip('should invoke Claude Code with archive shorthand when spec-id is provided', async () => {

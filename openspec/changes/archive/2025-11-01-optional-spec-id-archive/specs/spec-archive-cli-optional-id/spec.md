@@ -1,6 +1,6 @@
 # spec-archive-cli-optional-id
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Spec-id argument is optional
 
@@ -49,19 +49,3 @@ The help text and error messages MUST accurately reflect that spec-id is optiona
 - **WHEN** viewing the usage information
 - **THEN** the usage shows: `zap spec archive [spec-id]`
 - **AND** the description indicates that spec-id is optional
-
-## REMOVED Requirements
-
-### Requirement: Spec-id argument is required
-
-This requirement is being removed and replaced with the requirement that spec-id is optional.
-
-The following scenario is removed:
-
-#### Scenario: Developer runs archive without spec-id
-
-- **GIVEN** the developer has zap installed
-- **WHEN** they execute `zap spec archive` without providing a spec-id
-- **THEN** the CLI displays an error message: "Error: spec archive requires a spec-id argument"
-- **AND** shows usage information: "Usage: zap spec archive <spec-id>"
-- **AND** exits with status code 1

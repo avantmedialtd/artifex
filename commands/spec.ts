@@ -5,21 +5,14 @@ import { extractProposalTitle, getLatestChangeId } from '../utils/proposal.ts';
 import { stageAndCommit } from '../utils/git.ts';
 
 /**
- * Handle the 'spec archive <id>' command.
+ * Handle the 'spec archive [spec-id]' command.
  * Archives a spec by invoking Claude Code with the openspec:archive command.
  * After successful archival, automatically commits the archived spec files.
  *
- * @param specId - The spec ID to archive
+ * @param specId - Optional spec ID to archive (Claude prompts if omitted)
  * @returns Exit code (0 for success, 1 for error)
  */
 export async function handleSpecArchive(specId: string | undefined): Promise<number> {
-    // Validate that specId is provided
-    if (!specId) {
-        error('Error: spec archive requires a spec-id argument');
-        console.error('Usage: zap spec archive <spec-id>');
-        return 1;
-    }
-
     // Check if Claude Code is available
     const isClaudeAvailable = await checkClaudeAvailable();
     if (!isClaudeAvailable) {
@@ -29,7 +22,9 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
     }
 
     // Build and execute the claude command
-    const claudeArgs = ['--permission-mode', 'acceptEdits', `/openspec:archive ${specId}`];
+    // If specId is provided, include it; otherwise, let Claude prompt interactively
+    const slashCommand = specId ? `/openspec:archive ${specId}` : '/openspec:archive';
+    const claudeArgs = ['--permission-mode', 'acceptEdits', slashCommand];
     const claudeProcess = spawn('claude', claudeArgs, {
         stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
     });
@@ -44,8 +39,20 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
             }
 
             // Archive completed successfully, now auto-commit
+            // If spec-id was not provided, we need to determine it from the newly archived spec
+            // The latest spec in openspec/specs/ will be the one just archived
+            let actualSpecId = specId;
+            if (!actualSpecId) {
+                // TODO: Implement logic to find the latest archived spec
+                // For now, skip auto-commit when spec-id is not provided
+                warn('Warning: Auto-commit skipped when spec-id is not provided');
+                warn('Archive completed but not committed. Please commit manually.');
+                resolve(0);
+                return;
+            }
+
             // After archive, the spec is located at openspec/specs/<spec-id>/
-            const specDir = `openspec/specs/${specId}`;
+            const specDir = `openspec/specs/${actualSpecId}`;
             const proposalPath = `${specDir}/proposal.md`;
 
             const title = extractProposalTitle(proposalPath);

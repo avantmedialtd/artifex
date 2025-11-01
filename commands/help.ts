@@ -15,7 +15,9 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
         examples: [
             'zap spec propose "Add new feature"  # Create a new proposal',
             'zap spec apply my-change-id         # Apply a change',
+            'zap spec apply                      # Interactively select a change',
             'zap spec archive my-change-id       # Archive a change',
+            'zap spec archive                    # Interactively select a spec',
         ],
     },
     propose: {
@@ -33,8 +35,11 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
     },
     archive: {
         description: 'Archive an OpenSpec change (shorthand for "spec archive")',
-        usage: 'zap archive <spec-id>',
-        examples: ['zap archive my-change-id'],
+        usage: 'zap archive [spec-id]',
+        examples: [
+            'zap archive my-change-id  # Archive a specific spec',
+            'zap archive               # Interactively select a spec',
+        ],
     },
     changes: {
         description: 'List all OpenSpec changes',
@@ -74,10 +79,10 @@ function showGeneralHelp(): void {
     listItem('npm upgrade            Upgrade all outdated npm packages');
     listItem('spec propose <text>    Create a new OpenSpec proposal');
     listItem('spec apply [id]        Apply an approved OpenSpec change');
-    listItem('spec archive <id>      Archive an OpenSpec change');
+    listItem('spec archive [id]      Archive an OpenSpec change');
     listItem('propose <text>         Shorthand for "spec propose"');
     listItem('apply [id]             Shorthand for "spec apply"');
-    listItem('archive <id>           Shorthand for "spec archive"');
+    listItem('archive [id]           Shorthand for "spec archive"');
     listItem('changes                List all OpenSpec changes');
     listItem('todo                   Show all TODO items from active changes');
     listItem('versions reset         Reset version worktrees to HEAD');
