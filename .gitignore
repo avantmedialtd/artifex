@@ -1,1 +1,6 @@
 /node_modules
+
+# VSCode Extension build output
+/vscode-extension/out
+/vscode-extension/node_modules
+/vscode-extension/*.vsix

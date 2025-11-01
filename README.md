@@ -225,6 +225,43 @@ zap watch
 
 **Use case:** Keep `zap watch` running in a terminal window while working through implementation tasks to see your progress update automatically.
 
+## VSCode Extension
+
+For VSCode users, Zap includes a dedicated extension that displays OpenSpec tasks directly in a panel (similar to the Problems panel).
+
+### Features
+
+- **Native Panel Integration**: View all active OpenSpec changes and tasks in a dedicated panel
+- **Progress Tracking**: See completion counts for each change at a glance
+- **Badge Notifications**: Panel badge shows total unchecked task count
+- **Real-time Updates**: Automatically refreshes when `tasks.md` files change
+- **Hierarchical Display**: Tasks organized by change → section → individual task
+
+### Installation
+
+1. Navigate to the extension directory:
+
+    ```bash
+    cd vscode-extension
+    ```
+
+2. Install dependencies and compile:
+
+    ```bash
+    npm install
+    npm run compile
+    ```
+
+3. Install the extension:
+    - Press `F5` in VSCode to open an Extension Development Host, or
+    - Package and install: `vsce package` then install the `.vsix` file
+
+### Usage
+
+Once installed, the "OpenSpec Tasks" panel appears automatically when you open a workspace containing an `openspec/changes/` directory. The panel shows all active changes with their task completion status.
+
+For detailed documentation, see [vscode-extension/README.md](vscode-extension/README.md).
+
 ## Configuration
 
 ### ZAP_AGENT Environment Variable

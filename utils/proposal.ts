@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { error as logError } from './output.ts';
 
 /**
  * Extract the proposal title from the first line of a proposal.md file.
@@ -8,6 +10,7 @@ import { readFileSync } from 'node:fs';
  * @returns The extracted title, or null if extraction fails
  */
 export function extractProposalTitle(proposalPath: string): string | null {
+    console.log(`Extracting proposal title from: ${proposalPath}`);
     try {
         const content = readFileSync(proposalPath, 'utf-8');
         const firstLine = content.split('\n')[0];
@@ -39,16 +42,17 @@ export function extractProposalTitle(proposalPath: string): string | null {
  * @returns The change ID of the most recent change, or null if none found
  */
 export function getLatestChangeId(changesDir: string = 'openspec/changes'): string | null {
+    console.log(`Getting latest change ID from directory: ${changesDir}`);
     try {
-        const { readdirSync, statSync } = require('node:fs');
-        const { join } = require('node:path');
-
         const entries = readdirSync(changesDir);
+
+        console.log('Change entries:', entries);
 
         let latestTime = 0;
         let latestId: string | null = null;
 
         for (const entry of entries) {
+            console.log('Checking entry:', entry);
             if (entry === 'archive') {
                 continue;
             }
@@ -63,7 +67,8 @@ export function getLatestChangeId(changesDir: string = 'openspec/changes'): stri
         }
 
         return latestId;
-    } catch {
+    } catch (error) {
+        logError(`Error getting latest change ID: ${error}`);
         return null;
     }
 }

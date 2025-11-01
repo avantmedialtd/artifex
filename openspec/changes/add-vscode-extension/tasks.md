@@ -2,74 +2,74 @@
 
 ## Implementation Tasks
 
-- [ ] Set up extension directory structure
-- [ ] Create extension manifest (package.json)
-- [ ] Configure TypeScript for VSCode extension development
-- [ ] Implement task parser module
-    - [ ] Port parsing logic from commands/todo.ts
-    - [ ] Add TypeScript interfaces for Task, Section, ChangeData
-    - [ ] Handle malformed files gracefully
-    - [ ] Add unit tests for parser
-- [ ] Implement TreeDataProvider
-    - [ ] Create TaskProvider class implementing vscode.TreeDataProvider
-    - [ ] Implement getChildren() for tree hierarchy
-    - [ ] Implement getTreeItem() for rendering items
-    - [ ] Add icons for different item types (change, section, task)
-    - [ ] Display completion status (☑/☐)
-    - [ ] Show progress in change items (e.g., "2/5 tasks")
-- [ ] Implement extension activation
-    - [ ] Create extension.ts entry point
-    - [ ] Register TreeView with VSCode
-    - [ ] Set up FileSystemWatcher for tasks.md files
-    - [ ] Exclude archive directory from watching
-    - [ ] Implement debounced refresh on file changes
-- [ ] Implement badge display
-    - [ ] Calculate total unchecked tasks across all changes
-    - [ ] Update TreeView.badge with count
-    - [ ] Hide badge when count is 0
-    - [ ] Add tooltip showing task count
-- [ ] Add error handling
-    - [ ] Handle missing openspec directory gracefully
-    - [ ] Show helpful message when no changes found
-    - [ ] Log errors without crashing extension
-    - [ ] Handle file read permission errors
-- [ ] Create extension documentation
-    - [ ] Write README.md with installation instructions
-    - [ ] Document activation requirements (workspace must have openspec/changes)
-    - [ ] Add screenshots/examples of the panel
+- [x] Set up extension directory structure
+- [x] Create extension manifest (package.json)
+- [x] Configure TypeScript for VSCode extension development
+- [x] Implement task parser module
+    - [x] Port parsing logic from commands/todo.ts
+    - [x] Add TypeScript interfaces for Task, Section, ChangeData
+    - [x] Handle malformed files gracefully
+    - [x] Add unit tests for parser
+- [x] Implement TreeDataProvider
+    - [x] Create TaskProvider class implementing vscode.TreeDataProvider
+    - [x] Implement getChildren() for tree hierarchy
+    - [x] Implement getTreeItem() for rendering items
+    - [x] Add icons for different item types (change, section, task)
+    - [x] Display completion status (☑/☐)
+    - [x] Show progress in change items (e.g., "2/5 tasks")
+- [x] Implement extension activation
+    - [x] Create extension.ts entry point
+    - [x] Register TreeView with VSCode
+    - [x] Set up FileSystemWatcher for tasks.md files
+    - [x] Exclude archive directory from watching
+    - [x] Implement debounced refresh on file changes
+- [x] Implement badge display
+    - [x] Calculate total unchecked tasks across all changes
+    - [x] Update TreeView.badge with count
+    - [x] Hide badge when count is 0
+    - [x] Add tooltip showing task count
+- [x] Add error handling
+    - [x] Handle missing openspec directory gracefully
+    - [x] Show helpful message when no changes found
+    - [x] Log errors without crashing extension
+    - [x] Handle file read permission errors
+- [x] Create extension documentation
+    - [x] Write README.md with installation instructions
+    - [x] Document activation requirements (workspace must have openspec/changes)
+    - [x] Add screenshots/examples of the panel
 
 ## Testing Tasks
 
-- [ ] Add unit tests for task parser
-    - [ ] Test parsing valid tasks.md
-    - [ ] Test handling empty files
-    - [ ] Test handling malformed markdown
-    - [ ] Test section and task extraction
-    - [ ] Test completion counting
-- [ ] Add integration tests for TreeDataProvider
-    - [ ] Test tree structure generation
-    - [ ] Test refresh behavior
-    - [ ] Test badge calculation
-- [ ] Manual testing
-    - [ ] Test in zap project with active changes
-    - [ ] Test with no active changes
-    - [ ] Test with malformed tasks.md files
-    - [ ] Test file watcher refresh
-    - [ ] Test badge display updates
-    - [ ] Test in workspace without openspec directory
+- [x] Add unit tests for task parser
+    - [x] Test parsing valid tasks.md
+    - [x] Test handling empty files
+    - [x] Test handling malformed markdown
+    - [x] Test section and task extraction
+    - [x] Test completion counting
+- [x] Add integration tests for TreeDataProvider
+    - [x] Test tree structure generation
+    - [x] Test refresh behavior
+    - [x] Test badge calculation
+- [x] Manual testing
+    - [x] Test in zap project with active changes
+    - [x] Test with no active changes
+    - [x] Test with malformed tasks.md files
+    - [x] Test file watcher refresh
+    - [x] Test badge display updates
+    - [x] Test in workspace without openspec directory
 
 ## Validation Tasks
 
-- [ ] Validate extension manifest schema
-- [ ] Run TypeScript compiler checks
-- [ ] Test extension packaging (vsce package)
-- [ ] Verify extension activates correctly
-- [ ] Verify no errors in VSCode Developer Console
-- [ ] Run openspec validate add-vscode-extension --strict
+- [x] Validate extension manifest schema
+- [x] Run TypeScript compiler checks
+- [x] Test extension packaging (vsce package)
+- [x] Verify extension activates correctly
+- [x] Verify no errors in VSCode Developer Console
+- [x] Run openspec validate add-vscode-extension --strict
 
 ## Documentation Tasks
 
-- [ ] Update project README.md to mention VSCode extension
-- [ ] Add vscode-extension/ to .gitignore exceptions if needed
-- [ ] Document development workflow for extension
-- [ ] Add troubleshooting section to extension README
+- [x] Update project README.md to mention VSCode extension
+- [x] Add vscode-extension/ to .gitignore exceptions if needed
+- [x] Document development workflow for extension
+- [x] Add troubleshooting section to extension README
