@@ -418,7 +418,7 @@ npm run lint:fix
 Set up a pre-push hook to run both linting and formatting checks before pushing:
 
 ```bash
-printf '#!/bin/sh\nnpm run lint && npm run format:check\n' > .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+printf '#!/bin/sh\nnpm run lint && npm run spell:check && npm run format:check\n' > .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 ```
 
 This ensures code is linted and properly formatted before it gets pushed to the repository.
