@@ -41,9 +41,47 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
         return 1;
     }
 
+    let actualSpecId = specId;
+
+    // If specId is not provided, get the first one from openspec list --changes
+    if (!actualSpecId) {
+        const { execSync } = await import('node:child_process');
+        try {
+            const output = execSync('openspec list --changes', { encoding: 'utf-8' });
+            // Parse the output to extract the first spec ID
+            // Expected format:
+            // Changes:
+            //   spec-id-1     ✓ Complete
+            //   spec-id-2     ⚠ In Progress
+            const lines = output.split('\n').filter(line => line.trim());
+
+            // Skip the "Changes:" header and find the first spec line
+            for (const line of lines) {
+                const trimmed = line.trim();
+                // Skip the header line
+                if (trimmed === 'Changes:' || trimmed === '') continue;
+
+                // Extract the spec ID from lines like "  spec-id-name     ✓ Complete"
+                // The spec ID is the first word after trimming
+                const match = trimmed.match(/^(\S+)/);
+                if (match) {
+                    actualSpecId = match[1];
+                    console.log(`Auto-selected spec ID: ${actualSpecId}`);
+                    break;
+                }
+            }
+
+            if (!actualSpecId) {
+                console.log('No changes found to archive');
+            }
+        } catch (_err) {
+            console.error('Failed to retrieve spec ID from openspec list --changes');
+        }
+    }
+
     // Build and execute the claude command
-    // If specId is provided, include it; otherwise, let Claude prompt interactively
-    const slashCommand = specId ? `/openspec:archive ${specId}` : '/openspec:archive';
+    // If actualSpecId is available, include it; otherwise, let Claude prompt interactively
+    const slashCommand = actualSpecId ? `/openspec:archive ${actualSpecId}` : '/openspec:archive';
     const claudeArgs = buildAgentArgs(slashCommand);
     const claudeProcess = spawn(getAgentCommand(), claudeArgs, {
         stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
@@ -58,10 +96,6 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
                 return;
             }
 
-            // Archive completed successfully, now auto-commit
-            // If spec-id was not provided, we need to determine it from the newly archived spec
-            // The latest spec in openspec/specs/ will be the one just archived
-            let actualSpecId = specId;
             if (!actualSpecId) {
                 // TODO: Implement logic to find the latest archived spec
                 // For now, skip auto-commit when spec-id is not provided
@@ -71,11 +105,11 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
                 return;
             }
 
-            // After archive, the spec is located at openspec/specs/<spec-id>/
+            // Extract the title from the archived proposal
             const specDir = `openspec/specs/${actualSpecId}`;
             const proposalPath = `${specDir}/proposal.md`;
-
             const title = extractProposalTitle(proposalPath);
+
             if (!title) {
                 warn('Warning: Could not extract proposal title for auto-commit');
                 warn('Archive completed but not committed. Please commit manually.');

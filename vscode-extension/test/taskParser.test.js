@@ -1,8 +1,8 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-const vitest_1 = require("vitest");
+'use strict';
+Object.defineProperty(exports, '__esModule', { value: true });
+const vitest_1 = require('vitest');
 // Mock vscode module
-const mockReadFile = async (content) => Buffer.from(content, 'utf-8');
+const mockReadFile = async content => Buffer.from(content, 'utf-8');
 (0, vitest_1.describe)('parseTasksFile', () => {
     (0, vitest_1.it)('should parse valid tasks.md with sections and tasks', async () => {
         const content = `# Tasks
