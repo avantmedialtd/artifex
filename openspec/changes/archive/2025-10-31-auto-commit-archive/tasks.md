@@ -1,5 +1,11 @@
 # Implementation Tasks
 
+- [x] Task 1: Add auto-commit logic to handleSpecArchive function
+- [x] Task 2: Determine archived spec location
+- [x] Task 3: Add tests for archive auto-commit
+- [x] Task 4: Update documentation
+- [x] Task 5: Manual testing
+
 ## Task 1: Add auto-commit logic to handleSpecArchive function
 
 **Deliverable**: Modify `commands/spec.ts` to add auto-commit after archive succeeds
