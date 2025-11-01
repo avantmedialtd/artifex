@@ -52,10 +52,23 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
 
     context.subscriptions.push(treeView);
 
+    // Update badge initially after a short delay to let tree load
+    setTimeout(async () => {
+        if (taskProvider) {
+            await taskProvider.loadData();
+            updateBadge();
+        }
+    }, 500);
+
     // Update badge when tree data changes
-    taskProvider.onDidChangeTreeData(() => {
-        // Delay badge update to ensure data is loaded
-        setTimeout(updateBadge, 100);
+    taskProvider.onDidChangeTreeData(async () => {
+        // Wait for data to load then update badge
+        setTimeout(async () => {
+            if (taskProvider) {
+                await taskProvider.loadData();
+                updateBadge();
+            }
+        }, 100);
     });
 
     // Set up file watcher for tasks.md files

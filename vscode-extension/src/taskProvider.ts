@@ -146,6 +146,21 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
     }
 
     /**
+     * Load data without refreshing the tree view
+     */
+    async loadData(): Promise<void> {
+        if (!this.workspaceRoot) {
+            return;
+        }
+
+        try {
+            this.changeDataCache = await getAllChangeData(this.workspaceRoot);
+        } catch (error) {
+            console.error('Error loading change data:', error);
+        }
+    }
+
+    /**
      * Get the total number of unchecked tasks across all changes
      */
     getUncheckedTaskCount(): number {
