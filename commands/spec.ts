@@ -79,6 +79,11 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
         }
     }
 
+    // Extract the title from the archived proposal
+    const specDir = `openspec/specs/${actualSpecId}`;
+    const proposalPath = `${specDir}/proposal.md`;
+    const title = extractProposalTitle(proposalPath);
+
     // Build and execute the claude command
     // If actualSpecId is available, include it; otherwise, let Claude prompt interactively
     const slashCommand = actualSpecId ? `/openspec:archive ${actualSpecId}` : '/openspec:archive';
@@ -104,11 +109,6 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
                 resolve(0);
                 return;
             }
-
-            // Extract the title from the archived proposal
-            const specDir = `openspec/specs/${actualSpecId}`;
-            const proposalPath = `${specDir}/proposal.md`;
-            const title = extractProposalTitle(proposalPath);
 
             if (!title) {
                 warn('Warning: Could not extract proposal title for auto-commit');
