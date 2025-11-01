@@ -1,6 +1,6 @@
 # vscode-extension-badge Specification Delta
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Extension badge displays completion percentage
 

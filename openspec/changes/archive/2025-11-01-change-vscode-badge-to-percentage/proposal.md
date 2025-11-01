@@ -1,12 +1,12 @@
 # Proposal: Change VSCode Extension Badge to Show Completion Percentage
 
-## Problem
+## Why
 
 The VSCode extension panel tab currently displays a badge showing the count of unchecked tasks (e.g., "5 unchecked tasks"). While this provides useful information, it doesn't give developers a quick sense of overall progress across all active changes.
 
 Users want to see at a glance how much work is completed rather than how much remains, making completion percentage a more intuitive metric for tracking progress.
 
-## Proposed Solution
+## What Changes
 
 Change the badge in the VSCode extension panel tab to display:
 
