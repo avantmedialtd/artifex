@@ -1,7 +1,15 @@
 {
     "version": "0.2",
     "language": "en-US",
-    "ignorePaths": ["node_modules", ".git", "package-lock.json", "dist", "build", "*.log"],
+    "ignorePaths": [
+        "node_modules",
+        ".git",
+        "package-lock.json",
+        "dist",
+        "build",
+        "*.log",
+        ".oxlintrc.json"
+    ],
     "words": [
         "Antal",
         "Discarder",
