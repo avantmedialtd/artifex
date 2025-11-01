@@ -12,9 +12,16 @@ import { extractProposalTitle, getLatestChangeId } from '../utils/proposal.ts';
  */
 function buildAgentArgs(slashCommand: string): string[] {
     const agentCommand = getAgentCommand();
-    return agentCommand === 'claude'
-        ? ['--permission-mode', 'acceptEdits', slashCommand]
-        : [slashCommand];
+
+    if (agentCommand === 'claude') {
+        return ['--permission-mode', 'acceptEdits', slashCommand];
+    }
+
+    if (agentCommand === 'copilot') {
+        return ['--allow-all-tools', '-p', slashCommand];
+    }
+
+    return [slashCommand];
 }
 
 /**
