@@ -168,4 +168,42 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
             return sum + (changeData.totalTasks - changeData.completedTasks);
         }, 0);
     }
+
+    /**
+     * Get the number of active changes (changes with at least one task)
+     */
+    getActiveChangesCount(): number {
+        return this.changeDataCache.filter(changeData => changeData.totalTasks > 0).length;
+    }
+
+    /**
+     * Calculate the completion percentage across all active changes.
+     * Returns a value from 0-100 representing the percentage of completed tasks.
+     * Returns 0 if there are no tasks.
+     */
+    getCompletionPercentage(): number {
+        const totalTasks = this.getTotalTaskCount();
+
+        if (totalTasks === 0) {
+            return 0;
+        }
+
+        const completedTasks = this.getCompletedTaskCount();
+
+        return Math.round((completedTasks / totalTasks) * 100);
+    }
+
+    /**
+     * Get the total number of tasks across all changes
+     */
+    getTotalTaskCount(): number {
+        return this.changeDataCache.reduce((sum, changeData) => sum + changeData.totalTasks, 0);
+    }
+
+    /**
+     * Get the total number of completed tasks across all changes
+     */
+    getCompletedTaskCount(): number {
+        return this.changeDataCache.reduce((sum, changeData) => sum + changeData.completedTasks, 0);
+    }
 }

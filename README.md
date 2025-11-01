@@ -233,7 +233,7 @@ For VSCode users, Zap includes a dedicated extension that displays OpenSpec task
 
 - **Native Panel Integration**: View all active OpenSpec changes and tasks in a dedicated panel
 - **Progress Tracking**: See completion counts for each change at a glance
-- **Badge Notifications**: Panel badge shows total unchecked task count
+- **Badge Notifications**: Panel badge shows completion percentage across all active changes (e.g., "75%" with tooltip showing "3 active changes, 75% complete (15/20 tasks)")
 - **Real-time Updates**: Automatically refreshes when `tasks.md` files change
 - **Hierarchical Display**: Tasks organized by change → section → individual task
 

@@ -109,23 +109,31 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
 }
 
 /**
- * Update the badge with unchecked task count
+ * Update the badge with completion percentage.
+ * Shows the percentage of completed tasks across all active changes.
+ * Badge is hidden when there are no active changes or no tasks.
  */
 function updateBadge() {
     if (!treeView || !taskProvider) {
         return;
     }
 
-    const uncheckedCount = taskProvider.getUncheckedTaskCount();
+    const activeChangesCount = taskProvider.getActiveChangesCount();
+    const completionPercentage = taskProvider.getCompletionPercentage();
+    const totalTasks = taskProvider.getTotalTaskCount();
+    const completedTasks = taskProvider.getCompletedTaskCount();
 
-    if (uncheckedCount > 0) {
-        treeView.badge = {
-            value: uncheckedCount,
-            tooltip: `${uncheckedCount} unchecked task${uncheckedCount !== 1 ? 's' : ''}`,
-        };
-    } else {
+    // Hide badge if no active changes or no tasks
+    if (activeChangesCount === 0 || totalTasks === 0) {
         treeView.badge = undefined;
+        return;
     }
+
+    // Show completion percentage as badge with detailed tooltip
+    treeView.badge = {
+        value: completionPercentage,
+        tooltip: `${activeChangesCount} active change${activeChangesCount !== 1 ? 's' : ''}, ${completionPercentage}% complete (${completedTasks}/${totalTasks} tasks)`,
+    };
 }
 
 /**
