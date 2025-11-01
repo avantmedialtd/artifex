@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { spawn } from 'child_process';
+import { describe, expect, it } from 'vitest';
 
 // Create a test helper to run zap commands
 function runZap(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
@@ -57,6 +57,24 @@ describe('zap spec propose', () => {
             // Skip this test because if Claude Code is installed, it will run interactively
             // and hang the test. This is tested in the integration test instead.
             expect(true).toBe(true);
+        });
+    });
+
+    describe('ZAP_AGENT environment variable', () => {
+        it('should respect ZAP_AGENT when checking for agent availability', async () => {
+            // Set ZAP_AGENT to a command that doesn't exist
+            process.env.ZAP_AGENT = 'nonexistent-agent-xyz';
+
+            const result = await runZap(['spec', 'propose', 'test proposal']);
+
+            // Should fail because the custom agent doesn't exist
+            expect(result.exitCode).toBe(1);
+            expect(result.stderr).toContain(
+                'Error: Claude Code CLI is not installed or not in PATH',
+            );
+
+            // Clean up
+            delete process.env.ZAP_AGENT;
         });
     });
 });

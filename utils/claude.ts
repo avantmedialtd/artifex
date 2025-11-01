@@ -1,6 +1,16 @@
 import { spawn } from 'node:child_process';
 
 /**
+ * Gets the configured agent command name from the ZAP_AGENT environment variable.
+ * Falls back to 'claude' if not set.
+ *
+ * @returns The agent command name to use
+ */
+export function getAgentCommand(): string {
+    return process.env.ZAP_AGENT || 'claude';
+}
+
+/**
  * Checks if Claude Code CLI is available in the system PATH.
  * Uses `claude --version` to verify the executable exists and is working.
  *
@@ -8,7 +18,7 @@ import { spawn } from 'node:child_process';
  */
 export async function checkClaudeAvailable(): Promise<boolean> {
     return new Promise(resolve => {
-        const checkProcess = spawn('claude', ['--version'], {
+        const checkProcess = spawn(getAgentCommand(), ['--version'], {
             stdio: 'ignore', // Suppress output
         });
 

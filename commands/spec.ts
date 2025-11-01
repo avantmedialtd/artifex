@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
-import { checkClaudeAvailable } from '../utils/claude.ts';
+import { checkClaudeAvailable, getAgentCommand } from '../utils/claude.ts';
+import { stageAndCommit } from '../utils/git.ts';
 import { error, success, warn } from '../utils/output.ts';
 import { extractProposalTitle, getLatestChangeId } from '../utils/proposal.ts';
-import { stageAndCommit } from '../utils/git.ts';
 
 /**
  * Handle the 'spec archive [spec-id]' command.
@@ -25,7 +25,7 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
     // If specId is provided, include it; otherwise, let Claude prompt interactively
     const slashCommand = specId ? `/openspec:archive ${specId}` : '/openspec:archive';
     const claudeArgs = ['--permission-mode', 'acceptEdits', slashCommand];
-    const claudeProcess = spawn('claude', claudeArgs, {
+    const claudeProcess = spawn(getAgentCommand(), claudeArgs, {
         stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
     });
 
@@ -104,7 +104,7 @@ export async function handleSpecApply(changeId: string | undefined): Promise<num
     // If changeId is provided, include it; otherwise, let Claude prompt interactively
     const slashCommand = changeId ? `/openspec:apply ${changeId}` : '/openspec:apply';
     const claudeArgs = ['--permission-mode', 'acceptEdits', slashCommand];
-    const claudeProcess = spawn('claude', claudeArgs, {
+    const claudeProcess = spawn(getAgentCommand(), claudeArgs, {
         stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
     });
 
@@ -147,7 +147,7 @@ export async function handleSpecPropose(proposalText: string): Promise<number> {
 
     // Build and execute the claude command
     const claudeArgs = ['--permission-mode', 'acceptEdits', `/openspec:proposal ${proposalText}`];
-    const claudeProcess = spawn('claude', claudeArgs, {
+    const claudeProcess = spawn(getAgentCommand(), claudeArgs, {
         stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
     });
 

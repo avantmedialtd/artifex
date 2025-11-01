@@ -166,6 +166,31 @@ Where `<Title>` is extracted from the archived proposal.md file.
 
 Applies an approved OpenSpec change (does not auto-commit, as changes are applied during implementation).
 
+### Configurable Agent Command
+
+The spec commands use the `ZAP_AGENT` environment variable to determine which AI agent command to invoke. This provides flexibility for:
+
+- Development and testing with alternative agent implementations
+- Custom CLI wrappers or agent tools
+- Non-standard installation paths
+
+**Implementation:**
+
+- `utils/claude.ts` exports `getAgentCommand()` which returns `process.env.ZAP_AGENT || 'claude'`
+- All `spawn()` calls use `getAgentCommand()` instead of hardcoded `'claude'`
+- Availability checks use the configured agent command
+- Error messages reference "Claude Code CLI" for backward compatibility
+
+**Example usage:**
+
+```bash
+# Use default claude command
+zap spec propose "add feature"
+
+# Use custom agent
+ZAP_AGENT=my-agent zap spec propose "add feature"
+```
+
 **Auto-Commit Behavior:**
 
 - Only commits files in the affected directory (changes or specs)

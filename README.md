@@ -142,6 +142,69 @@ This will:
 2. Invoke the OpenSpec archive workflow
 3. Archive the change and update related specifications
 
+### Apply OpenSpec Changes
+
+Apply an approved OpenSpec change using Claude Code:
+
+```bash
+zap spec apply [change-id]
+```
+
+This command provides a convenient wrapper for invoking Claude Code's OpenSpec apply workflow. It automatically executes `claude --permission-mode acceptEdits "/openspec:apply [change-id]"` for you.
+
+**Prerequisites:**
+
+- [Claude Code CLI](https://claude.com/claude-code) must be installed and available in your PATH
+- The OpenSpec change must exist in your project's `openspec/changes` directory
+
+**Example:**
+
+```bash
+# Apply a specific change
+zap spec apply add-user-authentication
+
+# Let Claude prompt for which change to apply
+zap spec apply
+```
+
+## Configuration
+
+### ZAP_AGENT Environment Variable
+
+By default, Zap uses the `claude` command when invoking AI agents for OpenSpec operations. You can customize this behavior by setting the `ZAP_AGENT` environment variable.
+
+**Use cases:**
+
+- Testing with alternative agent implementations
+- Using custom CLI wrappers
+- Running with agent commands installed at non-standard paths
+
+**Examples:**
+
+```bash
+# Use default claude command
+zap spec propose "add feature X"
+
+# Use a custom agent command
+ZAP_AGENT=my-agent zap spec propose "add feature X"
+
+# Use an absolute path to the agent
+ZAP_AGENT=/usr/local/bin/custom-claude zap spec apply
+
+# Set for your entire session
+export ZAP_AGENT=my-custom-agent
+zap spec propose "add feature Y"
+```
+
+When `ZAP_AGENT` is set, Zap will use that command name for:
+
+- Checking agent availability
+- Executing `spec propose` commands
+- Executing `spec archive` commands
+- Executing `spec apply` commands
+
+**Note:** The custom agent command must support the same CLI interface as Claude Code (e.g., `--permission-mode acceptEdits` and slash command syntax).
+
 ### Version Worktree Management
 
 Zap provides commands to manage git worktrees for version branches (branches matching the pattern `v1`, `v2`, `v10`, etc.).
