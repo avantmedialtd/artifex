@@ -5,6 +5,19 @@ import { error, success, warn } from '../utils/output.ts';
 import { extractProposalTitle, getLatestChangeId } from '../utils/proposal.ts';
 
 /**
+ * Builds command arguments for the agent, conditionally adding Claude-specific flags.
+ *
+ * @param slashCommand - The OpenSpec slash command to execute
+ * @returns Array of command arguments
+ */
+function buildAgentArgs(slashCommand: string): string[] {
+    const agentCommand = getAgentCommand();
+    return agentCommand === 'claude'
+        ? ['--permission-mode', 'acceptEdits', slashCommand]
+        : [slashCommand];
+}
+
+/**
  * Handle the 'spec archive [spec-id]' command.
  * Archives a spec by invoking Claude Code with the openspec:archive command.
  * After successful archival, automatically commits the archived spec files.
@@ -24,7 +37,7 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
     // Build and execute the claude command
     // If specId is provided, include it; otherwise, let Claude prompt interactively
     const slashCommand = specId ? `/openspec:archive ${specId}` : '/openspec:archive';
-    const claudeArgs = ['--permission-mode', 'acceptEdits', slashCommand];
+    const claudeArgs = buildAgentArgs(slashCommand);
     const claudeProcess = spawn(getAgentCommand(), claudeArgs, {
         stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
     });
@@ -103,7 +116,7 @@ export async function handleSpecApply(changeId: string | undefined): Promise<num
     // Build and execute the claude command
     // If changeId is provided, include it; otherwise, let Claude prompt interactively
     const slashCommand = changeId ? `/openspec:apply ${changeId}` : '/openspec:apply';
-    const claudeArgs = ['--permission-mode', 'acceptEdits', slashCommand];
+    const claudeArgs = buildAgentArgs(slashCommand);
     const claudeProcess = spawn(getAgentCommand(), claudeArgs, {
         stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
     });
@@ -146,7 +159,7 @@ export async function handleSpecPropose(proposalText: string): Promise<number> {
     }
 
     // Build and execute the claude command
-    const claudeArgs = ['--permission-mode', 'acceptEdits', `/openspec:proposal ${proposalText}`];
+    const claudeArgs = buildAgentArgs(`/openspec:proposal ${proposalText}`);
     const claudeProcess = spawn(getAgentCommand(), claudeArgs, {
         stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
     });
