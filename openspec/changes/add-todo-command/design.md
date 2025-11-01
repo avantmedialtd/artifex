@@ -97,7 +97,7 @@ interface ChangeTaskData {
 2. If directory is empty → "No active changes found."
 3. If change has no tasks.md → Display change with "No tasks.md found"
 4. If tasks.md is empty → Display change with "No tasks found"
-5. If tasks.md is malformed → Extract what's parseable, continue
+5. If tasks.md is malformed → Extract what's parsable, continue
 
 **No Failures:**
 - Command should never exit with code 1 during normal operation

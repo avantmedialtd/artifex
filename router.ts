@@ -3,6 +3,7 @@ import { handleSpecApply, handleSpecArchive, handleSpecPropose } from './command
 import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts';
 import { handleHelp } from './commands/help.ts';
 import { handleChanges } from './commands/changes.ts';
+import { handleTodo } from './commands/todo.ts';
 import { error } from './utils/output.ts';
 
 /**
@@ -87,6 +88,12 @@ export async function route(args: string[]): Promise<number> {
         // Pass true if any additional arguments were provided
         const hasArgs = args.length > 1;
         return await handleChanges(hasArgs);
+    }
+
+    if (command === 'todo') {
+        // Pass true if any additional arguments were provided
+        const hasArgs = args.length > 1;
+        return await handleTodo(hasArgs);
     }
 
     // Route versions commands

@@ -41,6 +41,11 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
         usage: 'zap changes',
         examples: ['zap changes  # Show all active OpenSpec changes'],
     },
+    todo: {
+        description: 'Show all TODO items from active OpenSpec changes',
+        usage: 'zap todo',
+        examples: ['zap todo  # Display all tasks from active changes'],
+    },
     versions: {
         description: 'Manage version worktrees',
         usage: 'zap versions <subcommand>',
@@ -74,6 +79,7 @@ function showGeneralHelp(): void {
     listItem('apply [id]             Shorthand for "spec apply"');
     listItem('archive <id>           Shorthand for "spec archive"');
     listItem('changes                List all OpenSpec changes');
+    listItem('todo                   Show all TODO items from active changes');
     listItem('versions reset         Reset version worktrees to HEAD');
     listItem('versions push          Force push version worktrees');
     listItem('help [command]         Show help for a command');
