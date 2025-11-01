@@ -4,6 +4,7 @@ import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts'
 import { handleHelp } from './commands/help.ts';
 import { handleChanges } from './commands/changes.ts';
 import { handleTodo } from './commands/todo.ts';
+import { handleWatch } from './commands/watch.ts';
 import { error } from './utils/output.ts';
 
 /**
@@ -94,6 +95,12 @@ export async function route(args: string[]): Promise<number> {
         // Pass true if any additional arguments were provided
         const hasArgs = args.length > 1;
         return await handleTodo(hasArgs);
+    }
+
+    if (command === 'watch') {
+        // Pass true if any additional arguments were provided
+        const hasArgs = args.length > 1;
+        return await handleWatch(hasArgs);
     }
 
     // Route versions commands

@@ -167,6 +167,64 @@ zap spec apply add-user-authentication
 zap spec apply
 ```
 
+### View TODO Items
+
+Display all TODO items from active OpenSpec changes:
+
+```bash
+zap todo
+```
+
+This command scans all active changes in `openspec/changes/` and displays their tasks from `tasks.md` files with progress indicators.
+
+**Example:**
+
+```bash
+zap todo
+```
+
+**Output:**
+
+```
+📋 TODO Items
+
+┌─ add-user-authentication (2/5 tasks completed)
+│
+│  Implementation
+│  ☑ 1.1 Create database schema
+│  ☑ 1.2 Implement API endpoint
+│  ☐ 1.3 Add frontend component
+│  ☐ 1.4 Write tests
+│  ☐ 1.5 Update documentation
+│
+└────────────────────────────────────────
+```
+
+### Watch TODO Items
+
+Continuously monitor and display TODO items with real-time updates:
+
+```bash
+zap watch
+```
+
+This command starts watch mode, which automatically refreshes the TODO display whenever task files are modified. Perfect for tracking progress during active development.
+
+**Example:**
+
+```bash
+zap watch
+```
+
+**Features:**
+
+- Real-time display updates when `tasks.md` files change
+- Debounced refreshes (100ms) to batch rapid changes
+- Clear screen with timestamp on each update
+- Press Ctrl+C to exit gracefully
+
+**Use case:** Keep `zap watch` running in a terminal window while working through implementation tasks to see your progress update automatically.
+
 ## Configuration
 
 ### ZAP_AGENT Environment Variable
