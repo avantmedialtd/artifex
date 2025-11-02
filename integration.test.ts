@@ -183,7 +183,7 @@ describe('Command Argument Parsing', () => {
         );
         // Should at least attempt to run (might fail on package.json issues)
         expect(result.exitCode).toBeDefined();
-    });
+    }, 30000); // Increase timeout to 30s for npm operations
 
     it('should handle invalid npm subcommand', async () => {
         const result = await runCommand(
