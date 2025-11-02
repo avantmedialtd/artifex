@@ -52,9 +52,13 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
         examples: ['zap todo  # Display all tasks from active changes'],
     },
     watch: {
-        description: 'Continuously monitor and display TODO items from active changes',
+        description:
+            'Continuously monitor and display TODO items from active changes with idle indicator',
         usage: 'zap watch',
-        examples: ['zap watch  # Start watch mode for real-time TODO updates'],
+        examples: [
+            'zap watch  # Start watch mode for real-time TODO updates',
+            '          # Shows idle warning after 60 seconds of inactivity',
+        ],
     },
     versions: {
         description: 'Manage version worktrees',
@@ -90,7 +94,7 @@ function showGeneralHelp(): void {
     listItem('archive [id]           Shorthand for "spec archive"');
     listItem('changes                List all OpenSpec changes');
     listItem('todo                   Show all TODO items from active changes');
-    listItem('watch                  Continuously show updated TODO items');
+    listItem('watch                  Continuously show updated TODO items (with idle indicator)');
     listItem('versions reset         Reset version worktrees to HEAD');
     listItem('versions push          Force push version worktrees');
     listItem('help [command]         Show help for a command');
