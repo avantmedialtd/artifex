@@ -1,6 +1,6 @@
 # vscode-extension-expanded-trees Specification Delta
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: TreeView panel displays active changes
 
