@@ -75,7 +75,7 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
             return [];
         }
 
-        // Root level: show changes
+        // Root level: show changes (expanded by default for immediate visibility)
         if (!element) {
             try {
                 this.changeDataCache = await getAllChangeData(this.workspaceRoot);
@@ -96,7 +96,7 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
                     return new OpenSpecTaskItem(
                         'change',
                         label,
-                        vscode.TreeItemCollapsibleState.Collapsed,
+                        vscode.TreeItemCollapsibleState.Expanded,
                         changeData,
                     );
                 });
@@ -112,14 +112,14 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
             }
         }
 
-        // Change level: show sections
+        // Change level: show sections (expanded by default for immediate visibility)
         if (element.type === 'change') {
             const changeData = element.data as ChangeData;
             return changeData.sections.map(section => {
                 return new OpenSpecTaskItem(
                     'section',
                     section.title,
-                    vscode.TreeItemCollapsibleState.Collapsed,
+                    vscode.TreeItemCollapsibleState.Expanded,
                     section,
                     element,
                 );
