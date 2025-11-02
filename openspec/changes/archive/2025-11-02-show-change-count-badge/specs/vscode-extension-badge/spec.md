@@ -1,5 +1,10 @@
 # vscode-extension-badge Specification Delta
 
+## RENAMED Requirements
+
+- FROM: `### Requirement: Extension badge displays completion percentage`
+- TO: `### Requirement: Extension badge displays count of active changes with unchecked tasks`
+
 ## MODIFIED Requirements
 
 ### Requirement: Extension badge displays count of active changes with unchecked tasks

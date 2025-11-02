@@ -3,36 +3,34 @@
 ## Purpose
 TBD - created by archiving change change-vscode-badge-to-percentage. Update Purpose after archive.
 ## Requirements
-### Requirement: Extension badge displays completion percentage
+### Requirement: Extension badge displays count of active changes with unchecked tasks
 
-The VSCode extension panel tab badge MUST display the completion percentage of tasks across all active changes instead of the unchecked task count.
+The VSCode extension panel tab badge MUST display the count of active changes that have at least one unchecked task.
 
-#### Scenario: Badge shows completion percentage with active changes
+#### Scenario: Badge shows count of changes with unchecked tasks
 
 **Given** workspace has 3 active changes
-**And** there are 20 total tasks across all changes
-**And** 15 tasks are completed
+**And** change "add-feature" has 5 tasks (2 completed, 3 unchecked)
+**And** change "fix-bug" has 3 tasks (1 completed, 2 unchecked)
+**And** change "update-docs" has 4 tasks (4 completed, 0 unchecked)
 **When** the extension calculates the badge
-**Then** the badge value is 75 (representing 75% completion)
-**And** the badge tooltip shows "3 active changes, 75% complete (15/20 tasks)"
+**Then** the badge value is 2 (two changes with unchecked tasks)
+**And** the badge tooltip shows "2 active change(s) with unchecked tasks"
 
-#### Scenario: Badge shows 0% for no completed tasks
+#### Scenario: Badge shows count when all changes have unchecked tasks
+
+**Given** workspace has 3 active changes
+**And** each change has at least one unchecked task
+**When** the extension calculates the badge
+**Then** the badge value is 3
+**And** the badge tooltip shows "3 active change(s) with unchecked tasks"
+
+#### Scenario: Badge hidden when all tasks are complete
 
 **Given** workspace has 2 active changes
-**And** there are 10 total tasks
-**And** 0 tasks are completed
+**And** all tasks in all changes are completed
 **When** the extension calculates the badge
-**Then** the badge value is 0
-**And** the badge tooltip shows "2 active changes, 0% complete (0/10 tasks)"
-
-#### Scenario: Badge shows 100% for all completed tasks
-
-**Given** workspace has 1 active change
-**And** there are 8 total tasks
-**And** all 8 tasks are completed
-**When** the extension calculates the badge
-**Then** the badge value is 100
-**And** the badge tooltip shows "1 active change, 100% complete (8/8 tasks)"
+**Then** the badge is hidden (undefined)
 
 #### Scenario: Badge hidden when no active changes
 
@@ -47,12 +45,12 @@ The VSCode extension panel tab badge MUST display the completion percentage of t
 **When** the extension calculates the badge
 **Then** the badge is hidden (undefined)
 
-#### Scenario: Percentage rounds to nearest whole number
+#### Scenario: Badge shows 1 for single change with unchecked tasks
 
 **Given** workspace has 1 active change
-**And** there are 3 total tasks
+**And** the change has 3 total tasks
 **And** 2 tasks are completed
 **When** the extension calculates the badge
-**Then** the badge value is 67 (66.67% rounded to 67)
-**And** the badge tooltip shows "1 active change, 67% complete (2/3 tasks)"
+**Then** the badge value is 1
+**And** the badge tooltip shows "1 active change(s) with unchecked tasks"
 
