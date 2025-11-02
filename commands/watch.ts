@@ -189,10 +189,13 @@ function displayStatusBar(changes: ChangeTaskData[], lastChangeTime: number): vo
     // Add idle warning if idle for more than 60 seconds
     const idleDurationMs = calculateIdleDuration(lastChangeTime);
     const idleThresholdMs = 60 * 1000; // 60 seconds
+    const idleRedThresholdMs = 30 * 60 * 1000; // 30 minutes
 
     if (idleDurationMs > idleThresholdMs) {
         const idleDuration = formatIdleDuration(idleDurationMs);
-        const idleWarning = ` ${colors.gray}|${colors.reset} ${colors.yellow}⚠ IDLE for ${idleDuration}${colors.reset}`;
+        // Use red color for 30+ minutes, yellow for 60s-30m
+        const warningColor = idleDurationMs > idleRedThresholdMs ? colors.red : colors.yellow;
+        const idleWarning = ` ${colors.gray}|${colors.reset} ${warningColor}⚠ IDLE for ${idleDuration}${colors.reset}`;
         statusLine += idleWarning;
     }
 
