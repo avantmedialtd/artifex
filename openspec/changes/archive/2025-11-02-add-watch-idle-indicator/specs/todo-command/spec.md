@@ -1,4 +1,4 @@
-# watch-idle-indicator Specification Delta
+# todo-command Specification Delta
 
 ## MODIFIED Requirements
 
