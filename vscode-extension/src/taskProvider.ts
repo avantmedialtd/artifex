@@ -206,4 +206,14 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
     getCompletedTaskCount(): number {
         return this.changeDataCache.reduce((sum, changeData) => sum + changeData.completedTasks, 0);
     }
+
+    /**
+     * Get the count of active changes that have at least one unchecked task
+     */
+    getActiveChangesWithUncheckedTasks(): number {
+        return this.changeDataCache.filter(changeData => {
+            const hasUncheckedTasks = changeData.completedTasks < changeData.totalTasks;
+            return hasUncheckedTasks;
+        }).length;
+    }
 }

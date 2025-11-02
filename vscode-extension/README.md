@@ -6,7 +6,7 @@ Monitor OpenSpec change tasks in a dedicated panel within Visual Studio Code.
 
 - **Dedicated Panel**: Display all active OpenSpec changes and their tasks in a native VSCode panel (similar to Problems panel)
 - **Progress Tracking**: Shows completion counts for each change (e.g., "2/5 tasks completed")
-- **Badge Notifications**: Displays a badge with the count of unchecked tasks for at-a-glance status
+- **Badge Notifications**: Displays a badge with the count of changes with unchecked tasks for at-a-glance status
 - **Real-time Updates**: Automatically refreshes when `tasks.md` files change
 - **Hierarchical Display**: Organizes tasks by change → section → individual task
 - **Visual Indicators**: Uses checkboxes (☑/☐) to show task completion status
@@ -61,7 +61,7 @@ Monitor OpenSpec change tasks in a dedicated panel within Visual Studio Code.
 1. Open a workspace that contains an `openspec/changes/` directory
 2. The "OpenSpec Tasks" panel will automatically appear in the panel area (bottom of VSCode, alongside Problems, Output, Terminal)
 3. Expand changes to see sections and individual tasks
-4. The badge on the panel tab shows the total number of unchecked tasks across all changes
+4. The badge on the panel tab shows the count of active changes that have unchecked tasks
 
 ### Panel Location
 
