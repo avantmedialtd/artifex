@@ -19,6 +19,7 @@ tags: [openspec, archive]
 2. Run `openspec archive <id> --yes` to let the CLI move the change and apply spec updates without prompts (use `--skip-specs` only for tooling-only work).
 3. Review the command output to confirm the target specs were updated and the change landed in `changes/archive/`.
 4. Validate with `openspec validate --strict` and inspect with `openspec show <id>` if anything looks off.
+5. **DO NOT manually commit changes** - the `zap spec archive` script will automatically commit the archived changes.
 
 **Reference**
 
