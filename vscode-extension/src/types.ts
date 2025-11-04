@@ -5,6 +5,7 @@ export interface Task {
     text: string;
     completed: boolean;
     indent: number;
+    lineNumber?: number;
 }
 
 /**

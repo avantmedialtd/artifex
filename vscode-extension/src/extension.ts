@@ -105,6 +105,30 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
 
     context.subscriptions.push(refreshCommand);
 
+    // Register command to open task location
+    const openTaskLocationCommand = vscode.commands.registerCommand(
+        'openspecTasks.openTaskLocation',
+        async (filePath: string, lineNumber: number) => {
+            try {
+                const uri = vscode.Uri.file(filePath);
+                const document = await vscode.workspace.openTextDocument(uri);
+                const editor = await vscode.window.showTextDocument(document);
+
+                // Create a range for the target line (0-indexed)
+                const line = lineNumber - 1;
+                const range = new vscode.Range(line, 0, line, 0);
+
+                // Reveal the line and position cursor at the beginning
+                editor.selection = new vscode.Selection(range.start, range.start);
+                editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to open file: ${error}`);
+            }
+        },
+    );
+
+    context.subscriptions.push(openTaskLocationCommand);
+
     console.log('OpenSpec Tasks extension initialized successfully');
 }
 

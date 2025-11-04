@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { getAllChangeData } from './taskParser';
 import { ChangeData, Section, Task } from './types';
@@ -129,16 +130,39 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
         // Section level: show tasks
         if (element.type === 'section') {
             const section = element.data as Section;
+            // Get the change ID from the parent element
+            const changeElement = element.parent;
+            const changeData = changeElement?.data as ChangeData;
+            const changeId = changeData?.changeId;
+
             return section.tasks.map(task => {
                 const icon = task.completed ? '☑' : '☐';
                 const label = `${icon} ${task.text}`;
-                return new OpenSpecTaskItem(
+                const taskItem = new OpenSpecTaskItem(
                     'task',
                     label,
                     vscode.TreeItemCollapsibleState.None,
                     task,
                     element,
                 );
+
+                // Add command to open task location if line number is available
+                if (task.lineNumber && changeId) {
+                    const tasksFilePath = path.join(
+                        this.workspaceRoot,
+                        'openspec',
+                        'changes',
+                        changeId,
+                        'tasks.md',
+                    );
+                    taskItem.command = {
+                        command: 'openspecTasks.openTaskLocation',
+                        title: 'Open Task Location',
+                        arguments: [tasksFilePath, task.lineNumber],
+                    };
+                }
+
+                return taskItem;
             });
         }
 

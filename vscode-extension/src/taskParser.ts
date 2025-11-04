@@ -24,7 +24,10 @@ export async function parseTasksFile(filePath: string): Promise<{
         let totalTasks = 0;
         let completedTasks = 0;
 
-        for (const line of lines) {
+        for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            const line = lines[lineIndex];
+            const lineNumber = lineIndex + 1; // 1-indexed line numbers
+
             // Match section headers (## Header)
             const sectionMatch = line.match(/^## (.+)$/);
             if (sectionMatch) {
@@ -49,6 +52,7 @@ export async function parseTasksFile(filePath: string): Promise<{
                     text: text.trim(),
                     completed: isCompleted,
                     indent,
+                    lineNumber,
                 };
 
                 if (currentSection) {
