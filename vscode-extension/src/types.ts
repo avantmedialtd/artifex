@@ -21,6 +21,7 @@ export interface Section {
  */
 export interface ChangeData {
     changeId: string;
+    title?: string;
     sections: Section[];
     totalTasks: number;
     completedTasks: number;

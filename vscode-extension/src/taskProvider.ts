@@ -93,13 +93,27 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
                 }
 
                 return this.changeDataCache.map(changeData => {
-                    const label = `${changeData.changeId} (${changeData.completedTasks}/${changeData.totalTasks})`;
-                    return new OpenSpecTaskItem(
+                    // Format: "Title (change-id) - X/Y tasks completed" or "change-id (X/Y tasks completed)"
+                    const label = changeData.title
+                        ? `${changeData.title} (${changeData.changeId}) - ${changeData.completedTasks}/${changeData.totalTasks} tasks completed`
+                        : `${changeData.changeId} (${changeData.completedTasks}/${changeData.totalTasks} tasks completed)`;
+                    const item = new OpenSpecTaskItem(
                         'change',
                         label,
                         vscode.TreeItemCollapsibleState.Expanded,
                         changeData,
                     );
+
+                    // Add copy title command if title exists
+                    if (changeData.title) {
+                        item.command = {
+                            command: 'openspecTasks.copyTitle',
+                            title: 'Copy Title',
+                            arguments: [changeData.title],
+                        };
+                    }
+
+                    return item;
                 });
             } catch (error) {
                 console.error('Error loading changes:', error);

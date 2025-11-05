@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ChangeData, Section, Task } from './types';
+import { extractProposalTitle } from './titleExtractor';
 
 /**
  * Parse a tasks.md file and extract structured task data.
@@ -111,8 +112,13 @@ export async function getChangeData(workspaceRoot: string, changeId: string): Pr
     const tasksFilePath = path.join(workspaceRoot, 'openspec', 'changes', changeId, 'tasks.md');
     const { sections, totalTasks, completedTasks } = await parseTasksFile(tasksFilePath);
 
+    // Extract title from proposal.md
+    const proposalPath = path.join(workspaceRoot, 'openspec', 'changes', changeId, 'proposal.md');
+    const title = extractProposalTitle(proposalPath);
+
     return {
         changeId,
+        title: title || undefined,
         sections,
         totalTasks,
         completedTasks,

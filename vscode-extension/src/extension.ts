@@ -5,6 +5,7 @@ import { OpenSpecTaskProvider } from './taskProvider';
 let treeView: vscode.TreeView<any> | undefined;
 let taskProvider: OpenSpecTaskProvider | undefined;
 let fileWatcher: vscode.FileSystemWatcher | undefined;
+let proposalWatcher: vscode.FileSystemWatcher | undefined;
 
 /**
  * Activate the extension
@@ -95,6 +96,19 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
 
     context.subscriptions.push(fileWatcher);
 
+    // Set up file watcher for proposal.md files to refresh when titles change
+    const proposalPattern = new vscode.RelativePattern(
+        workspaceRoot,
+        'openspec/changes/**/proposal.md',
+    );
+    proposalWatcher = vscode.workspace.createFileSystemWatcher(proposalPattern);
+
+    proposalWatcher.onDidChange(debouncedRefresh);
+    proposalWatcher.onDidCreate(debouncedRefresh);
+    proposalWatcher.onDidDelete(debouncedRefresh);
+
+    context.subscriptions.push(proposalWatcher);
+
     // Register refresh command
     const refreshCommand = vscode.commands.registerCommand('openspecTasks.refresh', () => {
         if (taskProvider) {
@@ -128,6 +142,21 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
     );
 
     context.subscriptions.push(openTaskLocationCommand);
+
+    // Register command to copy title
+    const copyTitleCommand = vscode.commands.registerCommand(
+        'openspecTasks.copyTitle',
+        async (title: string) => {
+            try {
+                await vscode.env.clipboard.writeText(title);
+                vscode.window.showInformationMessage(`Copied: "${title}"`);
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to copy title: ${error}`);
+            }
+        },
+    );
+
+    context.subscriptions.push(copyTitleCommand);
 
     console.log('OpenSpec Tasks extension initialized successfully');
 }
@@ -163,6 +192,9 @@ function updateBadge() {
 export function deactivate() {
     if (fileWatcher) {
         fileWatcher.dispose();
+    }
+    if (proposalWatcher) {
+        proposalWatcher.dispose();
     }
     if (treeView) {
         treeView.dispose();
