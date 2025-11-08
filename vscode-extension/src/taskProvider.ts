@@ -69,6 +69,19 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
     }
 
     /**
+     * Check if a section has all tasks completed
+     */
+    private isSectionFullyCompleted(section: Section): boolean {
+        // Empty sections are not considered "fully completed"
+        if (section.tasks.length === 0) {
+            return false;
+        }
+
+        // Check if all tasks are completed
+        return section.tasks.every(task => task.completed);
+    }
+
+    /**
      * Get the children of an element
      */
     async getChildren(element?: OpenSpecTaskItem): Promise<OpenSpecTaskItem[]> {
@@ -130,11 +143,25 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
         // Change level: show sections (expanded by default for immediate visibility)
         if (element.type === 'change') {
             const changeData = element.data as ChangeData;
+            // Read the auto-collapse setting
+            const config = vscode.workspace.getConfiguration('openspecTasks');
+            const autoCollapseCompletedSections = config.get<boolean>(
+                'autoCollapseCompletedSections',
+                false,
+            );
+
             return changeData.sections.map(section => {
+                // Determine collapsible state based on setting and section completion
+                let collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+
+                if (autoCollapseCompletedSections && this.isSectionFullyCompleted(section)) {
+                    collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+                }
+
                 return new OpenSpecTaskItem(
                     'section',
                     section.title,
-                    vscode.TreeItemCollapsibleState.Expanded,
+                    collapsibleState,
                     section,
                     element,
                 );

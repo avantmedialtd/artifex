@@ -75,7 +75,33 @@ The OpenSpec Tasks panel appears in the bottom panel area by default. You can:
 
 ## Configuration
 
-Currently, the extension works with default settings and requires no configuration.
+The extension provides the following configuration options:
+
+### Auto-Collapse Completed Sections
+
+**Setting**: `openspecTasks.autoCollapseCompletedSections`
+**Type**: Boolean
+**Default**: `false`
+
+Automatically collapse task sections where all todos are checked. When enabled, sections with all tasks completed will be displayed in a collapsed state, reducing visual clutter and helping you focus on incomplete work.
+
+#### Enable in Settings UI
+
+1. Open VSCode Settings (File → Preferences → Settings / Cmd+,)
+2. Search for "openspec" or "collapse"
+3. Check the "Auto Collapse Completed Sections" option
+
+#### Enable in settings.json
+
+Add this to your workspace or user settings:
+
+```json
+{
+    "openspecTasks.autoCollapseCompletedSections": true
+}
+```
+
+**Note**: Changes to this setting take effect when the tree view refreshes (on file changes or manual refresh).
 
 ## Extension Activation
 
@@ -137,7 +163,6 @@ npm test               # Run unit tests
 
 - Read-only display (cannot edit tasks from the extension)
 - Single workspace support only
-- No custom configuration options (uses defaults)
 
 ## Future Enhancements
 
@@ -146,7 +171,7 @@ Potential features for future versions:
 - Mark tasks complete from the extension
 - Filter/search tasks
 - Sort by completion status
-- Configuration options
+- Additional configuration options
 - Multi-workspace support
 
 ## License

@@ -31,6 +31,16 @@
                     "name": "Changes"
                 }
             ]
+        },
+        "configuration": {
+            "title": "OpenSpec Tasks",
+            "properties": {
+                "openspecTasks.autoCollapseCompletedSections": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Automatically collapse task sections where all todos are checked"
+                }
+            }
         }
     },
     "scripts": {
