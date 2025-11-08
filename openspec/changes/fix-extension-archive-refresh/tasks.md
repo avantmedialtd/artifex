@@ -2,9 +2,9 @@
 
 ## Implementation
 
-- [ ] Add directory watcher for `openspec/changes` to detect when change directories are added or removed
-- [ ] Connect directory watcher events to refresh handler
-- [ ] Dispose directory watcher in deactivate function
+- [x] Add directory watcher for `openspec/changes` to detect when change directories are added or removed
+- [x] Connect directory watcher events to refresh handler
+- [x] Dispose directory watcher in deactivate function
 - [ ] Test archiving a change and verify extension refreshes immediately
 
 ## Validation

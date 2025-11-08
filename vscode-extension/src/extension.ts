@@ -6,6 +6,7 @@ let treeView: vscode.TreeView<any> | undefined;
 let taskProvider: OpenSpecTaskProvider | undefined;
 let fileWatcher: vscode.FileSystemWatcher | undefined;
 let proposalWatcher: vscode.FileSystemWatcher | undefined;
+let directoryWatcher: vscode.FileSystemWatcher | undefined;
 
 /**
  * Activate the extension
@@ -109,6 +110,15 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
 
     context.subscriptions.push(proposalWatcher);
 
+    // Set up directory watcher for openspec/changes to detect when change directories are added/removed
+    const directoryPattern = new vscode.RelativePattern(workspaceRoot, 'openspec/changes/*');
+    directoryWatcher = vscode.workspace.createFileSystemWatcher(directoryPattern);
+
+    directoryWatcher.onDidCreate(debouncedRefresh);
+    directoryWatcher.onDidDelete(debouncedRefresh);
+
+    context.subscriptions.push(directoryWatcher);
+
     // Register refresh command
     const refreshCommand = vscode.commands.registerCommand('openspecTasks.refresh', () => {
         if (taskProvider) {
@@ -195,6 +205,9 @@ export function deactivate() {
     }
     if (proposalWatcher) {
         proposalWatcher.dispose();
+    }
+    if (directoryWatcher) {
+        directoryWatcher.dispose();
     }
     if (treeView) {
         treeView.dispose();
