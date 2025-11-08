@@ -1,11 +1,10 @@
+import { handleChanges } from './commands/changes.ts';
+import { handleHelp } from './commands/help.ts';
 import { handleNpmUpgrade } from './commands/npm.ts';
 import { handleSpecApply, handleSpecArchive, handleSpecPropose } from './commands/spec.ts';
-import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts';
-import { handleHelp } from './commands/help.ts';
-import { handleChanges } from './commands/changes.ts';
 import { handleTodo } from './commands/todo.ts';
+import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts';
 import { handleWatch } from './commands/watch.ts';
-import { handleDemo } from './commands/demo.tsx';
 import { error } from './utils/output.ts';
 
 /**
@@ -126,8 +125,9 @@ export async function route(args: string[]): Promise<number> {
         return await handleHelp(subcommand);
     }
 
-    // Route demo command
+    // Route demo command (uses dynamic import for .tsx file)
     if (command === 'demo') {
+        const { handleDemo } = await import('./commands/demo.tsx');
         return await handleDemo();
     }
 

@@ -1,9 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { success, error, info, warn, header, section, listItem, colors } from './output.ts';
+import chalk from 'chalk';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { colors, error, header, info, listItem, section, success, warn } from './output.ts';
 
 describe('output utilities', () => {
     let consoleLogSpy: ReturnType<typeof vi.spyOn>;
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeAll(() => {
+        // Force chalk to output colors in tests
+        chalk.level = 1; // Basic color support
+    });
 
     beforeEach(() => {
         consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -29,20 +35,18 @@ describe('output utilities', () => {
     describe('success', () => {
         it('should output green message', () => {
             success('Test success');
-            expect(consoleLogSpy).toHaveBeenCalledWith(
-                `${colors.green}Test success${colors.reset}`,
-            );
+            expect(consoleLogSpy).toHaveBeenCalledWith(chalk.green('Test success'));
         });
 
         it('should handle empty string', () => {
             success('');
-            expect(consoleLogSpy).toHaveBeenCalledWith(`${colors.green}${colors.reset}`);
+            expect(consoleLogSpy).toHaveBeenCalledWith(chalk.green(''));
         });
 
         it('should handle special characters', () => {
             success('Test with special chars: !@#$%^&*()');
             expect(consoleLogSpy).toHaveBeenCalledWith(
-                `${colors.green}Test with special chars: !@#$%^&*()${colors.reset}`,
+                chalk.green('Test with special chars: !@#$%^&*()'),
             );
         });
     });
@@ -50,106 +54,98 @@ describe('output utilities', () => {
     describe('error', () => {
         it('should output red message to stderr', () => {
             error('Test error');
-            expect(consoleErrorSpy).toHaveBeenCalledWith(`${colors.red}Test error${colors.reset}`);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(chalk.red('Test error'));
         });
 
         it('should handle empty string', () => {
             error('');
-            expect(consoleErrorSpy).toHaveBeenCalledWith(`${colors.red}${colors.reset}`);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(chalk.red(''));
         });
 
         it('should handle special characters', () => {
             error('Error: Invalid input!');
-            expect(consoleErrorSpy).toHaveBeenCalledWith(
-                `${colors.red}Error: Invalid input!${colors.reset}`,
-            );
+            expect(consoleErrorSpy).toHaveBeenCalledWith(chalk.red('Error: Invalid input!'));
         });
     });
 
     describe('info', () => {
         it('should output cyan message', () => {
             info('Test info');
-            expect(consoleLogSpy).toHaveBeenCalledWith(`${colors.cyan}Test info${colors.reset}`);
+            expect(consoleLogSpy).toHaveBeenCalledWith(chalk.cyan('Test info'));
         });
 
         it('should handle empty string', () => {
             info('');
-            expect(consoleLogSpy).toHaveBeenCalledWith(`${colors.cyan}${colors.reset}`);
+            expect(consoleLogSpy).toHaveBeenCalledWith(chalk.cyan(''));
         });
     });
 
     describe('warn', () => {
         it('should output yellow message', () => {
             warn('Test warning');
-            expect(consoleLogSpy).toHaveBeenCalledWith(
-                `${colors.yellow}Test warning${colors.reset}`,
-            );
+            expect(consoleLogSpy).toHaveBeenCalledWith(chalk.yellow('Test warning'));
         });
 
         it('should handle empty string', () => {
             warn('');
-            expect(consoleLogSpy).toHaveBeenCalledWith(`${colors.yellow}${colors.reset}`);
+            expect(consoleLogSpy).toHaveBeenCalledWith(chalk.yellow(''));
         });
     });
 
     describe('header', () => {
         it('should output blue message with newline prefix', () => {
             header('Test Header');
-            expect(consoleLogSpy).toHaveBeenCalledWith(
-                `\n${colors.blue}Test Header${colors.reset}`,
-            );
+            expect(consoleLogSpy).toHaveBeenCalledTimes(2);
+            expect(consoleLogSpy).toHaveBeenNthCalledWith(1);
+            expect(consoleLogSpy).toHaveBeenNthCalledWith(2, chalk.blue('Test Header'));
         });
 
         it('should handle empty string', () => {
             header('');
-            expect(consoleLogSpy).toHaveBeenCalledWith(`\n${colors.blue}${colors.reset}`);
+            expect(consoleLogSpy).toHaveBeenCalledTimes(2);
+            expect(consoleLogSpy).toHaveBeenNthCalledWith(1);
+            expect(consoleLogSpy).toHaveBeenNthCalledWith(2, chalk.blue(''));
         });
     });
 
     describe('section', () => {
         it('should output cyan message with newline prefix', () => {
             section('Test Section');
-            expect(consoleLogSpy).toHaveBeenCalledWith(
-                `\n${colors.cyan}Test Section${colors.reset}`,
-            );
+            expect(consoleLogSpy).toHaveBeenCalledTimes(2);
+            expect(consoleLogSpy).toHaveBeenNthCalledWith(1);
+            expect(consoleLogSpy).toHaveBeenNthCalledWith(2, chalk.cyan('Test Section'));
         });
 
         it('should handle empty string', () => {
             section('');
-            expect(consoleLogSpy).toHaveBeenCalledWith(`\n${colors.cyan}${colors.reset}`);
+            expect(consoleLogSpy).toHaveBeenCalledTimes(2);
+            expect(consoleLogSpy).toHaveBeenNthCalledWith(1);
+            expect(consoleLogSpy).toHaveBeenNthCalledWith(2, chalk.cyan(''));
         });
     });
 
     describe('listItem', () => {
         it('should output list item with default bullet symbol', () => {
             listItem('Test item');
-            expect(consoleLogSpy).toHaveBeenCalledWith(
-                `  ${colors.gray}•${colors.reset} Test item`,
-            );
+            expect(consoleLogSpy).toHaveBeenCalledWith(`  ${chalk.gray('•')} Test item`);
         });
 
         it('should output list item with custom symbol', () => {
             listItem('Test item', '✓');
-            expect(consoleLogSpy).toHaveBeenCalledWith(
-                `  ${colors.gray}✓${colors.reset} Test item`,
-            );
+            expect(consoleLogSpy).toHaveBeenCalledWith(`  ${chalk.gray('✓')} Test item`);
         });
 
         it('should handle empty string', () => {
             listItem('');
-            expect(consoleLogSpy).toHaveBeenCalledWith(`  ${colors.gray}•${colors.reset} `);
+            expect(consoleLogSpy).toHaveBeenCalledWith(`  ${chalk.gray('•')} `);
         });
 
         it('should handle custom symbols correctly', () => {
             listItem('Success item', '✓');
-            expect(consoleLogSpy).toHaveBeenCalledWith(
-                `  ${colors.gray}✓${colors.reset} Success item`,
-            );
+            expect(consoleLogSpy).toHaveBeenCalledWith(`  ${chalk.gray('✓')} Success item`);
 
             listItem('Failed item', '✗');
-            expect(consoleLogSpy).toHaveBeenCalledWith(
-                `  ${colors.gray}✗${colors.reset} Failed item`,
-            );
+            expect(consoleLogSpy).toHaveBeenCalledWith(`  ${chalk.gray('✗')} Failed item`);
         });
     });
 });
