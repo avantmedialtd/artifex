@@ -1,6 +1,6 @@
 # Spec: Ink Command Migration
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Command handler output patterns
 
@@ -21,8 +21,6 @@ Command handlers MUST use Ink components for all UI output instead of direct con
 **Then** the handler MUST use Ink interactive components (TextInput, Select, etc.)
 **And** the handler MUST handle user cancellation (Ctrl+C) gracefully
 **And** the handler MUST clean up Ink rendering on exit
-
-## ADDED Requirements
 
 ### Requirement: Example Ink command implementation
 
