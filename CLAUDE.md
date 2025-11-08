@@ -135,8 +135,151 @@ The `utils/output.ts` module provides consistent terminal output:
 
 - **Color functions**: `success()`, `error()`, `info()`, `warn()`
 - **Formatting functions**: `header()`, `section()`, `listItem()`
-- **Built-in ANSI colors** - No external dependencies
+- **Uses chalk** - Color library from Ink's dependencies
 - **Graceful degradation** - Works in terminals without color support
+
+### Ink UI Framework Integration
+
+The project uses **Ink** (https://github.com/vadimdemedes/ink) for building interactive command-line interfaces with React components. Ink enables rich UI features including live progress indicators, interactive forms, real-time dashboards, and complex layouts using React's component model and Flexbox.
+
+#### Component Library
+
+All Ink components are located in the `components/` directory:
+
+```
+components/
+├── messages.tsx       # Success, Error, Info, Warn components
+├── layout.tsx         # Header, Section, ListItem components
+├── progress.tsx       # Spinner, ProgressBar components
+├── input.tsx          # TextInput component
+├── select.tsx         # Select/Choice component with keyboard navigation
+├── confirm.tsx        # Confirmation (yes/no) component
+├── table.tsx          # Data table with Flexbox layout
+└── status-display.tsx # Multi-line live status display
+```
+
+#### Rendering Patterns
+
+**Pattern 1: Static Output (Simple Messages)**
+
+For simple, one-off messages, use the backward-compatible wrapper functions in `utils/output.ts`:
+
+```typescript
+import { success, error, info, warn, header, section, listItem } from '../utils/output.ts';
+
+success('Operation completed!');
+error('Something went wrong');
+header('Processing Files');
+listItem('file1.txt');
+```
+
+These functions use chalk for coloring and are optimized for static content.
+
+**Pattern 2: Interactive Components (Full Control)**
+
+For interactive or live-updating UI, render Ink components directly:
+
+```typescript
+import { render } from '../utils/ink-render.tsx';
+import { Spinner } from '../components/progress.tsx';
+
+function MyComponent() {
+    return <Spinner label="Loading..." />;
+}
+
+const { waitUntilExit } = render(<MyComponent />);
+await waitUntilExit();
+```
+
+#### Available Components
+
+**Message Components** (`components/messages.tsx`)
+
+- `<Success message="..." />` - Green success message
+- `<Error message="..." />` - Red error message
+- `<Info message="..." />` - Cyan info message
+- `<Warn message="..." />` - Yellow warning message
+
+**Layout Components** (`components/layout.tsx`)
+
+- `<Header>text</Header>` - Blue header with spacing
+- `<Section>text</Section>` - Cyan section header with spacing
+- `<ListItem symbol="•">text</ListItem>` - Indented list item with symbol
+
+**Progress Components** (`components/progress.tsx`)
+
+- `<Spinner label="..." />` - Animated spinner with optional label
+- `<ProgressBar value={50} label="..." width={40} />` - Progress bar with percentage
+
+**Input Components** (`components/input.tsx`)
+
+- `<TextInput placeholder="..." onChange={...} onSubmit={...} />` - Text input with keyboard handling
+
+**Selection Components** (`components/select.tsx`)
+
+- `<Select options={[...]} onSelect={...} />` - Single-select menu with keyboard navigation
+- `<Select options={[...]} multiSelect onSubmit={...} />` - Multi-select menu
+
+**Confirmation Component** (`components/confirm.tsx`)
+
+- `<Confirm message="..." onConfirm={...} />` - Yes/no prompt
+
+**Table Component** (`components/table.tsx`)
+
+- `<Table data={[...]} columns={[...]} />` - Flexible table with auto-width columns
+
+**Status Display** (`components/status-display.tsx`)
+
+- `<StatusDisplay statuses={[...]} />` - Multi-line status tracker for parallel operations
+
+#### Signal Handling
+
+The `render()` utility in `utils/ink-render.tsx` automatically handles SIGINT (Ctrl+C) and SIGTERM signals for graceful shutdown. Components will unmount cleanly when the user interrupts execution.
+
+#### TypeScript and JSX
+
+- **File extensions**: Use `.tsx` for files with JSX, `.ts` for files without JSX
+- **Runtime**: The project uses `tsx` (via `npx tsx` in the shebang) to execute TypeScript and JSX
+- **Configuration**: `tsconfig.json` is configured with `"jsx": "react-jsx"` and `"allowImportingTsExtensions": true`
+- **Imports**: Use `.ts` or `.tsx` extensions in import statements (ES module convention)
+
+#### Demo Command
+
+Run `zap demo` to see all Ink components in action with live updates, animations, and interactive features. This serves as a reference implementation showing:
+
+- Static message and layout components
+- Animated spinners and progress bars
+- Live-updating status displays
+- Component lifecycle and state management
+
+Example output:
+
+```
+Ink Component Demo
+
+Message Components
+  ✓ Operation completed successfully!
+  ✗ An error occurred
+  ℹ This is an informational message
+  ⚠ Warning message
+
+Progress Indicators
+  ⠋ Loading...
+  Building project ████████░░░░░░░░░░ 45%
+
+Status Tracking
+  ✓ Installing dependencies...
+  ⟳ Running tests...
+  ○ Building project...
+```
+
+#### Best Practices
+
+1. **Use static output for simple messages** - The wrapper functions are optimized for fire-and-forget output
+2. **Use Ink components for interactive UI** - Leverage React hooks and state management for dynamic interfaces
+3. **Handle cleanup properly** - Use `useEffect` cleanup functions for timers and subscriptions
+4. **Test in real terminals** - Interactive components should be tested in actual terminal emulators
+5. **Add detailed comments** - Explain Ink-specific patterns for future contributors
 
 ### OpenSpec Commands with Auto-Commit
 

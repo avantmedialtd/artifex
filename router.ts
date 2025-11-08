@@ -5,6 +5,7 @@ import { handleHelp } from './commands/help.ts';
 import { handleChanges } from './commands/changes.ts';
 import { handleTodo } from './commands/todo.ts';
 import { handleWatch } from './commands/watch.ts';
+import { handleDemo } from './commands/demo.tsx';
 import { error } from './utils/output.ts';
 
 /**
@@ -123,6 +124,11 @@ export async function route(args: string[]): Promise<number> {
     // Route help command
     if (command === 'help') {
         return await handleHelp(subcommand);
+    }
+
+    // Route demo command
+    if (command === 'demo') {
+        return await handleDemo();
     }
 
     // Unknown command

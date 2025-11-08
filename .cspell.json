@@ -16,8 +16,10 @@
         "clippy",
         "Discarder",
         "esbenp",
+        "Flexbox",
         "istvan",
         "István",
+        "Konsole",
         "oneline",
         "openspec",
         "OPENSPEC",
@@ -26,6 +28,7 @@
         "oxlintrc",
         "pasteable",
         "worktree",
-        "worktrees"
+        "worktrees",
+        "zaprc"
     ]
 }

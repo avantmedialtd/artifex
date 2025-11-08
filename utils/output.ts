@@ -1,11 +1,17 @@
 /**
- * Terminal output utilities with ANSI color codes for consistent CLI formatting.
- * Uses built-in ANSI escape codes without external dependencies.
+ * Terminal output utilities with Ink-based components for consistent CLI formatting.
+ * Provides backward-compatible wrapper functions that use chalk (from Ink's dependency).
+ *
+ * For interactive UI, import and use Ink components directly via render().
+ * These functions are optimized for static, one-off messages.
  */
+
+import chalk from 'chalk';
 
 /**
  * ANSI color codes for terminal output.
- * These codes work in most modern terminals and degrade gracefully when colors aren't supported.
+ * Kept for backward compatibility but deprecated in favor of chalk.
+ * @deprecated Use chalk directly or Ink components for better control
  */
 export const colors = {
     reset: '\x1b[0m',
@@ -22,7 +28,7 @@ export const colors = {
  * @param message - The success message to display
  */
 export function success(message: string): void {
-    console.log(`${colors.green}${message}${colors.reset}`);
+    console.log(chalk.green(message));
 }
 
 /**
@@ -30,7 +36,7 @@ export function success(message: string): void {
  * @param message - The error message to display
  */
 export function error(message: string): void {
-    console.error(`${colors.red}${message}${colors.reset}`);
+    console.error(chalk.red(message));
 }
 
 /**
@@ -38,7 +44,7 @@ export function error(message: string): void {
  * @param message - The info message to display
  */
 export function info(message: string): void {
-    console.log(`${colors.cyan}${message}${colors.reset}`);
+    console.log(chalk.cyan(message));
 }
 
 /**
@@ -46,7 +52,7 @@ export function info(message: string): void {
  * @param message - The warning message to display
  */
 export function warn(message: string): void {
-    console.log(`${colors.yellow}${message}${colors.reset}`);
+    console.log(chalk.yellow(message));
 }
 
 /**
@@ -55,7 +61,8 @@ export function warn(message: string): void {
  * @param message - The header text to display
  */
 export function header(message: string): void {
-    console.log(`\n${colors.blue}${message}${colors.reset}`);
+    console.log();
+    console.log(chalk.blue(message));
 }
 
 /**
@@ -64,7 +71,8 @@ export function header(message: string): void {
  * @param message - The section text to display
  */
 export function section(message: string): void {
-    console.log(`\n${colors.cyan}${message}${colors.reset}`);
+    console.log();
+    console.log(chalk.cyan(message));
 }
 
 /**
@@ -73,5 +81,5 @@ export function section(message: string): void {
  * @param symbol - Optional symbol to prefix (default: '•')
  */
 export function listItem(message: string, symbol: string = '•'): void {
-    console.log(`  ${colors.gray}${symbol}${colors.reset} ${message}`);
+    console.log(`  ${chalk.gray(symbol)} ${message}`);
 }
