@@ -41,7 +41,23 @@
                     "description": "Automatically collapse task sections where all todos are checked"
                 }
             }
-        }
+        },
+        "menus": {
+            "view/item/context": [
+                {
+                    "command": "openspecTasks.copyChangeId",
+                    "when": "view == openspecTasks && viewItem == change",
+                    "group": "navigation"
+                }
+            ]
+        },
+        "commands": [
+            {
+                "command": "openspecTasks.copyChangeId",
+                "title": "Copy Change ID",
+                "icon": "$(copy)"
+            }
+        ]
     },
     "scripts": {
         "vscode:prepublish": "npm run compile",

@@ -11,6 +11,8 @@ Monitor OpenSpec change tasks in a dedicated panel within Visual Studio Code.
 - **Hierarchical Display**: Organizes tasks by change → section → individual task
 - **Visual Indicators**: Uses checkboxes (☑/☐) to show task completion status
 - **Click-to-Navigate**: Click on any task to open the `tasks.md` file at the exact line where the task is defined
+- **Copy Change ID**: Right-click on a change to copy its ID for use in CLI commands
+- **Copy Title**: Click on a change with a title to copy the title to clipboard
 
 ## Requirements
 
@@ -64,6 +66,25 @@ Monitor OpenSpec change tasks in a dedicated panel within Visual Studio Code.
 3. Expand changes to see sections and individual tasks
 4. Click on any task to open the `tasks.md` file at the specific line where the task is defined
 5. The badge on the panel tab shows the count of active changes that have unchecked tasks
+
+### Copying Change Information
+
+There are two ways to copy change information:
+
+- **Copy Title**: Click directly on a change item (with a title) to copy the title to clipboard
+- **Copy Change ID**: Right-click on a change item and select "Copy Change ID" from the context menu
+
+The change ID is useful for CLI commands like:
+
+```bash
+zap spec archive <change-id>
+zap spec apply <change-id>
+```
+
+**Example**: For a change displayed as "VSCode Extension Copy Change ID Button (vscode-copy-change-id-button) - 0/8 tasks completed":
+
+- Clicking the item copies: "VSCode Extension Copy Change ID Button"
+- Right-clicking and selecting "Copy Change ID" copies: "vscode-copy-change-id-button"
 
 ### Panel Location
 

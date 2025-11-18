@@ -168,6 +168,27 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
 
     context.subscriptions.push(copyTitleCommand);
 
+    // Register command to copy change ID
+    const copyChangeIdCommand = vscode.commands.registerCommand(
+        'openspecTasks.copyChangeId',
+        async (item: any) => {
+            try {
+                // Extract changeId from the tree item's data
+                const changeId = item?.data?.changeId;
+                if (!changeId) {
+                    vscode.window.showErrorMessage('Could not determine change ID');
+                    return;
+                }
+                await vscode.env.clipboard.writeText(changeId);
+                vscode.window.showInformationMessage(`Copied change ID: "${changeId}"`);
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to copy change ID: ${error}`);
+            }
+        },
+    );
+
+    context.subscriptions.push(copyChangeIdCommand);
+
     console.log('OpenSpec Tasks extension initialized successfully');
 }
 
