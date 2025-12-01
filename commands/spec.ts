@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { checkClaudeAvailable, getAgentCommand } from '../utils/claude.ts';
-import { stageAndCommit } from '../utils/git.ts';
+import { stageAndCommit, stageDirectory } from '../utils/git.ts';
 import { error, success, warn } from '../utils/output.ts';
 import { extractProposalTitle, getLatestChangeId } from '../utils/proposal.ts';
 
@@ -80,9 +80,14 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
     }
 
     // Extract the title from the archived proposal
-    const specDir = `openspec/specs/${actualSpecId}`;
+    const specDir = `openspec/changes/${actualSpecId}`;
     const proposalPath = `${specDir}/proposal.md`;
     const title = extractProposalTitle(proposalPath);
+
+    if (!title) {
+        warn('Warning: Could not extract proposal title for auto-commit');
+        return 1;
+    }
 
     // Build and execute the claude command
     // If actualSpecId is available, include it; otherwise, let Claude prompt interactively
@@ -118,6 +123,8 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
             }
 
             const commitMessage = `Archive: ${title}`;
+            stageDirectory(`openspec/specs/${actualSpecId}`);
+            stageDirectory(`openspec/changes/archive`);
             const result = stageAndCommit(specDir, commitMessage);
 
             if (!result.success) {
