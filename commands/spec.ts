@@ -57,7 +57,7 @@ function invokeArchive(specId: string): Promise<number> {
             }
 
             const commitMessage = `Archive: ${title}`;
-            stageDirectory(`openspec/specs/${specId}`);
+            stageDirectory(`openspec/specs`);
             stageDirectory(`openspec/changes/archive`);
             const result = stageAndCommit(specDir, commitMessage);
 
