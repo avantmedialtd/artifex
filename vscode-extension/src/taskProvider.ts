@@ -124,8 +124,13 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
                         arguments: [changeData.changeId],
                     };
 
-                    // Set context value to indicate whether item has a title (for conditional context menu)
-                    item.contextValue = changeData.title ? 'change-with-title' : 'change';
+                    // Set context value to encode completion status and title presence
+                    // Format: change-{incomplete|complete}[-with-title]
+                    const isComplete = changeData.completedTasks === changeData.totalTasks;
+                    const hasTitle = Boolean(changeData.title);
+                    const completionPart = isComplete ? 'complete' : 'incomplete';
+                    const titlePart = hasTitle ? '-with-title' : '';
+                    item.contextValue = `change-${completionPart}${titlePart}`;
 
                     return item;
                 });

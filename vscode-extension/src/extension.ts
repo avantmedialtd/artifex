@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { OpenSpecTaskProvider } from './taskProvider';
+import { OpenSpecTaskProvider, OpenSpecTaskItem } from './taskProvider';
+import { ChangeData } from './types';
 
 let treeView: vscode.TreeView<any> | undefined;
 let taskProvider: OpenSpecTaskProvider | undefined;
@@ -220,7 +221,76 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
 
     context.subscriptions.push(copyChangeIdCommand);
 
+    // Register command to apply a change
+    const applyChangeCommand = vscode.commands.registerCommand(
+        'openspecTasks.applyChange',
+        async (item: OpenSpecTaskItem) => {
+            try {
+                const changeData = item?.data as ChangeData;
+                const changeId = changeData?.changeId;
+                if (!changeId) {
+                    vscode.window.showErrorMessage('Could not determine change ID');
+                    return;
+                }
+                await executeZapCommand('apply', changeId);
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to apply change: ${error}`);
+            }
+        },
+    );
+
+    context.subscriptions.push(applyChangeCommand);
+
+    // Register command to archive a change
+    const archiveChangeCommand = vscode.commands.registerCommand(
+        'openspecTasks.archiveChange',
+        async (item: OpenSpecTaskItem) => {
+            try {
+                const changeData = item?.data as ChangeData;
+                const changeId = changeData?.changeId;
+                if (!changeId) {
+                    vscode.window.showErrorMessage('Could not determine change ID');
+                    return;
+                }
+                await executeZapCommand('archive', changeId);
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to archive change: ${error}`);
+            }
+        },
+    );
+
+    context.subscriptions.push(archiveChangeCommand);
+
     console.log('OpenSpec Tasks extension initialized successfully');
+}
+
+/**
+ * Execute a zap command (apply or archive) in the integrated terminal using the Task API.
+ * The terminal auto-closes on success but stays open on failure to show error messages.
+ */
+async function executeZapCommand(subcommand: 'apply' | 'archive', changeId: string): Promise<void> {
+    const taskDefinition: vscode.TaskDefinition = {
+        type: 'shell',
+    };
+
+    const execution = new vscode.ShellExecution(`zap spec ${subcommand} ${changeId}`);
+
+    const task = new vscode.Task(
+        taskDefinition,
+        vscode.TaskScope.Workspace,
+        `zap spec ${subcommand} ${changeId}`,
+        'zap',
+        execution,
+    );
+
+    // Auto-close terminal on success, keep open on failure
+    task.presentationOptions = {
+        reveal: vscode.TaskRevealKind.Always,
+        panel: vscode.TaskPanelKind.Dedicated,
+        close: true, // Auto-close on success (exit code 0)
+    };
+
+    await vscode.tasks.executeTask(task);
 }
 
 /**
