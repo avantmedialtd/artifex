@@ -26,79 +26,28 @@ function buildAgentArgs(slashCommand: string): string[] {
 }
 
 /**
- * Handle the 'spec archive [spec-id]' command.
- * Archives a spec by invoking Claude Code with the openspec:archive command.
- * After successful archival, automatically commits the archived spec files.
+ * Invoke Claude with the archive command for a specific spec-id.
  *
- * @param specId - Optional spec ID to archive (Claude prompts if omitted)
+ * @param specId - The spec ID to archive
  * @returns Exit code (0 for success, 1 for error)
  */
-export async function handleSpecArchive(specId: string | undefined): Promise<number> {
-    // Check if Claude Code is available
-    const isClaudeAvailable = await checkClaudeAvailable();
-    if (!isClaudeAvailable) {
-        error('Error: Claude Code CLI is not installed or not in PATH');
-        console.error('Please install Claude Code from: https://claude.com/claude-code');
-        return 1;
-    }
-
-    let actualSpecId = specId;
-
-    // If specId is not provided, get the first one from openspec list --changes
-    if (!actualSpecId) {
-        const { execSync } = await import('node:child_process');
-        try {
-            const output = execSync('openspec list --changes', { encoding: 'utf-8' });
-            // Parse the output to extract the first spec ID
-            // Expected format:
-            // Changes:
-            //   spec-id-1     ✓ Complete
-            //   spec-id-2     ⚠ In Progress
-            const lines = output.split('\n').filter(line => line.trim());
-
-            // Skip the "Changes:" header and find the first spec line
-            for (const line of lines) {
-                const trimmed = line.trim();
-                // Skip the header line
-                if (trimmed === 'Changes:' || trimmed === '') continue;
-
-                // Extract the spec ID from lines like "  spec-id-name     ✓ Complete"
-                // The spec ID is the first word after trimming
-                const match = trimmed.match(/^(\S+)/);
-                if (match) {
-                    actualSpecId = match[1];
-                    console.log(`Auto-selected spec ID: ${actualSpecId}`);
-                    break;
-                }
-            }
-
-            if (!actualSpecId) {
-                console.log('No changes found to archive');
-            }
-        } catch (_err) {
-            console.error('Failed to retrieve spec ID from openspec list --changes');
-        }
-    }
-
-    // Extract the title from the archived proposal
-    const specDir = `openspec/changes/${actualSpecId}`;
+function invokeArchive(specId: string): Promise<number> {
+    // Extract the title from the proposal before archiving
+    const specDir = `openspec/changes/${specId}`;
     const proposalPath = `${specDir}/proposal.md`;
     const title = extractProposalTitle(proposalPath);
 
     if (!title) {
         warn('Warning: Could not extract proposal title for auto-commit');
-        return 1;
+        return Promise.resolve(1);
     }
 
-    // Build and execute the claude command
-    // If actualSpecId is available, include it; otherwise, let Claude prompt interactively
-    const slashCommand = actualSpecId ? `/openspec:archive ${actualSpecId}` : '/openspec:archive';
+    const slashCommand = `/openspec:archive ${specId}`;
     const claudeArgs = buildAgentArgs(slashCommand);
     const claudeProcess = spawn(getAgentCommand(), claudeArgs, {
-        stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
+        stdio: 'inherit',
     });
 
-    // Wait for the process to complete and return its status code
     return new Promise(resolve => {
         claudeProcess.on('close', code => {
             // If Claude process failed, return the error code
@@ -107,24 +56,8 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
                 return;
             }
 
-            if (!actualSpecId) {
-                // TODO: Implement logic to find the latest archived spec
-                // For now, skip auto-commit when spec-id is not provided
-                warn('Warning: Auto-commit skipped when spec-id is not provided');
-                warn('Archive completed but not committed. Please commit manually.');
-                resolve(0);
-                return;
-            }
-
-            if (!title) {
-                warn('Warning: Could not extract proposal title for auto-commit');
-                warn('Archive completed but not committed. Please commit manually.');
-                resolve(0);
-                return;
-            }
-
             const commitMessage = `Archive: ${title}`;
-            stageDirectory(`openspec/specs/${actualSpecId}`);
+            stageDirectory(`openspec/specs/${specId}`);
             stageDirectory(`openspec/changes/archive`);
             const result = stageAndCommit(specDir, commitMessage);
 
@@ -144,6 +77,59 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
             resolve(1);
         });
     });
+}
+
+/**
+ * Handle the 'spec archive [spec-id]' command.
+ * Archives a spec by invoking Claude Code with the openspec:archive command.
+ * After successful archival, automatically commits the archived spec files.
+ *
+ * When spec-id is omitted:
+ * - 0 changes: Show error message
+ * - 1 change: Auto-select it
+ * - Multiple changes: Show interactive selection menu
+ *
+ * @param specId - Optional spec ID to archive
+ * @returns Exit code (0 for success, 1 for error)
+ */
+export async function handleSpecArchive(specId: string | undefined): Promise<number> {
+    // Check if Claude Code is available
+    const isClaudeAvailable = await checkClaudeAvailable();
+    if (!isClaudeAvailable) {
+        error('Error: Claude Code CLI is not installed or not in PATH');
+        console.error('Please install Claude Code from: https://claude.com/claude-code');
+        return 1;
+    }
+
+    // If specId is provided, invoke directly
+    if (specId) {
+        return invokeArchive(specId);
+    }
+
+    // No specId provided - check how many ongoing changes exist
+    const changes = listOngoingChanges();
+
+    if (changes.length === 0) {
+        error('No ongoing changes found');
+        return 1;
+    }
+
+    if (changes.length === 1) {
+        const selectedChange = changes[0];
+        info(`Auto-selected change: ${selectedChange.id}`);
+        return invokeArchive(selectedChange.id);
+    }
+
+    // Multiple changes - show interactive selection (uses dynamic import for .tsx)
+    const { renderChangeSelect } = await import('../utils/change-select-render.tsx');
+    const selectedId = await renderChangeSelect(changes, 'Select a change to archive:');
+
+    if (!selectedId) {
+        // User cancelled selection
+        return 0;
+    }
+
+    return invokeArchive(selectedId);
 }
 
 /**
@@ -212,8 +198,8 @@ export async function handleSpecApply(changeId: string | undefined): Promise<num
     }
 
     // Multiple changes - show interactive selection (uses dynamic import for .tsx)
-    const { renderApplyChangeSelect } = await import('../utils/apply-select-render.tsx');
-    const selectedId = await renderApplyChangeSelect(changes);
+    const { renderChangeSelect } = await import('../utils/change-select-render.tsx');
+    const selectedId = await renderChangeSelect(changes, 'Select a change to apply:');
 
     if (!selectedId) {
         // User cancelled selection

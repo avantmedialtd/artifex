@@ -3,22 +3,29 @@ import React, { useState } from 'react';
 import type { OngoingChange } from '../utils/openspec.ts';
 
 /**
- * Props for ApplyChangeSelect component
+ * Props for ChangeSelect component
  */
-export interface ApplyChangeSelectProps {
+export interface ChangeSelectProps {
     /** Array of ongoing changes to choose from */
     changes: OngoingChange[];
     /** Callback when a change is selected */
     onSelect: (changeId: string) => void;
     /** Callback when selection is cancelled */
     onCancel: () => void;
+    /** Custom prompt text to display (default: "Select a change:") */
+    prompt?: string;
 }
 
 /**
- * Interactive change selection component for the apply command.
+ * Interactive change selection component for commands that need to select from ongoing changes.
  * Allows users to select from multiple ongoing changes using keyboard navigation.
  */
-export function ApplyChangeSelect({ changes, onSelect, onCancel }: ApplyChangeSelectProps) {
+export function ChangeSelect({
+    changes,
+    onSelect,
+    onCancel,
+    prompt = 'Select a change:',
+}: ChangeSelectProps) {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const { exit } = useApp();
 
@@ -40,7 +47,7 @@ export function ApplyChangeSelect({ changes, onSelect, onCancel }: ApplyChangeSe
         <Box flexDirection="column">
             <Box marginBottom={1}>
                 <Text bold color="cyan">
-                    Select a change to apply:
+                    {prompt}
                 </Text>
             </Box>
             {changes.map((change, index) => {
