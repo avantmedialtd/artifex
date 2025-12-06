@@ -8,6 +8,7 @@ import { execSync } from 'node:child_process';
  */
 export function stageDirectory(directory: string): boolean {
     try {
+        console.log(`git add "${directory}"`);
         execSync(`git add "${directory}"`, { stdio: 'pipe' });
         return true;
     } catch {

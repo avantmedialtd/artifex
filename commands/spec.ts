@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { checkClaudeAvailable, getAgentCommand } from '../utils/claude.ts';
 import { stageAndCommit, stageDirectory } from '../utils/git.ts';
-import { error, success, warn } from '../utils/output.ts';
+import { listOngoingChanges } from '../utils/openspec.ts';
+import { error, info, success, warn } from '../utils/output.ts';
 import { extractProposalTitle, getLatestChangeId } from '../utils/proposal.ts';
 
 /**
@@ -146,10 +147,40 @@ export async function handleSpecArchive(specId: string | undefined): Promise<num
 }
 
 /**
+ * Invoke Claude with the apply command for a specific change-id.
+ *
+ * @param changeId - The change ID to apply
+ * @returns Exit code (0 for success, 1 for error)
+ */
+function invokeApply(changeId: string): Promise<number> {
+    const slashCommand = `/openspec:apply ${changeId}`;
+    const claudeArgs = buildAgentArgs(slashCommand);
+    const claudeProcess = spawn(getAgentCommand(), claudeArgs, {
+        stdio: 'inherit',
+    });
+
+    return new Promise(resolve => {
+        claudeProcess.on('close', code => {
+            resolve(code ?? 1);
+        });
+
+        claudeProcess.on('error', err => {
+            error(`Error executing claude command: ${err.message}`);
+            resolve(1);
+        });
+    });
+}
+
+/**
  * Handle the 'spec apply [change-id]' command.
  * Applies an approved OpenSpec change by invoking Claude Code with the openspec:apply command.
  *
- * @param changeId - Optional change ID to apply (Claude prompts if omitted)
+ * When change-id is omitted:
+ * - 0 changes: Show error message
+ * - 1 change: Auto-select it
+ * - Multiple changes: Show interactive selection menu
+ *
+ * @param changeId - Optional change ID to apply
  * @returns Exit code (0 for success, 1 for error)
  */
 export async function handleSpecApply(changeId: string | undefined): Promise<number> {
@@ -161,25 +192,35 @@ export async function handleSpecApply(changeId: string | undefined): Promise<num
         return 1;
     }
 
-    // Build and execute the claude command
-    // If changeId is provided, include it; otherwise, let Claude prompt interactively
-    const slashCommand = changeId ? `/openspec:apply ${changeId}` : '/openspec:apply';
-    const claudeArgs = buildAgentArgs(slashCommand);
-    const claudeProcess = spawn(getAgentCommand(), claudeArgs, {
-        stdio: 'inherit', // Pipe stdout, stderr, and stdin to parent process
-    });
+    // If changeId is provided, invoke directly
+    if (changeId) {
+        return invokeApply(changeId);
+    }
 
-    // Wait for the process to complete and return its status code
-    return new Promise(resolve => {
-        claudeProcess.on('close', code => {
-            resolve(code ?? 1);
-        });
+    // No changeId provided - check how many ongoing changes exist
+    const changes = listOngoingChanges();
 
-        claudeProcess.on('error', err => {
-            error(`Error executing claude command: ${err.message}`);
-            resolve(1);
-        });
-    });
+    if (changes.length === 0) {
+        error('No ongoing changes found');
+        return 1;
+    }
+
+    if (changes.length === 1) {
+        const selectedChange = changes[0];
+        info(`Auto-selected change: ${selectedChange.id}`);
+        return invokeApply(selectedChange.id);
+    }
+
+    // Multiple changes - show interactive selection (uses dynamic import for .tsx)
+    const { renderApplyChangeSelect } = await import('../utils/apply-select-render.tsx');
+    const selectedId = await renderApplyChangeSelect(changes);
+
+    if (!selectedId) {
+        // User cancelled selection
+        return 0;
+    }
+
+    return invokeApply(selectedId);
 }
 
 /**
