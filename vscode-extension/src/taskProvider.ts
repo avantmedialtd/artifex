@@ -117,14 +117,15 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
                         changeData,
                     );
 
-                    // Add copy title command if title exists
-                    if (changeData.title) {
-                        item.command = {
-                            command: 'openspecTasks.copyTitle',
-                            title: 'Copy Title',
-                            arguments: [changeData.title],
-                        };
-                    }
+                    // Click on change item opens the proposal.md file
+                    item.command = {
+                        command: 'openspecTasks.openProposal',
+                        title: 'Open Proposal',
+                        arguments: [changeData.changeId],
+                    };
+
+                    // Set context value to indicate whether item has a title (for conditional context menu)
+                    item.contextValue = changeData.title ? 'change-with-title' : 'change';
 
                     return item;
                 });

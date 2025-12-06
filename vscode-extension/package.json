@@ -46,7 +46,12 @@
             "view/item/context": [
                 {
                     "command": "openspecTasks.copyChangeId",
-                    "when": "view == openspecTasks && viewItem == change",
+                    "when": "view == openspecTasks && viewItem =~ /^change/",
+                    "group": "navigation"
+                },
+                {
+                    "command": "openspecTasks.copyTitle",
+                    "when": "view == openspecTasks && viewItem == change-with-title",
                     "group": "navigation"
                 }
             ]
@@ -55,6 +60,11 @@
             {
                 "command": "openspecTasks.copyChangeId",
                 "title": "Copy Change ID",
+                "icon": "$(copy)"
+            },
+            {
+                "command": "openspecTasks.copyTitle",
+                "title": "Copy Title",
                 "icon": "$(copy)"
             }
         ]

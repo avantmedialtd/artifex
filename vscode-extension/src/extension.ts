@@ -153,11 +153,42 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
 
     context.subscriptions.push(openTaskLocationCommand);
 
-    // Register command to copy title
+    // Register command to open proposal.md file for a change
+    const openProposalCommand = vscode.commands.registerCommand(
+        'openspecTasks.openProposal',
+        async (changeId: string) => {
+            try {
+                const proposalPath = path.join(
+                    workspaceRoot,
+                    'openspec',
+                    'changes',
+                    changeId,
+                    'proposal.md',
+                );
+                const uri = vscode.Uri.file(proposalPath);
+                const document = await vscode.workspace.openTextDocument(uri);
+                await vscode.window.showTextDocument(document);
+            } catch (error) {
+                vscode.window.showErrorMessage(
+                    `Failed to open proposal.md: The proposal file was not found for change "${changeId}"`,
+                );
+            }
+        },
+    );
+
+    context.subscriptions.push(openProposalCommand);
+
+    // Register command to copy title (from context menu)
     const copyTitleCommand = vscode.commands.registerCommand(
         'openspecTasks.copyTitle',
-        async (title: string) => {
+        async (item: any) => {
             try {
+                // Extract title from the tree item's data
+                const title = item?.data?.title;
+                if (!title) {
+                    vscode.window.showErrorMessage('Could not determine title');
+                    return;
+                }
                 await vscode.env.clipboard.writeText(title);
                 vscode.window.showInformationMessage(`Copied: "${title}"`);
             } catch (error) {
