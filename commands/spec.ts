@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { checkClaudeAvailable, getAgentCommand } from '../utils/claude.ts';
+import { getAgentCommand } from '../utils/claude.ts';
 import { stageAndCommit, stageDirectory } from '../utils/git.ts';
 import { listOngoingChanges } from '../utils/openspec.ts';
 import { error, info, success, warn } from '../utils/output.ts';
@@ -93,14 +93,6 @@ function invokeArchive(specId: string): Promise<number> {
  * @returns Exit code (0 for success, 1 for error)
  */
 export async function handleSpecArchive(specId: string | undefined): Promise<number> {
-    // Check if Claude Code is available
-    const isClaudeAvailable = await checkClaudeAvailable();
-    if (!isClaudeAvailable) {
-        error('Error: Claude Code CLI is not installed or not in PATH');
-        console.error('Please install Claude Code from: https://claude.com/claude-code');
-        return 1;
-    }
-
     // If specId is provided, invoke directly
     if (specId) {
         return invokeArchive(specId);
@@ -170,14 +162,6 @@ function invokeApply(changeId: string): Promise<number> {
  * @returns Exit code (0 for success, 1 for error)
  */
 export async function handleSpecApply(changeId: string | undefined): Promise<number> {
-    // Check if Claude Code is available
-    const isClaudeAvailable = await checkClaudeAvailable();
-    if (!isClaudeAvailable) {
-        error('Error: Claude Code CLI is not installed or not in PATH');
-        console.error('Please install Claude Code from: https://claude.com/claude-code');
-        return 1;
-    }
-
     // If changeId is provided, invoke directly
     if (changeId) {
         return invokeApply(changeId);
@@ -222,14 +206,6 @@ export async function handleSpecPropose(proposalText: string): Promise<number> {
     if (!proposalText || proposalText.trim() === '') {
         error('Error: spec propose requires proposal text');
         console.error('Usage: zap spec propose <proposal-text>');
-        return 1;
-    }
-
-    // Check if Claude Code is available
-    const isClaudeAvailable = await checkClaudeAvailable();
-    if (!isClaudeAvailable) {
-        error('Error: Claude Code CLI is not installed or not in PATH');
-        console.error('Please install Claude Code from: https://claude.com/claude-code');
         return 1;
     }
 
