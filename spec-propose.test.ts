@@ -70,7 +70,7 @@ describe('zap spec propose', () => {
             // Should fail because the custom agent doesn't exist
             expect(result.exitCode).toBe(1);
             expect(result.stderr).toContain(
-                'Error: Claude Code CLI is not installed or not in PATH',
+                'Error executing claude command: spawn nonexistent-agent-xyz ENOENT',
             );
 
             // Clean up
