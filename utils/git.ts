@@ -52,3 +52,23 @@ export function stageAndCommit(
 
     return { success: true };
 }
+
+/**
+ * Stage all changes (tracked and untracked) and create a commit.
+ *
+ * @param message - The commit message
+ * @returns Object with success status and optional error message
+ */
+export function stageAllAndCommit(message: string): { success: boolean; error?: string } {
+    try {
+        execSync('git add -A', { stdio: 'pipe' });
+    } catch {
+        return { success: false, error: 'Failed to stage files' };
+    }
+
+    if (!createCommit(message)) {
+        return { success: false, error: 'Failed to create commit' };
+    }
+
+    return { success: true };
+}

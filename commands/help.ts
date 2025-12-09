@@ -41,6 +41,16 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'zap archive               # Interactively select a spec',
         ],
     },
+    commit: {
+        description: 'Commit all changes with a message referencing the OpenSpec change title',
+        usage: 'zap commit [apply] [change-id]',
+        examples: [
+            'zap commit my-change-id       # Commit with message "Apply: <title>"',
+            'zap commit                    # Interactively select a change',
+            'zap commit apply my-change-id # Same as "zap commit my-change-id"',
+            'zap commit apply              # Interactively select a change',
+        ],
+    },
     changes: {
         description: 'List all OpenSpec changes',
         usage: 'zap changes',
@@ -92,6 +102,7 @@ function showGeneralHelp(): void {
     listItem('propose <text>         Shorthand for "spec propose"');
     listItem('apply [id]             Shorthand for "spec apply"');
     listItem('archive [id]           Shorthand for "spec archive"');
+    listItem('commit [apply] [id]    Commit all changes with "Apply: <title>"');
     listItem('changes                List all OpenSpec changes');
     listItem('todo                   Show all TODO items from active changes');
     listItem('watch                  Continuously show updated TODO items (with idle indicator)');

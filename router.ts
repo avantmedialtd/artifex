@@ -1,7 +1,12 @@
 import { handleChanges } from './commands/changes.ts';
 import { handleHelp } from './commands/help.ts';
 import { handleNpmUpgrade } from './commands/npm.ts';
-import { handleSpecApply, handleSpecArchive, handleSpecPropose } from './commands/spec.ts';
+import {
+    handleCommitApply,
+    handleSpecApply,
+    handleSpecArchive,
+    handleSpecPropose,
+} from './commands/spec.ts';
 import { handleTodo } from './commands/todo.ts';
 import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts';
 import { handleWatch } from './commands/watch.ts';
@@ -65,6 +70,19 @@ export async function route(args: string[]): Promise<number> {
         } else {
             error(`Error: Unknown spec subcommand: ${subcommand}`);
             console.error("Run 'zap help spec' for available subcommands.");
+            return 1;
+        }
+    }
+
+    // Route commit commands
+    if (command === 'commit') {
+        if (subcommand === 'apply' || !subcommand) {
+            // Both 'commit apply' and 'commit' (shorthand) do the same thing
+            const changeId = subcommand === 'apply' ? args[2] : args[1];
+            return await handleCommitApply(changeId);
+        } else {
+            error(`Error: Unknown commit subcommand: ${subcommand}`);
+            console.error("Run 'zap help commit' for available subcommands.");
             return 1;
         }
     }

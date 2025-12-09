@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { getAgentCommand } from '../utils/claude.ts';
-import { stageAndCommit, stageDirectory } from '../utils/git.ts';
+import { stageAllAndCommit, stageAndCommit, stageDirectory } from '../utils/git.ts';
 import { listOngoingChanges } from '../utils/openspec.ts';
 import { error, info, success, warn } from '../utils/output.ts';
 import { extractProposalTitle, getLatestChangeId } from '../utils/proposal.ts';
@@ -262,4 +262,75 @@ export async function handleSpecPropose(proposalText: string): Promise<number> {
             resolve(1);
         });
     });
+}
+
+/**
+ * Commit all staged/unstaged changes with a message referencing the change title.
+ *
+ * @param changeId - The change ID to reference
+ * @returns Exit code (0 for success, 1 for error)
+ */
+function commitForChange(changeId: string): number {
+    const proposalPath = `openspec/changes/${changeId}/proposal.md`;
+    const title = extractProposalTitle(proposalPath);
+
+    if (!title) {
+        error('Error: Could not extract proposal title');
+        return 1;
+    }
+
+    const commitMessage = `Apply: ${title}`;
+    const result = stageAllAndCommit(commitMessage);
+
+    if (!result.success) {
+        error(`Error: ${result.error}`);
+        return 1;
+    }
+
+    success(`Committed: ${commitMessage}`);
+    return 0;
+}
+
+/**
+ * Handle the 'commit apply [change-id]' command.
+ * Commits all staged/unstaged changes with the message format: `Apply: <Change Title>`.
+ *
+ * When change-id is omitted:
+ * - 0 changes: Show error message
+ * - 1 change: Auto-select it
+ * - Multiple changes: Show interactive selection menu
+ *
+ * @param changeId - Optional change ID to commit for
+ * @returns Exit code (0 for success, 1 for error)
+ */
+export async function handleCommitApply(changeId: string | undefined): Promise<number> {
+    // If changeId is provided, commit directly
+    if (changeId) {
+        return commitForChange(changeId);
+    }
+
+    // No changeId provided - check how many ongoing changes exist
+    const changes = listOngoingChanges();
+
+    if (changes.length === 0) {
+        error('No ongoing changes found');
+        return 1;
+    }
+
+    if (changes.length === 1) {
+        const selectedChange = changes[0];
+        info(`Auto-selected change: ${selectedChange.id}`);
+        return commitForChange(selectedChange.id);
+    }
+
+    // Multiple changes - show interactive selection (uses dynamic import for .tsx)
+    const { renderChangeSelect } = await import('../utils/change-select-render.tsx');
+    const selectedId = await renderChangeSelect(changes, 'Select a change to commit for:');
+
+    if (!selectedId) {
+        // User cancelled selection
+        return 0;
+    }
+
+    return commitForChange(selectedId);
 }
