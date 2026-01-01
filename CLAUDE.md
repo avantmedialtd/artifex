@@ -20,6 +20,51 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->
 
+## Plan Mode and OpenSpec
+
+For significant changes, Claude MUST scaffold an OpenSpec proposal immediately after the user approves the plan and Plan mode exits.
+
+### When to Create OpenSpec
+
+Create an OpenSpec for:
+
+- New features or capabilities
+- Breaking changes (API, schema)
+- Architecture changes or new patterns
+- Performance or security work
+
+Skip OpenSpec for:
+
+- Bug fixes (restoring intended behavior)
+- Typos, formatting, comments
+- Non-breaking dependency updates
+- Configuration changes
+- Tests for existing behavior
+
+### During Plan Mode
+
+While planning, use a Task agent (subagent_type=Explore) to review existing OpenSpecs for context. The agent should:
+
+1. Run `openspec list` to see active changes
+2. Read relevant `openspec/changes/*/proposal.md` files
+3. Summarize ongoing work and flag potential conflicts or dependencies
+
+### OpenSpec Scaffolding Steps
+
+After Plan mode exits (before starting implementation):
+
+1. Read `openspec/AGENTS.md` for format reference
+2. Check `openspec list` for conflicts with existing changes
+3. Choose a unique change-id (kebab-case, verb-led: `add-`, `update-`, `remove-`, `refactor-`)
+4. Create directory: `openspec/changes/<change-id>/`
+5. Write files:
+    - `proposal.md` - Why, What Changes, Impact
+    - `tasks.md` - Implementation checklist
+    - `design.md` - Only if cross-cutting, new patterns, or security/performance
+    - `specs/<capability>/spec.md` - Deltas with ADDED/MODIFIED/REMOVED sections
+6. Run `openspec validate <change-id> --strict`
+7. Then proceed with implementation
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
