@@ -29,6 +29,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **af** is a development utility tool written in TypeScript. The project uses:
 
 - **TypeScript** for type-safe code
+- **Bun** for CLI runtime (native TypeScript/JSX execution)
 - **Prettier** for automated code formatting
 - **OXLint** for fast JavaScript/TypeScript linting
 - **CSpell** for automated spell checking
@@ -239,7 +240,7 @@ The `render()` utility in `utils/ink-render.tsx` automatically handles SIGINT (C
 #### TypeScript and JSX
 
 - **File extensions**: Use `.tsx` for files with JSX, `.ts` for files without JSX
-- **Runtime**: The project uses `tsx` (via `npx tsx` in the shebang) to execute TypeScript and JSX
+- **Runtime**: The CLI executables use Bun (`#!/usr/bin/env bun`) for native TypeScript and JSX execution without transpilation
 - **Configuration**: `tsconfig.json` is configured with `"jsx": "react-jsx"` and `"allowImportingTsExtensions": true`
 - **Imports**: Use `.ts` or `.tsx` extensions in import statements (ES module convention)
 

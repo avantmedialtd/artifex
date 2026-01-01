@@ -9,7 +9,8 @@
 ## Tech Stack
 
 - **TypeScript** - Primary development language
-- **Node.js** - Runtime environment (ES modules)
+- **Bun** - Runtime environment for CLI execution (native TypeScript support)
+- **Node.js** - Runtime environment for npm scripts and Vitest tests
 - **Vitest** - Testing framework
 - **OXLint** - Fast Rust-based linter for code quality
 - **Prettier** - Code formatting
@@ -93,7 +94,8 @@ This is a developer-focused tool, so the target audience is software engineers w
 ## Important Constraints
 
 - **License**: UNLICENSED (proprietary/private)
-- **Node.js compatibility**: Must work with modern Node.js versions that support ES modules
+- **Bun runtime**: CLI executables use Bun for native TypeScript execution without transpilation
+- **Node.js compatibility**: npm scripts and tests run on Node.js; must work with modern versions that support ES modules
 - **Zero-config goal**: Utilities should work with minimal or no configuration where possible
 
 ## External Dependencies

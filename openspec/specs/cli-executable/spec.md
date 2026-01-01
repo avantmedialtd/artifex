@@ -26,28 +26,17 @@ The project MUST provide an executable file named `zap` that works identically t
 - **THEN** the executable file is invoked by the system
 - **AND** it produces identical output to running `af`
 
-### Requirement: Executable uses Node.js shebang
-
-The executable file MUST include a shebang line that invokes Node.js to run the script.
-
-#### Scenario: Executable file is invoked directly
-
-- **GIVEN** the executable file has execute permissions
-- **WHEN** the file is executed
-- **THEN** the shebang instructs the system to use the `node` interpreter
-- **AND** the interpreter can locate node via the environment PATH
-
 ### Requirement: Execute TypeScript without build step
 
 The executable MUST run TypeScript code (main.ts) directly without requiring a compilation/build step.
 
-#### Scenario: Running TypeScript directly with vanilla Node.js
+#### Scenario: Running TypeScript directly with Bun
 
-- **GIVEN** Node.js supports TypeScript execution (via experimental flags or import hooks)
+- **GIVEN** Bun is installed on the system
 - **WHEN** the af command is executed
-- **THEN** main.ts is loaded and executed
+- **THEN** main.ts is loaded and executed by Bun
 - **AND** no build artifacts are required
-- **AND** no third-party dependencies like ts-node are needed
+- **AND** no third-party TypeScript loaders are needed
 
 ### Requirement: Package.json bin configuration
 
@@ -113,4 +102,15 @@ The executable file MUST have execute permissions set appropriately for the syst
 - **WHEN** npm creates the executable symlink or copies the file
 - **THEN** the file retains execute permissions
 - **AND** can be executed directly
+
+### Requirement: Executable uses Bun shebang
+
+The executable file MUST include a shebang line that invokes Bun to run the script for fast TypeScript execution.
+
+#### Scenario: Executable file is invoked directly
+
+- **GIVEN** the executable file has execute permissions
+- **WHEN** the file is executed
+- **THEN** the shebang instructs the system to use the `bun` interpreter
+- **AND** the interpreter can locate bun via the environment PATH
 

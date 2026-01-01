@@ -1,2 +1,2 @@
-#!/usr/bin/env -S npx tsx
+#!/usr/bin/env bun
 import './main.ts';
