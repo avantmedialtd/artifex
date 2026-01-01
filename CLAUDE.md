@@ -26,7 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**zap** is a development utility tool written in TypeScript. The project uses:
+**af** is a development utility tool written in TypeScript. The project uses:
 
 - **TypeScript** for type-safe code
 - **Prettier** for automated code formatting
@@ -245,7 +245,7 @@ The `render()` utility in `utils/ink-render.tsx` automatically handles SIGINT (C
 
 #### Demo Command
 
-Run `zap demo` to see all Ink components in action with live updates, animations, and interactive features. This serves as a reference implementation showing:
+Run `af demo` to see all Ink components in action with live updates, animations, and interactive features. This serves as a reference implementation showing:
 
 - Static message and layout components
 - Animated spinners and progress bars
@@ -285,7 +285,7 @@ Status Tracking
 
 The spec commands integrate with OpenSpec for managing specification changes. Two commands automatically commit their changes after successful completion:
 
-#### `zap spec propose <text>`
+#### `af spec propose <text>`
 
 Creates a new OpenSpec proposal and automatically commits it with the message format:
 
@@ -295,7 +295,7 @@ Propose: <Title>
 
 Where `<Title>` is extracted from the first line of the proposal.md file (stripping `#` and optional "Proposal: " prefix).
 
-#### `zap spec archive <spec-id>`
+#### `af spec archive <spec-id>`
 
 Archives a spec to the specs directory and automatically commits it with the message format:
 
@@ -305,7 +305,7 @@ Archive: <Title>
 
 Where `<Title>` is extracted from the archived proposal.md file.
 
-#### `zap spec apply [change-id]`
+#### `af spec apply [change-id]`
 
 Applies an approved OpenSpec change (does not auto-commit, as changes are applied during implementation).
 
@@ -328,10 +328,10 @@ The spec commands use the `ZAP_AGENT` environment variable to determine which AI
 
 ```bash
 # Use default claude command
-zap spec propose "add feature"
+af spec propose "add feature"
 
 # Use custom agent
-ZAP_AGENT=my-agent zap spec propose "add feature"
+ZAP_AGENT=my-agent af spec propose "add feature"
 ```
 
 **Auto-Commit Behavior:**

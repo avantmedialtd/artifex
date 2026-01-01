@@ -6,12 +6,12 @@ Instructions for AI coding assistants using OpenSpec for spec-driven development
 
 **CRITICAL**: This project has TWO separate CLI tools:
 - `openspec` - For managing specifications, changes, proposals, and validation (OpenSpec framework commands)
-- `zap` - For project-specific operations like `zap todo`, `zap versions`, `zap npm`, etc.
+- `af` (or `zap` alias) - For project-specific operations like `af todo`, `af versions`, `af npm`, etc.
 
-NEVER use `zap` when you mean `openspec` commands. Always use:
-- `openspec validate` (NOT `zap validate`)
-- `openspec list` (NOT `zap list`)
-- `openspec show` (NOT `zap show`)
+NEVER use `af` when you mean `openspec` commands. Always use:
+- `openspec validate` (NOT `af validate`)
+- `openspec list` (NOT `af list`)
+- `openspec show` (NOT `af show`)
 - etc.
 
 ## TL;DR Quick Checklist

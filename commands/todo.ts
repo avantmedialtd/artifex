@@ -169,7 +169,7 @@ export async function handleTodo(hasArgs: boolean): Promise<number> {
     // Reject if arguments were provided
     if (hasArgs) {
         error('Error: todo command does not accept arguments');
-        console.error('Usage: zap todo');
+        console.error('Usage: af todo');
         return 1;
     }
 

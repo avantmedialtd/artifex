@@ -2,7 +2,9 @@
 
 ## Purpose
 
-**zap** is a CLI development utility tool designed to streamline and automate common development workflows. It helps developers be more productive by providing fast, reliable command-line utilities for everyday tasks.
+**af** is a CLI development utility tool designed to streamline and automate common development workflows. It helps developers be more productive by providing fast, reliable command-line utilities for everyday tasks.
+
+> **Note**: The `zap` command is available as an alias for backwards compatibility.
 
 ## Tech Stack
 

@@ -265,7 +265,7 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
 }
 
 /**
- * Execute a zap command (apply or archive) in the integrated terminal using the Task API.
+ * Execute an af command (apply or archive) in the integrated terminal using the Task API.
  * The terminal auto-closes on success but stays open on failure to show error messages.
  */
 async function executeZapCommand(subcommand: 'apply' | 'archive', changeId: string): Promise<void> {
@@ -273,13 +273,13 @@ async function executeZapCommand(subcommand: 'apply' | 'archive', changeId: stri
         type: 'shell',
     };
 
-    const execution = new vscode.ShellExecution(`zap spec ${subcommand} ${changeId}`);
+    const execution = new vscode.ShellExecution(`af spec ${subcommand} ${changeId}`);
 
     const task = new vscode.Task(
         taskDefinition,
         vscode.TaskScope.Workspace,
-        `zap spec ${subcommand} ${changeId}`,
-        'zap',
+        `af spec ${subcommand} ${changeId}`,
+        'af',
         execution,
     );
 

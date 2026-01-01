@@ -255,7 +255,7 @@ async function displayTodos(lastChangeTime: number): Promise<void> {
 export async function handleWatch(hasArgs: boolean): Promise<number> {
     if (hasArgs) {
         error('Error: watch command does not accept arguments');
-        console.error('Usage: zap watch');
+        console.error('Usage: af watch');
         return 1;
     }
 

@@ -77,8 +77,8 @@ There are two ways to copy change information:
 The change ID is useful for CLI commands like:
 
 ```bash
-zap spec archive <change-id>
-zap spec apply <change-id>
+af spec archive <change-id>
+af spec apply <change-id>
 ```
 
 **Example**: For a change displayed as "VSCode Extension Copy Change ID Button (vscode-copy-change-id-button) - 0/8 tasks completed":

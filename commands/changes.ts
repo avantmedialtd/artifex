@@ -12,7 +12,7 @@ export async function handleChanges(hasArgs: boolean): Promise<number> {
     // Reject if arguments were provided
     if (hasArgs) {
         error('Error: changes command does not accept arguments');
-        console.error('Usage: zap changes');
+        console.error('Usage: af changes');
         return 1;
     }
 

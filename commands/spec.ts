@@ -205,7 +205,7 @@ export async function handleSpecPropose(proposalText: string): Promise<number> {
     // Validate that proposalText is provided
     if (!proposalText || proposalText.trim() === '') {
         error('Error: spec propose requires proposal text');
-        console.error('Usage: zap spec propose <proposal-text>');
+        console.error('Usage: af spec propose <proposal-text>');
         return 1;
     }
 

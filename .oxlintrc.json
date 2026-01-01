@@ -1,7 +1,5 @@
 {
     "$schema": "./node_modules/oxlint/configuration_schema.json",
-    "// Configuration": "OXLint configuration for zap - Fast Rust-based TypeScript linter",
-    "// Custom Rules": "no-unused-vars allows 'error' in catch blocks for intentionally unused error parameters",
     "plugins": ["unicorn", "typescript", "oxc"],
     "categories": {},
     "rules": {

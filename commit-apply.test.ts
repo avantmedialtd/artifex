@@ -22,7 +22,7 @@ function runZap(args: string[]): Promise<{ exitCode: number; stdout: string; std
     });
 }
 
-describe('zap commit apply', () => {
+describe('af commit apply', () => {
     describe('command validation', () => {
         it('should error when commit has unknown subcommand', async () => {
             const result = await runZap(['commit', 'unknown']);
@@ -37,13 +37,13 @@ describe('zap commit apply', () => {
             const result = await runZap(['help', 'commit']);
 
             expect(result.exitCode).toBe(0);
-            expect(result.stdout).toContain('zap commit');
+            expect(result.stdout).toContain('af commit');
             expect(result.stdout).toContain('Commit all changes');
         });
     });
 });
 
-describe('zap commit (shorthand)', () => {
+describe('af commit (shorthand)', () => {
     describe('help content', () => {
         it('should show commit in general help', async () => {
             const result = await runZap(['help']);

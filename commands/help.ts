@@ -6,82 +6,82 @@ import { header, section, listItem, error } from '../utils/output.ts';
 const HELP_CONTENT: Record<string, { description: string; usage: string; examples?: string[] }> = {
     npm: {
         description: 'Manage npm packages',
-        usage: 'zap npm upgrade',
-        examples: ['zap npm upgrade  # Upgrade all outdated npm packages'],
+        usage: 'af npm upgrade',
+        examples: ['af npm upgrade  # Upgrade all outdated npm packages'],
     },
     spec: {
         description: 'Manage OpenSpec changes',
-        usage: 'zap spec <subcommand> [args]',
+        usage: 'af spec <subcommand> [args]',
         examples: [
-            'zap spec propose "Add new feature"  # Create a new proposal',
-            'zap spec apply my-change-id         # Apply a change',
-            'zap spec apply                      # Interactively select a change',
-            'zap spec archive my-change-id       # Archive a change',
-            'zap spec archive                    # Interactively select a spec',
+            'af spec propose "Add new feature"  # Create a new proposal',
+            'af spec apply my-change-id         # Apply a change',
+            'af spec apply                      # Interactively select a change',
+            'af spec archive my-change-id       # Archive a change',
+            'af spec archive                    # Interactively select a spec',
         ],
     },
     propose: {
         description: 'Create a new OpenSpec proposal (shorthand for "spec propose")',
-        usage: 'zap propose <proposal-text>',
-        examples: ['zap propose "Add dark mode support"'],
+        usage: 'af propose <proposal-text>',
+        examples: ['af propose "Add dark mode support"'],
     },
     apply: {
         description: 'Apply an approved OpenSpec change (shorthand for "spec apply")',
-        usage: 'zap apply [change-id]',
+        usage: 'af apply [change-id]',
         examples: [
-            'zap apply my-change-id  # Apply a specific change',
-            'zap apply               # Interactively select a change',
+            'af apply my-change-id  # Apply a specific change',
+            'af apply               # Interactively select a change',
         ],
     },
     archive: {
         description: 'Archive an OpenSpec change (shorthand for "spec archive")',
-        usage: 'zap archive [spec-id]',
+        usage: 'af archive [spec-id]',
         examples: [
-            'zap archive my-change-id  # Archive a specific spec',
-            'zap archive               # Interactively select a spec',
+            'af archive my-change-id  # Archive a specific spec',
+            'af archive               # Interactively select a spec',
         ],
     },
     commit: {
         description: 'Commit all changes with a message referencing the OpenSpec change title',
-        usage: 'zap commit [apply] [change-id]',
+        usage: 'af commit [apply] [change-id]',
         examples: [
-            'zap commit my-change-id       # Commit with message "Apply: <title>"',
-            'zap commit                    # Interactively select a change',
-            'zap commit apply my-change-id # Same as "zap commit my-change-id"',
-            'zap commit apply              # Interactively select a change',
+            'af commit my-change-id       # Commit with message "Apply: <title>"',
+            'af commit                    # Interactively select a change',
+            'af commit apply my-change-id # Same as "af commit my-change-id"',
+            'af commit apply              # Interactively select a change',
         ],
     },
     changes: {
         description: 'List all OpenSpec changes',
-        usage: 'zap changes',
-        examples: ['zap changes  # Show all active OpenSpec changes'],
+        usage: 'af changes',
+        examples: ['af changes  # Show all active OpenSpec changes'],
     },
     todo: {
         description: 'Show all TODO items from active OpenSpec changes',
-        usage: 'zap todo',
-        examples: ['zap todo  # Display all tasks from active changes'],
+        usage: 'af todo',
+        examples: ['af todo  # Display all tasks from active changes'],
     },
     watch: {
         description:
             'Continuously monitor and display TODO items from active changes with idle indicator',
-        usage: 'zap watch',
+        usage: 'af watch',
         examples: [
-            'zap watch  # Start watch mode for real-time TODO updates',
+            'af watch  # Start watch mode for real-time TODO updates',
             '          # Shows idle warning after 60 seconds of inactivity',
         ],
     },
     versions: {
         description: 'Manage version worktrees',
-        usage: 'zap versions <subcommand>',
+        usage: 'af versions <subcommand>',
         examples: [
-            'zap versions reset  # Reset all version worktrees to HEAD',
-            'zap versions push   # Force push all version worktrees',
+            'af versions reset  # Reset all version worktrees to HEAD',
+            'af versions push   # Force push all version worktrees',
         ],
     },
     help: {
         description: 'Display help information',
-        usage: 'zap help [command]',
-        examples: ['zap help        # Show all commands', 'zap help npm    # Show npm help'],
+        usage: 'af help [command]',
+        examples: ['af help        # Show all commands', 'af help npm    # Show npm help'],
     },
 };
 
@@ -89,10 +89,10 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
  * Display general help showing all available commands.
  */
 function showGeneralHelp(): void {
-    header('zap - Development utility CLI');
+    header('af - Development utility CLI');
 
     section('USAGE');
-    console.log('  zap <command> [options]');
+    console.log('  af <command> [options]');
 
     section('COMMANDS');
     listItem('npm upgrade            Upgrade all outdated npm packages');
@@ -113,7 +113,7 @@ function showGeneralHelp(): void {
     section('OPTIONS');
     listItem('--help, -h            Show help information');
 
-    console.log("\nRun 'zap help <command>' for more information on a command.");
+    console.log("\nRun 'af help <command>' for more information on a command.");
 }
 
 /**
@@ -126,11 +126,11 @@ function showCommandHelp(command: string): void {
 
     if (!helpInfo) {
         error(`Unknown command: ${command}`);
-        console.log("\nRun 'zap help' to see all available commands.");
+        console.log("\nRun 'af help' to see all available commands.");
         return;
     }
 
-    header(`zap ${command}`);
+    header(`af ${command}`);
 
     section('DESCRIPTION');
     console.log(`  ${helpInfo.description}`);

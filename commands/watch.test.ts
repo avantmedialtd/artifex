@@ -26,7 +26,7 @@ describe('handleWatch', () => {
             // Wait a bit for the synchronous part to execute
             await new Promise(resolve => setTimeout(resolve, 10));
 
-            expect(consoleErrorSpy).toHaveBeenCalledWith('Usage: zap watch');
+            expect(consoleErrorSpy).toHaveBeenCalledWith('Usage: af watch');
 
             // The promise should resolve to 1
             const exitCode = await Promise.race([
@@ -45,7 +45,7 @@ describe('handleWatch', () => {
             ]);
 
             expect(exitCode).toBe(1);
-            expect(consoleErrorSpy).toHaveBeenCalledWith('Usage: zap watch');
+            expect(consoleErrorSpy).toHaveBeenCalledWith('Usage: af watch');
         });
     });
 

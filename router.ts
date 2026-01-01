@@ -43,11 +43,11 @@ export async function route(args: string[]): Promise<number> {
             return await handleNpmUpgrade();
         } else if (!subcommand) {
             error('Error: npm command requires a subcommand');
-            console.error("Run 'zap help npm' for more information.");
+            console.error("Run 'af help npm' for more information.");
             return 1;
         } else {
             error(`Error: Unknown npm subcommand: ${subcommand}`);
-            console.error("Run 'zap help npm' for available subcommands.");
+            console.error("Run 'af help npm' for available subcommands.");
             return 1;
         }
     }
@@ -65,11 +65,11 @@ export async function route(args: string[]): Promise<number> {
             return await handleSpecPropose(proposalText);
         } else if (!subcommand) {
             error('Error: spec command requires a subcommand');
-            console.error("Run 'zap help spec' for more information.");
+            console.error("Run 'af help spec' for more information.");
             return 1;
         } else {
             error(`Error: Unknown spec subcommand: ${subcommand}`);
-            console.error("Run 'zap help spec' for available subcommands.");
+            console.error("Run 'af help spec' for available subcommands.");
             return 1;
         }
     }
@@ -82,7 +82,7 @@ export async function route(args: string[]): Promise<number> {
             return await handleCommitApply(changeId);
         } else {
             error(`Error: Unknown commit subcommand: ${subcommand}`);
-            console.error("Run 'zap help commit' for available subcommands.");
+            console.error("Run 'af help commit' for available subcommands.");
             return 1;
         }
     }
@@ -129,11 +129,11 @@ export async function route(args: string[]): Promise<number> {
             return await handleVersionsPush();
         } else if (!subcommand) {
             error('Error: versions command requires a subcommand');
-            console.error("Run 'zap help versions' for more information.");
+            console.error("Run 'af help versions' for more information.");
             return 1;
         } else {
             error(`Error: Unknown versions subcommand: ${subcommand}`);
-            console.error("Run 'zap help versions' for available subcommands.");
+            console.error("Run 'af help versions' for available subcommands.");
             return 1;
         }
     }
@@ -151,6 +151,6 @@ export async function route(args: string[]): Promise<number> {
 
     // Unknown command
     error(`Error: Unknown command: ${command}`);
-    console.error("Run 'zap help' to see all available commands.");
+    console.error("Run 'af help' to see all available commands.");
     return 1;
 }

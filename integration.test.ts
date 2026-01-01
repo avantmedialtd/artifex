@@ -107,7 +107,7 @@ describe('Integration Tests', () => {
         );
 
         expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain('zap - Development utility CLI');
+        expect(result.stdout).toContain('af - Development utility CLI');
         expect(result.stdout).toContain('USAGE');
         expect(result.stdout).toContain('COMMANDS');
     });
@@ -170,7 +170,7 @@ describe('Command Argument Parsing', () => {
             ['--experimental-strip-types', 'main.ts'],
             process.cwd(),
         );
-        expect(result.stdout).toContain('zap - Development utility CLI');
+        expect(result.stdout).toContain('af - Development utility CLI');
         expect(result.stdout).toContain('USAGE');
         expect(result.exitCode).toBe(0);
     });
@@ -242,7 +242,7 @@ describe('Spec Propose Command', () => {
         );
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('spec propose requires proposal text');
-        expect(result.stderr).toContain('Usage: zap spec propose <proposal-text>');
+        expect(result.stderr).toContain('Usage: af spec propose <proposal-text>');
     });
 
     it.skip('should handle multi-word proposal text', async () => {

@@ -1,14 +1,16 @@
-# Zap ⚡
+# af
 
 A lightweight CLI development utility that helps you automate common development tasks.
 
-> **Note:** Zap is in early-stage development. Features and APIs may change as the project evolves.
+> **Note:** af is in early-stage development. Features and APIs may change as the project evolves.
+>
+> **Backwards Compatibility:** The `zap` command is available as an alias for existing scripts and workflows.
 
-## What is Zap?
+## What is af?
 
-Zap is a command-line tool designed to streamline your development workflow by automating repetitive tasks. Currently, it helps you keep your project dependencies up to date with a single command, and it's built to be fast and easy to use.
+af is a command-line tool designed to streamline your development workflow by automating repetitive tasks. Currently, it helps you keep your project dependencies up to date with a single command, and it's built to be fast and easy to use.
 
-### Why Zap?
+### Why af?
 
 - **Simple**: One command to upgrade all your npm dependencies
 - **Fast**: Built with performance in mind, runs TypeScript directly without build steps
@@ -23,7 +25,7 @@ Zap is a command-line tool designed to streamline your development workflow by a
 
 ### Install Locally
 
-Since Zap is not yet published to npm, you can install it locally using npm link:
+Since af is not yet published to npm, you can install it locally using npm link:
 
 ```bash
 # Clone the repository
@@ -37,11 +39,11 @@ npm install
 npm link
 ```
 
-After linking, the `zap` command will be available globally in your terminal.
+After linking, both `af` and `zap` commands will be available globally in your terminal.
 
 ### Platform Support
 
-Zap works on:
+af works on:
 
 - macOS
 - Linux
@@ -54,7 +56,7 @@ Zap works on:
 Upgrade all dependencies in your project to their latest versions:
 
 ```bash
-zap npm upgrade
+af npm upgrade
 ```
 
 This command will:
@@ -69,7 +71,7 @@ This command will:
 
 ```bash
 cd my-project
-zap npm upgrade
+af npm upgrade
 ```
 
 **Output:**
@@ -87,7 +89,7 @@ Done! All dependencies upgraded.
 Create a new OpenSpec change proposal using Claude Code:
 
 ```bash
-zap spec propose <proposal-text>
+af spec propose <proposal-text>
 ```
 
 This command provides a convenient wrapper for initiating an OpenSpec proposal workflow. It automatically executes `claude --permission-mode acceptEdits "/openspec:proposal <proposal-text>"` for you.
@@ -101,10 +103,10 @@ This command provides a convenient wrapper for initiating an OpenSpec proposal w
 
 ```bash
 # Create a proposal with single-word text
-zap spec propose "Add user authentication"
+af spec propose "Add user authentication"
 
 # Create a proposal with multi-word text (quotes optional)
-zap spec propose Add new API endpoints for user management
+af spec propose Add new API endpoints for user management
 ```
 
 This will:
@@ -119,7 +121,7 @@ This will:
 Archive a deployed OpenSpec change using Claude Code:
 
 ```bash
-zap spec archive <spec-id>
+af spec archive <spec-id>
 ```
 
 This command provides a convenient wrapper for invoking Claude Code's OpenSpec archive workflow. It automatically executes `claude --permission-mode acceptEdits "/openspec:archive <spec-id>"` for you.
@@ -133,7 +135,7 @@ This command provides a convenient wrapper for invoking Claude Code's OpenSpec a
 
 ```bash
 # Archive a completed OpenSpec change
-zap spec archive add-user-authentication
+af spec archive add-user-authentication
 ```
 
 This will:
@@ -147,7 +149,7 @@ This will:
 Apply an approved OpenSpec change using Claude Code:
 
 ```bash
-zap spec apply [change-id]
+af spec apply [change-id]
 ```
 
 This command provides a convenient wrapper for invoking Claude Code's OpenSpec apply workflow. It automatically executes `claude --permission-mode acceptEdits "/openspec:apply [change-id]"` for you.
@@ -161,10 +163,10 @@ This command provides a convenient wrapper for invoking Claude Code's OpenSpec a
 
 ```bash
 # Apply a specific change
-zap spec apply add-user-authentication
+af spec apply add-user-authentication
 
 # Let Claude prompt for which change to apply
-zap spec apply
+af spec apply
 ```
 
 ### View TODO Items
@@ -172,7 +174,7 @@ zap spec apply
 Display all TODO items from active OpenSpec changes:
 
 ```bash
-zap todo
+af todo
 ```
 
 This command scans all active changes in `openspec/changes/` and displays their tasks from `tasks.md` files with progress indicators.
@@ -180,7 +182,7 @@ This command scans all active changes in `openspec/changes/` and displays their 
 **Example:**
 
 ```bash
-zap todo
+af todo
 ```
 
 **Output:**
@@ -205,7 +207,7 @@ zap todo
 Continuously monitor and display TODO items with real-time updates:
 
 ```bash
-zap watch
+af watch
 ```
 
 This command starts watch mode, which automatically refreshes the TODO display whenever task files are modified. Perfect for tracking progress during active development.
@@ -213,7 +215,7 @@ This command starts watch mode, which automatically refreshes the TODO display w
 **Example:**
 
 ```bash
-zap watch
+af watch
 ```
 
 **Features:**
@@ -223,11 +225,11 @@ zap watch
 - Clear screen with timestamp on each update
 - Press Ctrl+C to exit gracefully
 
-**Use case:** Keep `zap watch` running in a terminal window while working through implementation tasks to see your progress update automatically.
+**Use case:** Keep `af watch` running in a terminal window while working through implementation tasks to see your progress update automatically.
 
 ## VSCode Extension
 
-For VSCode users, Zap includes a dedicated extension that displays OpenSpec tasks directly in a panel (similar to the Problems panel).
+For VSCode users, af includes a dedicated extension that displays OpenSpec tasks directly in a panel (similar to the Problems panel).
 
 ### Features
 
@@ -266,7 +268,7 @@ For detailed documentation, see [vscode-extension/README.md](vscode-extension/RE
 
 ### ZAP_AGENT Environment Variable
 
-By default, Zap uses the `claude` command when invoking AI agents for OpenSpec operations. You can customize this behavior by setting the `ZAP_AGENT` environment variable.
+By default, af uses the `claude` command when invoking AI agents for OpenSpec operations. You can customize this behavior by setting the `ZAP_AGENT` environment variable.
 
 **Use cases:**
 
@@ -278,20 +280,20 @@ By default, Zap uses the `claude` command when invoking AI agents for OpenSpec o
 
 ```bash
 # Use default claude command
-zap spec propose "add feature X"
+af spec propose "add feature X"
 
 # Use a custom agent command
-ZAP_AGENT=my-agent zap spec propose "add feature X"
+ZAP_AGENT=my-agent af spec propose "add feature X"
 
 # Use an absolute path to the agent
-ZAP_AGENT=/usr/local/bin/custom-claude zap spec apply
+ZAP_AGENT=/usr/local/bin/custom-claude af spec apply
 
 # Set for your entire session
 export ZAP_AGENT=my-custom-agent
-zap spec propose "add feature Y"
+af spec propose "add feature Y"
 ```
 
-When `ZAP_AGENT` is set, Zap will use that command name for:
+When `ZAP_AGENT` is set, af will use that command name for:
 
 - Checking agent availability
 - Executing `spec propose` commands
@@ -302,14 +304,14 @@ When `ZAP_AGENT` is set, Zap will use that command name for:
 
 ### Version Worktree Management
 
-Zap provides commands to manage git worktrees for version branches (branches matching the pattern `v1`, `v2`, `v10`, etc.).
+af provides commands to manage git worktrees for version branches (branches matching the pattern `v1`, `v2`, `v10`, etc.).
 
 #### Reset Version Worktrees
 
 Reset all version worktrees to the current branch HEAD:
 
 ```bash
-zap versions reset
+af versions reset
 ```
 
 This command will:
@@ -323,7 +325,7 @@ This command will:
 
 ```bash
 # On the master branch at commit abc123
-zap versions reset
+af versions reset
 # Output: Successfully reset 3 worktree(s): v1, v2, v3
 ```
 
@@ -337,7 +339,7 @@ zap versions reset
 Force-push all version worktrees to their remote repositories:
 
 ```bash
-zap versions push
+af versions push
 ```
 
 This command will:
@@ -351,7 +353,7 @@ This command will:
 
 ```bash
 # After resetting version worktrees
-zap versions push
+af versions push
 # Output: Successfully pushed 3 worktree(s): v1, v2, v3
 ```
 
@@ -364,7 +366,7 @@ zap versions push
 
 ## Development
 
-Want to contribute or work on Zap? Here's how to get started.
+Want to contribute or work on af? Here's how to get started.
 
 ### Setup
 
@@ -429,14 +431,15 @@ This ensures code is linted and properly formatted before it gets pushed to the 
 2. Format your code: `npm run format`
 3. Run tests to ensure everything works: `npm test`
 4. Run the linter: `npm run lint`
-5. Test your changes locally using the linked `zap` command
+5. Test your changes locally using the linked `af` command (or `zap` alias)
 6. Commit your changes and submit a pull request
 
 ### Project Structure
 
 - `main.ts` - Entry point for the CLI
 - `npm-upgrade.ts` - Implementation of the npm upgrade command
-- `zap` - Executable file that invokes the CLI
+- `af` - Primary executable file that invokes the CLI
+- `zap` - Alias executable for backwards compatibility
 - Tests are colocated with source files (e.g., `npm-upgrade.test.ts`)
 
 For more detailed contributor guidelines, see [CLAUDE.md](CLAUDE.md).

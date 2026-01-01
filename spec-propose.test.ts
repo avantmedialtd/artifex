@@ -22,14 +22,14 @@ function runZap(args: string[]): Promise<{ exitCode: number; stdout: string; std
     });
 }
 
-describe('zap spec propose', () => {
+describe('af spec propose', () => {
     describe('command validation', () => {
         it('should error when spec propose has no proposal text', async () => {
             const result = await runZap(['spec', 'propose']);
 
             expect(result.exitCode).toBe(1);
             expect(result.stderr).toContain('Error: spec propose requires proposal text');
-            expect(result.stderr).toContain('Usage: zap spec propose <proposal-text>');
+            expect(result.stderr).toContain('Usage: af spec propose <proposal-text>');
         });
 
         it('should error when spec propose has only whitespace', async () => {

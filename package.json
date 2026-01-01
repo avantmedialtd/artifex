@@ -1,5 +1,5 @@
 {
-    "name": "zap",
+    "name": "af",
     "version": "1.0.0",
     "description": "Development utility.",
     "homepage": "https://github.com/avantmedialtd/zap#readme",
@@ -13,6 +13,7 @@
     "license": "UNLICENSED",
     "author": "István Antal <istvan@antal.xyz>",
     "bin": {
+        "af": "./af",
         "zap": "./zap"
     },
     "engines": {
@@ -33,18 +34,18 @@
         "test:coverage": "vitest run --coverage"
     },
     "devDependencies": {
-        "@types/node": "^24.10.1",
+        "@types/node": "^25.0.3",
         "@types/react": "^19.2.7",
-        "@vitest/ui": "^4.0.15",
+        "@vitest/ui": "^4.0.16",
         "cspell": "^9.4.0",
-        "oxlint": "^1.32.0",
+        "oxlint": "^1.36.0",
         "prettier": "^3.7.4",
         "tsx": "^4.21.0",
         "typescript": "^5.9.3",
-        "vitest": "^4.0.15"
+        "vitest": "^4.0.16"
     },
     "dependencies": {
-        "ink": "^6.5.1",
-        "react": "^19.2.1"
+        "ink": "^6.6.0",
+        "react": "^19.2.3"
     }
 }

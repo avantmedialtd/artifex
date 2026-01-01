@@ -21,7 +21,7 @@ describe('handleTodo', () => {
             const exitCode = await handleTodo(true);
 
             expect(exitCode).toBe(1);
-            expect(consoleErrorSpy).toHaveBeenCalledWith('Usage: zap todo');
+            expect(consoleErrorSpy).toHaveBeenCalledWith('Usage: af todo');
         });
 
         it('should succeed when no arguments provided', async () => {
