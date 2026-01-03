@@ -60,10 +60,10 @@ describe('af spec propose', () => {
         });
     });
 
-    describe('ZAP_AGENT environment variable', () => {
-        it('should respect ZAP_AGENT when checking for agent availability', async () => {
-            // Set ZAP_AGENT to a command that doesn't exist
-            process.env.ZAP_AGENT = 'nonexistent-agent-xyz';
+    describe('ARTIFEX_AGENT environment variable', () => {
+        it('should respect ARTIFEX_AGENT when checking for agent availability', async () => {
+            // Set ARTIFEX_AGENT to a command that doesn't exist
+            process.env.ARTIFEX_AGENT = 'nonexistent-agent-xyz';
 
             const result = await runZap(['spec', 'propose', 'test proposal']);
 
@@ -74,7 +74,7 @@ describe('af spec propose', () => {
             );
 
             // Clean up
-            delete process.env.ZAP_AGENT;
+            delete process.env.ARTIFEX_AGENT;
         });
     });
 });

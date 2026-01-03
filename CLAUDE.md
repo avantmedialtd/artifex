@@ -71,7 +71,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**af** is a development utility tool written in TypeScript. The project uses:
+**Artifex** is a development utility tool written in TypeScript. The project uses:
 
 - **TypeScript** for type-safe code
 - **Bun** for CLI runtime (native TypeScript/JSX execution)
@@ -357,7 +357,7 @@ Applies an approved OpenSpec change (does not auto-commit, as changes are applie
 
 ### Configurable Agent Command
 
-The spec commands use the `ZAP_AGENT` environment variable to determine which AI agent command to invoke. This provides flexibility for:
+The spec commands use the `ARTIFEX_AGENT` environment variable to determine which AI agent command to invoke. This provides flexibility for:
 
 - Development and testing with alternative agent implementations
 - Custom CLI wrappers or agent tools
@@ -365,7 +365,7 @@ The spec commands use the `ZAP_AGENT` environment variable to determine which AI
 
 **Implementation:**
 
-- `utils/claude.ts` exports `getAgentCommand()` which returns `process.env.ZAP_AGENT || 'claude'`
+- `utils/claude.ts` exports `getAgentCommand()` which returns `process.env.ARTIFEX_AGENT || 'claude'`
 - All `spawn()` calls use `getAgentCommand()` instead of hardcoded `'claude'`
 - Availability checks use the configured agent command
 - Error messages reference "Claude Code CLI" for backward compatibility
@@ -377,7 +377,7 @@ The spec commands use the `ZAP_AGENT` environment variable to determine which AI
 af spec propose "add feature"
 
 # Use custom agent
-ZAP_AGENT=my-agent af spec propose "add feature"
+ARTIFEX_AGENT=my-agent af spec propose "add feature"
 ```
 
 **Auto-Commit Behavior:**

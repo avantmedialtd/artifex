@@ -2,13 +2,13 @@
     "name": "af",
     "version": "1.0.0",
     "description": "Development utility.",
-    "homepage": "https://github.com/avantmedialtd/zap#readme",
+    "homepage": "https://github.com/avantmedialtd/artifex#readme",
     "bugs": {
-        "url": "https://github.com/avantmedialtd/zap/issues"
+        "url": "https://github.com/avantmedialtd/artifex/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/avantmedialtd/zap.git"
+        "url": "git+https://github.com/avantmedialtd/artifex.git"
     },
     "license": "UNLICENSED",
     "author": "István Antal <istvan@antal.xyz>",

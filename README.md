@@ -1,16 +1,16 @@
-# af
+# Artifex
 
 A lightweight CLI development utility that helps you automate common development tasks.
 
-> **Note:** af is in early-stage development. Features and APIs may change as the project evolves.
+> **Note:** Artifex is in early-stage development. Features and APIs may change as the project evolves.
 >
 > **Backwards Compatibility:** The `zap` command is available as an alias for existing scripts and workflows.
 
-## What is af?
+## What is Artifex?
 
-af is a command-line tool designed to streamline your development workflow by automating repetitive tasks. Currently, it helps you keep your project dependencies up to date with a single command, and it's built to be fast and easy to use.
+Artifex is a command-line tool designed to streamline your development workflow by automating repetitive tasks. Currently, it helps you keep your project dependencies up to date with a single command, and it's built to be fast and easy to use.
 
-### Why af?
+### Why Artifex?
 
 - **Simple**: One command to upgrade all your npm dependencies
 - **Fast**: Built with performance in mind, runs TypeScript directly without build steps
@@ -25,12 +25,12 @@ af is a command-line tool designed to streamline your development workflow by au
 
 ### Install Locally
 
-Since af is not yet published to npm, you can install it locally using npm link:
+Since Artifex is not yet published to npm, you can install it locally using npm link:
 
 ```bash
 # Clone the repository
-git clone https://github.com/avantmedialtd/zap.git
-cd zap
+git clone https://github.com/avantmedialtd/artifex.git
+cd artifex
 
 # Install dependencies
 npm install
@@ -229,7 +229,7 @@ af watch
 
 ## VSCode Extension
 
-For VSCode users, af includes a dedicated extension that displays OpenSpec tasks directly in a panel (similar to the Problems panel).
+For VSCode users, Artifex includes a dedicated extension that displays OpenSpec tasks directly in a panel (similar to the Problems panel).
 
 ### Features
 
@@ -266,9 +266,9 @@ For detailed documentation, see [vscode-extension/README.md](vscode-extension/RE
 
 ## Configuration
 
-### ZAP_AGENT Environment Variable
+### ARTIFEX_AGENT Environment Variable
 
-By default, af uses the `claude` command when invoking AI agents for OpenSpec operations. You can customize this behavior by setting the `ZAP_AGENT` environment variable.
+By default, Artifex uses the `claude` command when invoking AI agents for OpenSpec operations. You can customize this behavior by setting the `ARTIFEX_AGENT` environment variable.
 
 **Use cases:**
 
@@ -283,17 +283,17 @@ By default, af uses the `claude` command when invoking AI agents for OpenSpec op
 af spec propose "add feature X"
 
 # Use a custom agent command
-ZAP_AGENT=my-agent af spec propose "add feature X"
+ARTIFEX_AGENT=my-agent af spec propose "add feature X"
 
 # Use an absolute path to the agent
-ZAP_AGENT=/usr/local/bin/custom-claude af spec apply
+ARTIFEX_AGENT=/usr/local/bin/custom-claude af spec apply
 
 # Set for your entire session
-export ZAP_AGENT=my-custom-agent
+export ARTIFEX_AGENT=my-custom-agent
 af spec propose "add feature Y"
 ```
 
-When `ZAP_AGENT` is set, af will use that command name for:
+When `ARTIFEX_AGENT` is set, Artifex will use that command name for:
 
 - Checking agent availability
 - Executing `spec propose` commands
@@ -366,14 +366,14 @@ af versions push
 
 ## Development
 
-Want to contribute or work on af? Here's how to get started.
+Want to contribute or work on Artifex? Here's how to get started.
 
 ### Setup
 
 ```bash
 # Clone the repository
-git clone https://github.com/avantmedialtd/zap.git
-cd zap
+git clone https://github.com/avantmedialtd/artifex.git
+cd artifex
 
 # Install dependencies
 npm install
@@ -448,8 +448,8 @@ For more detailed contributor guidelines, see [CLAUDE.md](CLAUDE.md).
 
 Found a bug or have an idea for a new feature?
 
-- **Report bugs**: [GitHub Issues](https://github.com/avantmedialtd/zap/issues)
-- **Request features**: [GitHub Issues](https://github.com/avantmedialtd/zap/issues)
+- **Report bugs**: [GitHub Issues](https://github.com/avantmedialtd/artifex/issues)
+- **Request features**: [GitHub Issues](https://github.com/avantmedialtd/artifex/issues)
 
 When reporting a bug, please include:
 
@@ -462,7 +462,7 @@ When reporting a bug, please include:
 
 Contributions are welcome! Whether you're fixing bugs, adding features, or improving documentation, your help is appreciated.
 
-1. Check existing [issues](https://github.com/avantmedialtd/zap/issues) or create a new one
+1. Check existing [issues](https://github.com/avantmedialtd/artifex/issues) or create a new one
 2. Fork the repository
 3. Create a feature branch (`git checkout -b feature/amazing-feature`)
 4. Make your changes and add tests
@@ -480,5 +480,5 @@ István Antal <istvan@antal.xyz>
 
 ## Links
 
-- [GitHub Repository](https://github.com/avantmedialtd/zap)
-- [Issue Tracker](https://github.com/avantmedialtd/zap/issues)
+- [GitHub Repository](https://github.com/avantmedialtd/artifex)
+- [Issue Tracker](https://github.com/avantmedialtd/artifex/issues)

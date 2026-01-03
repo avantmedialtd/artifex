@@ -6,7 +6,7 @@ Instructions for AI coding assistants using OpenSpec for spec-driven development
 
 **CRITICAL**: This project has TWO separate CLI tools:
 - `openspec` - For managing specifications, changes, proposals, and validation (OpenSpec framework commands)
-- `af` (or `zap` alias) - For project-specific operations like `af todo`, `af versions`, `af npm`, etc.
+- `af` (or `zap` alias) - Artifex CLI for project-specific operations like `af todo`, `af versions`, `af npm`, etc.
 
 NEVER use `af` when you mean `openspec` commands. Always use:
 - `openspec validate` (NOT `af validate`)
