@@ -472,7 +472,9 @@ Contributions are welcome! Whether you're fixing bugs, adding features, or impro
 
 ## License
 
-UNLICENSED - This project is not currently licensed for public use or distribution.
+Copyright (c) Avant Media LTD. All rights reserved.
+
+This is proprietary software. See [LICENSE](LICENSE) for terms.
 
 ## Author
 

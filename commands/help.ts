@@ -89,6 +89,11 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af jira projects                  # List all projects',
         ],
     },
+    licenses: {
+        description: 'Show license and copyright information',
+        usage: 'af licenses',
+        examples: ['af licenses  # Display copyright and license details'],
+    },
     help: {
         description: 'Display help information',
         usage: 'af help [command]',
@@ -120,6 +125,7 @@ function showGeneralHelp(): void {
     listItem('versions reset         Reset version worktrees to HEAD');
     listItem('versions push          Force push version worktrees');
     listItem('jira <subcommand>      Manage Jira issues (get, list, create, etc.)');
+    listItem('licenses               Show license and copyright information');
     listItem('help [command]         Show help for a command');
 
     section('OPTIONS');
