@@ -1,3 +1,4 @@
+import { handleBunUpgrade } from './commands/bun.ts';
 import { handleChanges } from './commands/changes.ts';
 import { handleHelp } from './commands/help.ts';
 import { handleJira } from './commands/jira.ts';
@@ -51,6 +52,21 @@ export async function route(args: string[]): Promise<number> {
         } else {
             error(`Error: Unknown npm subcommand: ${subcommand}`);
             console.error("Run 'af help npm' for available subcommands.");
+            return 1;
+        }
+    }
+
+    // Route bun commands
+    if (command === 'bun') {
+        if (subcommand === 'upgrade') {
+            return await handleBunUpgrade();
+        } else if (!subcommand) {
+            error('Error: bun command requires a subcommand');
+            console.error("Run 'af help bun' for more information.");
+            return 1;
+        } else {
+            error(`Error: Unknown bun subcommand: ${subcommand}`);
+            console.error("Run 'af help bun' for available subcommands.");
             return 1;
         }
     }

@@ -89,6 +89,7 @@ main.ts              - Entry point (~8 lines, delegates to router)
 router.ts            - Command routing logic
 commands/            - Command handler modules
 ├── npm.ts           - npm upgrade command
+├── bun.ts           - bun upgrade command
 ├── spec.ts          - spec archive/propose commands
 ├── versions.ts      - versions push/reset commands
 └── help.ts          - help command
@@ -110,9 +111,9 @@ utils/               - Utility modules
 
 The project uses Prettier with custom configuration for automated code formatting:
 
-- `npm run format` - Format all files in the project
-- `npm run format:check` - Check if files are formatted correctly (fails on violations)
-- `npm run format:write` - Explicitly format all files (same as `format`)
+- `bun run format` - Format all files in the project
+- `bun run format:check` - Check if files are formatted correctly (fails on violations)
+- `bun run format:write` - Explicitly format all files (same as `format`)
 
 **Prettier Configuration:**
 
@@ -123,19 +124,19 @@ The project uses Prettier with custom configuration for automated code formattin
 - Arrow function parens only when needed (`arrowParens: 'avoid'`)
 - LF line endings (`endOfLine: 'lf'`)
 
-**Enforcement:** Formatting is enforced in CI (Jenkinsfile) and pre-push git hooks. All code must pass `npm run format:check` before being pushed.
+**Enforcement:** Formatting is enforced in CI (Jenkinsfile) and pre-push git hooks. All code must pass `bun run format:check` before being pushed.
 
 ### Linting
 
-- `npm run lint` - Check code for linting errors
-- `npm run lint:fix` - Auto-fix linting errors
-- `npm run lint:check` - Check code for linting errors (same as `lint`)
+- `bun run lint` - Check code for linting errors
+- `bun run lint:fix` - Auto-fix linting errors
+- `bun run lint:check` - Check code for linting errors (same as `lint`)
 
 ### Spell Checking
 
 The project uses CSpell for automated spell checking:
 
-- `npm run spell:check` - Check spelling in all files
+- `bun run spell:check` - Check spelling in all files
 
 **CSpell Configuration:**
 
@@ -144,13 +145,13 @@ The project uses CSpell for automated spell checking:
 - Custom dictionary for project-specific terms and proper names
 - Ignores `node_modules`, `.git`, and build outputs
 
-**Enforcement:** Spell checking is enforced in CI (Jenkinsfile). All code must pass `npm run spell:check` before being merged.
+**Enforcement:** Spell checking is enforced in CI (Jenkinsfile). All code must pass `bun run spell:check` before being merged.
 
 ### Testing
 
-- `npm test` - Run all tests
-- `npm run test:watch` - Run tests in watch mode
-- `npm run test:coverage` - Run tests with coverage report
+- `bun test` - Run all tests
+- `bun run test:watch` - Run tests in watch mode
+- `bun run test:coverage` - Run tests with coverage report
 
 ## Architecture
 
@@ -385,7 +386,7 @@ Setup files are discovered dynamically at build time. The `scripts/generate-setu
 To add new setup files:
 
 1. Add the file to `setup/.claude/` directory
-2. Run `npm run generate:manifest` (or it runs automatically during `npm run compile`)
+2. Run `bun run generate:manifest` (or it runs automatically during `bun run compile`)
 3. The file will be included in the next build
 
 #### Standalone Binary Compatibility

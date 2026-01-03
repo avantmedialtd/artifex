@@ -33,10 +33,10 @@ git clone https://github.com/avantmedialtd/artifex.git
 cd artifex
 
 # Install dependencies
-npm install
+bun install
 
 # Link the package globally
-npm link
+bun link
 ```
 
 After linking, both `af` and `zap` commands will be available globally in your terminal.
@@ -82,6 +82,48 @@ Upgrading dependencies in package.json...
   typescript: ^5.0.0 → ^5.4.5
 Running npm install...
 Done! All dependencies upgraded.
+```
+
+### Upgrade Bun Dependencies
+
+Upgrade all dependencies in your project to their latest versions using Bun:
+
+```bash
+af bun upgrade
+```
+
+This command will:
+
+1. Run `bun outdated` to detect outdated packages
+2. Upgrade each package using `bun add <package>@latest`
+3. Display a summary of upgraded packages
+
+**Example:**
+
+```bash
+cd my-project
+af bun upgrade
+```
+
+**Output:**
+
+```
+Checking for outdated packages...
+
+Found 2 package(s) to upgrade:
+  • lodash
+  • typescript
+
+Upgrading lodash...
+Upgrading typescript...
+
+Upgrade Summary
+==================================================
+Successfully upgraded: 2 package(s)
+  ✓ lodash
+  ✓ typescript
+
+All packages upgraded successfully!
 ```
 
 ### Propose OpenSpec Changes
@@ -376,43 +418,43 @@ git clone https://github.com/avantmedialtd/artifex.git
 cd artifex
 
 # Install dependencies
-npm install
+bun install
 
 # Link for local testing
-npm link
+bun link
 ```
 
 ### Running Tests
 
 ```bash
 # Run tests once
-npm test
+bun test
 
 # Run tests in watch mode
-npm run test:watch
+bun run test:watch
 
 # Run tests with coverage
-npm run test:coverage
+bun run test:coverage
 ```
 
 ### Code Formatting
 
 ```bash
 # Format all files
-npm run format
+bun run format
 
 # Check formatting without making changes
-npm run format:check
+bun run format:check
 ```
 
 ### Linting
 
 ```bash
 # Check for linting errors
-npm run lint
+bun run lint
 
 # Fix linting errors automatically
-npm run lint:fix
+bun run lint:fix
 ```
 
 ### Git Hooks
@@ -420,7 +462,7 @@ npm run lint:fix
 Set up a pre-push hook to run both linting and formatting checks before pushing:
 
 ```bash
-printf '#!/bin/sh\nnpm run lint && npm run spell:check && npm run format:check\n' > .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+printf '#!/bin/sh\nbun run lint && bun run spell:check && bun run format:check\n' > .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 ```
 
 This ensures code is linted and properly formatted before it gets pushed to the repository.
@@ -428,9 +470,9 @@ This ensures code is linted and properly formatted before it gets pushed to the 
 ### Making Changes
 
 1. Make your changes to the code
-2. Format your code: `npm run format`
-3. Run tests to ensure everything works: `npm test`
-4. Run the linter: `npm run lint`
+2. Format your code: `bun run format`
+3. Run tests to ensure everything works: `bun test`
+4. Run the linter: `bun run lint`
 5. Test your changes locally using the linked `af` command (or `zap` alias)
 6. Commit your changes and submit a pull request
 
@@ -438,9 +480,10 @@ This ensures code is linted and properly formatted before it gets pushed to the 
 
 - `main.ts` - Entry point for the CLI
 - `npm-upgrade.ts` - Implementation of the npm upgrade command
+- `bun-upgrade.ts` - Implementation of the bun upgrade command
 - `af` - Primary executable file that invokes the CLI
 - `zap` - Alias executable for backwards compatibility
-- Tests are colocated with source files (e.g., `npm-upgrade.test.ts`)
+- Tests are colocated with source files (e.g., `npm-upgrade.test.ts`, `bun-upgrade.test.ts`)
 
 For more detailed contributor guidelines, see [CLAUDE.md](CLAUDE.md).
 

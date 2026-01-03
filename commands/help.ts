@@ -9,6 +9,11 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
         usage: 'af npm upgrade',
         examples: ['af npm upgrade  # Upgrade all outdated npm packages'],
     },
+    bun: {
+        description: 'Manage Bun packages',
+        usage: 'af bun upgrade',
+        examples: ['af bun upgrade  # Upgrade all outdated Bun packages'],
+    },
     spec: {
         description: 'Manage OpenSpec changes',
         usage: 'af spec <subcommand> [args]',
@@ -121,6 +126,7 @@ function showGeneralHelp(): void {
 
     section('COMMANDS');
     listItem('npm upgrade            Upgrade all outdated npm packages');
+    listItem('bun upgrade            Upgrade all outdated Bun packages');
     listItem('spec propose <text>    Create a new OpenSpec proposal');
     listItem('spec apply [id]        Apply an approved OpenSpec change');
     listItem('spec archive [id]      Archive an OpenSpec change');

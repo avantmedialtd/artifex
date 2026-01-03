@@ -38,16 +38,16 @@
 - **Framework**: Vitest for unit and integration tests
 - **Coverage**: Aim for high test coverage on core utilities
 - **Test files**: Co-locate test files with source files using `.test.ts` suffix
-- Run tests with `npm test` (once configured)
+- Run tests with `bun test`
 
 ### Code Formatting
 
 - **Formatter**: Prettier - Industry-standard code formatter
 - **Configuration**: See `.prettierrc.json` for custom configuration (4-space indent, 100-char width, single quotes, trailing commas)
 - **Commands**:
-    - `npm run format` - Format all files
-    - `npm run format:check` - Check formatting without making changes
-    - `npm run format:write` - Explicitly format all files
+    - `bun run format` - Format all files
+    - `bun run format:check` - Check formatting without making changes
+    - `bun run format:write` - Explicitly format all files
 - **Performance**: Formatting completes in <2 seconds
 - **Integration**: Format checking runs automatically in CI/CD pipeline and pre-push hooks
 
@@ -56,9 +56,9 @@
 - **Linter**: OXLint - Fast, Rust-based linter with TypeScript support
 - **Configuration**: See `.oxlintrc.json` for rule configuration
 - **Commands**:
-    - `npm run lint` - Check code for issues
-    - `npm run lint:fix` - Auto-fix issues where possible
-    - `npm run lint:check` - Run comprehensive lint check
+    - `bun run lint` - Check code for issues
+    - `bun run lint:fix` - Auto-fix issues where possible
+    - `bun run lint:check` - Run comprehensive lint check
 - **Performance**: Linting completes in <1 second for fast feedback
 - **Rules**: Comprehensive set including correctness, suspicious patterns, and TypeScript-specific checks
 - **Integration**: Linting runs automatically in CI/CD pipeline and pre-push hooks
@@ -68,7 +68,7 @@
 - **Tool**: CSpell - Automated spell checker for code, comments, and documentation
 - **Configuration**: See `.cspell.json` for custom dictionary and ignore patterns
 - **Commands**:
-    - `npm run spell:check` - Check spelling in all files
+    - `bun run spell:check` - Check spelling in all files
 - **Scope**: Checks TypeScript, JavaScript, Markdown, and JSON files
 - **Custom Dictionary**: Project-specific terms, technical names, and proper nouns
 - **Performance**: Spell checking completes quickly by ignoring node_modules and build outputs

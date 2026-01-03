@@ -194,6 +194,36 @@ describe('Command Argument Parsing', () => {
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('Unknown npm subcommand');
     });
+
+    it('should parse bun upgrade command', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'bun', 'upgrade'],
+            process.cwd(),
+        );
+        // Should at least attempt to run
+        expect(result.exitCode).toBeDefined();
+    }, 30000);
+
+    it('should show error for bun without subcommand', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'bun'],
+            process.cwd(),
+        );
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('bun command requires a subcommand');
+    });
+
+    it('should handle invalid bun subcommand', async () => {
+        const result = await runCommand(
+            'node',
+            ['--experimental-strip-types', 'main.ts', 'bun', 'invalid'],
+            process.cwd(),
+        );
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Unknown bun subcommand');
+    });
 });
 
 describe('Spec Archive Command', () => {
