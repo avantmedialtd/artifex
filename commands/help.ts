@@ -94,6 +94,15 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
         usage: 'af licenses',
         examples: ['af licenses  # Display copyright and license details'],
     },
+    setup: {
+        description: 'Copy Claude configuration files to ~/.claude/',
+        usage: 'af setup [--list] [--force]',
+        examples: [
+            'af setup              # Copy files to ~/.claude/',
+            'af setup --list       # Preview files without copying',
+            'af setup --force      # Overwrite existing files',
+        ],
+    },
     help: {
         description: 'Display help information',
         usage: 'af help [command]',
@@ -126,6 +135,7 @@ function showGeneralHelp(): void {
     listItem('versions push          Force push version worktrees');
     listItem('jira <subcommand>      Manage Jira issues (get, list, create, etc.)');
     listItem('licenses               Show license and copyright information');
+    listItem('setup                  Copy Claude configuration files');
     listItem('help [command]         Show help for a command');
 
     section('OPTIONS');

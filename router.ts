@@ -3,6 +3,7 @@ import { handleHelp } from './commands/help.ts';
 import { handleJira } from './commands/jira.ts';
 import { handleLicenses } from './commands/licenses.ts';
 import { handleNpmUpgrade } from './commands/npm.ts';
+import { handleSetup } from './commands/setup.tsx';
 import {
     handleCommitApply,
     handleSpecApply,
@@ -153,6 +154,11 @@ export async function route(args: string[]): Promise<number> {
     // Route licenses command
     if (command === 'licenses') {
         return await handleLicenses();
+    }
+
+    // Route setup command
+    if (command === 'setup') {
+        return await handleSetup(args.slice(1));
     }
 
     // Unknown command

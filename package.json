@@ -32,6 +32,8 @@
         "test": "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
+        "generate:manifest": "bun run scripts/generate-setup-manifest.ts",
+        "precompile": "bun run generate:manifest",
         "compile": "bun run compile:all",
         "compile:all": "bun run compile:darwin-arm64 && bun run compile:darwin-x64 && bun run compile:linux-x64 && bun run compile:linux-arm64 && bun run compile:windows-x64",
         "compile:darwin-arm64": "bun build --compile --minify --target=bun-darwin-arm64 ./main.ts --outfile dist/af-darwin-arm64",
