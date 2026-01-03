@@ -1,4 +1,8 @@
 import { route } from './router.ts';
+import { loadEnv } from './utils/env.ts';
+
+// Load environment variables from .env in current working directory
+loadEnv();
 
 // Parse command-line arguments
 const args = process.argv.slice(2);

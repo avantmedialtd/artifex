@@ -78,6 +78,17 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af versions push   # Force push all version worktrees',
         ],
     },
+    jira: {
+        description: 'Manage Jira issues from the command line',
+        usage: 'af jira <subcommand> [args] [options]',
+        examples: [
+            'af jira get PROJ-123              # Get issue details',
+            'af jira list PROJ --limit 20     # List project issues',
+            'af jira search "status = Open"   # Search with JQL',
+            'af jira create --project PROJ --type Bug --summary "Title"',
+            'af jira projects                  # List all projects',
+        ],
+    },
     help: {
         description: 'Display help information',
         usage: 'af help [command]',
@@ -108,6 +119,7 @@ function showGeneralHelp(): void {
     listItem('watch                  Continuously show updated TODO items (with idle indicator)');
     listItem('versions reset         Reset version worktrees to HEAD');
     listItem('versions push          Force push version worktrees');
+    listItem('jira <subcommand>      Manage Jira issues (get, list, create, etc.)');
     listItem('help [command]         Show help for a command');
 
     section('OPTIONS');

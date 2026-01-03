@@ -27,4 +27,4 @@ description: Archive a deployed OpenSpec change and update specs.
 
 - Use `openspec list` to confirm change IDs before archiving.
 - Inspect refreshed specs with `openspec list --specs` and address any validation issues before handing off.
-      <!-- OPENSPEC:END -->
+    <!-- OPENSPEC:END -->

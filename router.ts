@@ -1,5 +1,6 @@
 import { handleChanges } from './commands/changes.ts';
 import { handleHelp } from './commands/help.ts';
+import { handleJira } from './commands/jira.ts';
 import { handleNpmUpgrade } from './commands/npm.ts';
 import {
     handleCommitApply,
@@ -119,6 +120,11 @@ export async function route(args: string[]): Promise<number> {
         // Pass true if any additional arguments were provided
         const hasArgs = args.length > 1;
         return await handleWatch(hasArgs);
+    }
+
+    // Route jira commands
+    if (command === 'jira') {
+        return await handleJira(args.slice(1));
     }
 
     // Route versions commands
