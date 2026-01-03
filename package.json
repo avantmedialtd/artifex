@@ -31,7 +31,15 @@
         "spell:check": "cspell \"**\"",
         "test": "vitest run",
         "test:watch": "vitest",
-        "test:coverage": "vitest run --coverage"
+        "test:coverage": "vitest run --coverage",
+        "compile": "bun run compile:all",
+        "compile:all": "bun run compile:darwin-arm64 && bun run compile:darwin-x64 && bun run compile:linux-x64 && bun run compile:linux-arm64 && bun run compile:windows-x64",
+        "compile:darwin-arm64": "bun build --compile --minify --target=bun-darwin-arm64 ./main.ts --outfile dist/af-darwin-arm64",
+        "compile:darwin-x64": "bun build --compile --minify --target=bun-darwin-x64 ./main.ts --outfile dist/af-darwin-x64",
+        "compile:linux-x64": "bun build --compile --minify --target=bun-linux-x64 ./main.ts --outfile dist/af-linux-x64",
+        "compile:linux-arm64": "bun build --compile --minify --target=bun-linux-arm64 ./main.ts --outfile dist/af-linux-arm64",
+        "compile:windows-x64": "bun build --compile --minify --target=bun-windows-x64 ./main.ts --outfile dist/af-windows-x64.exe",
+        "compile:current": "bun build --compile --minify ./main.ts --outfile dist/af"
     },
     "devDependencies": {
         "@types/node": "^25.0.3",
@@ -45,6 +53,7 @@
     },
     "dependencies": {
         "ink": "^6.6.0",
-        "react": "^19.2.3"
+        "react": "^19.2.3",
+        "react-devtools-core": "^7.0.1"
     }
 }

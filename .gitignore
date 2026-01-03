@@ -1,4 +1,5 @@
 /node_modules
+/dist
 
 # VSCode Extension build output
 /vscode-extension/out

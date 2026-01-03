@@ -143,12 +143,6 @@ export async function route(args: string[]): Promise<number> {
         return await handleHelp(subcommand);
     }
 
-    // Route demo command (uses dynamic import for .tsx file)
-    if (command === 'demo') {
-        const { handleDemo } = await import('./commands/demo.tsx');
-        return await handleDemo();
-    }
-
     // Unknown command
     error(`Error: Unknown command: ${command}`);
     console.error("Run 'af help' to see all available commands.");
