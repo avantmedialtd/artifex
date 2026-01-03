@@ -20,27 +20,65 @@ export interface FileInfo {
     file: SetupFile;
     targetPath: string;
     exists: boolean;
+    /** OpenCode target path for command files (null for skills) */
+    openCodePath?: string;
+    openCodeExists?: boolean;
 }
 
 /**
- * Get the target directory (user's home directory).
+ * Get the Claude target directory (user's home directory).
  */
 export function getTargetDir(): string {
     return homedir();
 }
 
 /**
+ * Get the OpenCode config directory.
+ */
+export function getOpenCodeDir(): string {
+    return join(homedir(), '.config', 'opencode');
+}
+
+/**
+ * Check if a file is a command file (not a skill).
+ */
+function isCommandFile(relativePath: string): boolean {
+    return relativePath.includes('.claude/commands/');
+}
+
+/**
+ * Get OpenCode target path for a Claude command file.
+ * Returns null for non-command files (skills are shared via ~/.claude/skills/).
+ */
+export function getOpenCodeCommandPath(claudePath: string): string | null {
+    // Only transform command files
+    if (!claudePath.includes('/commands/')) return null;
+
+    // ~/.claude/commands/foo.md → ~/.config/opencode/command/foo.md
+    return claudePath
+        .replace(join(homedir(), '.claude'), join(homedir(), '.config', 'opencode'))
+        .replace('/commands/', '/command/');
+}
+
+/**
  * List all files that would be copied, with conflict info.
+ * Includes OpenCode target paths for command files.
  */
 export function listSetupFiles(): FileInfo[] {
     const targetDir = getTargetDir();
 
     return SETUP_FILES.map(file => {
         const targetPath = join(targetDir, file.relativePath);
+        const openCodePath = isCommandFile(file.relativePath)
+            ? getOpenCodeCommandPath(targetPath)
+            : undefined;
+
         return {
             file,
             targetPath,
             exists: existsSync(targetPath),
+            openCodePath: openCodePath ?? undefined,
+            openCodeExists: openCodePath ? existsSync(openCodePath) : undefined,
         };
     });
 }
@@ -76,6 +114,7 @@ export async function copySetupFile(file: SetupFile, targetPath: string): Promis
 
 /**
  * Perform the full setup operation.
+ * Copies files to both Claude and OpenCode directories.
  * @param resolveConflict - Callback for conflict resolution
  */
 export async function performSetup(
@@ -92,7 +131,8 @@ export async function performSetup(
 
     const files = listSetupFiles();
 
-    for (const { file, targetPath, exists } of files) {
+    for (const { file, targetPath, exists, openCodePath, openCodeExists } of files) {
+        // Handle Claude target
         try {
             if (exists && !overwriteAll && !skipAll) {
                 const resolution = await resolveConflict(targetPath);
@@ -100,6 +140,10 @@ export async function performSetup(
                 if (resolution === 'skip-all') {
                     skipAll = true;
                     result.skipped.push(targetPath);
+                    // Also skip OpenCode path
+                    if (openCodePath) {
+                        result.skipped.push(openCodePath);
+                    }
                     continue;
                 }
                 if (resolution === 'overwrite-all') {
@@ -107,10 +151,17 @@ export async function performSetup(
                 }
                 if (resolution === 'skip') {
                     result.skipped.push(targetPath);
+                    // Also skip OpenCode path
+                    if (openCodePath) {
+                        result.skipped.push(openCodePath);
+                    }
                     continue;
                 }
             } else if (exists && skipAll) {
                 result.skipped.push(targetPath);
+                if (openCodePath) {
+                    result.skipped.push(openCodePath);
+                }
                 continue;
             }
 
@@ -121,6 +172,40 @@ export async function performSetup(
                 path: targetPath,
                 error: err instanceof Error ? err.message : String(err),
             });
+        }
+
+        // Handle OpenCode target (commands only)
+        if (openCodePath) {
+            try {
+                // Check for conflict on OpenCode path separately
+                if (openCodeExists && !overwriteAll && !skipAll) {
+                    const resolution = await resolveConflict(openCodePath);
+
+                    if (resolution === 'skip-all') {
+                        skipAll = true;
+                        result.skipped.push(openCodePath);
+                        continue;
+                    }
+                    if (resolution === 'overwrite-all') {
+                        overwriteAll = true;
+                    }
+                    if (resolution === 'skip') {
+                        result.skipped.push(openCodePath);
+                        continue;
+                    }
+                } else if (openCodeExists && skipAll) {
+                    result.skipped.push(openCodePath);
+                    continue;
+                }
+
+                await copySetupFile(file, openCodePath);
+                result.copied.push(openCodePath);
+            } catch (err) {
+                result.errors.push({
+                    path: openCodePath,
+                    error: err instanceof Error ? err.message : String(err),
+                });
+            }
         }
     }
 
@@ -136,3 +221,10 @@ export function getSetupFileCount(): number {
 
 // Re-export for convenience
 export { isCompiled };
+
+/**
+ * Get the count of OpenCode command files for display purposes.
+ */
+export function getOpenCodeCommandCount(): number {
+    return SETUP_FILES.filter(f => isCommandFile(f.relativePath)).length;
+}
