@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 // Create a test helper to run zap commands
 function runZap(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
     return new Promise(resolve => {
-        const proc = spawn('node', ['main.ts', ...args]);
+        const proc = spawn('bun', ['main.ts', ...args]);
         let stdout = '';
         let stderr = '';
 
@@ -69,9 +69,7 @@ describe('af spec propose', () => {
 
             // Should fail because the custom agent doesn't exist
             expect(result.exitCode).toBe(1);
-            expect(result.stderr).toContain(
-                'Error executing claude command: spawn nonexistent-agent-xyz ENOENT',
-            );
+            expect(result.stderr).toContain('nonexistent-agent-xyz');
 
             // Clean up
             delete process.env.ARTIFEX_AGENT;

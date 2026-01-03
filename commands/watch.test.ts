@@ -74,15 +74,16 @@ describe('handleWatch', () => {
 });
 
 describe('getProjectName', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
     it('should extract project name from current working directory', () => {
-        const originalCwd = process.cwd();
         vi.spyOn(process, 'cwd').mockReturnValue('/Users/dev/my-project');
 
         const projectName = getProjectName();
 
         expect(projectName).toBe('my-project');
-
-        vi.spyOn(process, 'cwd').mockReturnValue(originalCwd);
     });
 
     it('should handle root directory gracefully', () => {

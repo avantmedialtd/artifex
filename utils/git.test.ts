@@ -1,13 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import { stageDirectory, createCommit, stageAndCommit, stageAllAndCommit } from './git.ts';
 
 describe('git utilities', () => {
-    const testDir = 'test/tmp/git-test';
-    const testRepo = `${testDir}/repo`;
+    // Store original cwd at describe level to ensure proper restoration
+    const originalCwd = process.cwd();
+    // Use absolute paths to avoid path stacking issues
+    const testDir = resolve(originalCwd, 'test/tmp/git-test');
+    const testRepo = resolve(testDir, 'repo');
 
     beforeEach(() => {
+        // Always start from original cwd
+        process.chdir(originalCwd);
         // Create a temporary git repository for testing
         mkdirSync(testRepo, { recursive: true });
         execSync('git init', { cwd: testRepo, stdio: 'pipe' });
@@ -16,6 +22,8 @@ describe('git utilities', () => {
     });
 
     afterEach(() => {
+        // Always restore cwd FIRST, before cleanup
+        process.chdir(originalCwd);
         rmSync(testDir, { recursive: true, force: true });
     });
 

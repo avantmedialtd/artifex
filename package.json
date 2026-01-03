@@ -29,6 +29,7 @@
         "lint:fix": "oxlint . --fix",
         "lint:check": "oxlint .",
         "spell:check": "cspell \"**\"",
+        "pretest": "bun run generate:manifest",
         "test": "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",

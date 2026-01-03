@@ -4,6 +4,8 @@ export default defineConfig({
     test: {
         globals: true,
         environment: 'node',
+        // Run tests sequentially to avoid spawn conflicts
+        fileParallelism: false,
         coverage: {
             provider: 'v8',
             reporter: ['text', 'json', 'html'],

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as child_process from 'child_process';
+import { execSync } from 'child_process';
 import {
     isGitRepository,
     getCurrentHeadCommit,
@@ -10,15 +10,14 @@ import {
     resetWorktree,
 } from './git-worktree.js';
 
-// Mock child_process
+// Mock child_process module
 vi.mock('child_process');
 
 describe('git-worktree', () => {
-    let mockExecSync: ReturnType<typeof vi.fn>;
+    const mockExecSync = vi.mocked(execSync);
 
     beforeEach(() => {
-        mockExecSync = vi.fn();
-        vi.spyOn(child_process, 'execSync').mockImplementation(mockExecSync);
+        mockExecSync.mockReset();
     });
 
     afterEach(() => {

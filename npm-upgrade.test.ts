@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
-import * as child_process from 'child_process';
+import { spawn } from 'child_process';
 import { getOutdatedPackages, upgradePackage, upgradeAllPackages } from './npm-upgrade.js';
 
-// Mock child_process
+// Mock child_process module
 vi.mock('child_process');
 
 class MockChildProcess extends EventEmitter {
@@ -14,13 +14,12 @@ class MockChildProcess extends EventEmitter {
 }
 
 describe('npm-upgrade', () => {
-    let mockSpawn: ReturnType<typeof vi.fn>;
     let mockProcess: MockChildProcess;
+    const mockSpawn = vi.mocked(spawn);
 
     beforeEach(() => {
         mockProcess = new MockChildProcess();
-        mockSpawn = vi.fn(() => mockProcess);
-        vi.spyOn(child_process, 'spawn').mockImplementation(mockSpawn);
+        mockSpawn.mockReturnValue(mockProcess as any);
     });
 
     afterEach(() => {

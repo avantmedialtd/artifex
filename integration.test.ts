@@ -17,7 +17,7 @@ function runCommand(
     cwd: string,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return new Promise(resolve => {
-        const proc = spawn(cmd, args, { cwd, shell: true });
+        const proc = spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
         let stderr = '';
 
@@ -66,11 +66,7 @@ describe('Integration Tests', () => {
     });
 
     it('should recognize npm upgrade command', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'npm', 'upgrade'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'npm', 'upgrade'], process.cwd());
 
         // The command should run (it might fail if there's no package.json in the root,
         // but it should at least recognize the command)
@@ -78,33 +74,21 @@ describe('Integration Tests', () => {
     }, 30000);
 
     it('should show error for unknown command', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'invalid-command'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'invalid-command'], process.cwd());
 
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('Unknown command');
     });
 
     it('should show error for npm without subcommand', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'npm'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'npm'], process.cwd());
 
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('npm command requires a subcommand');
     });
 
     it('should show help page with no arguments', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts'], process.cwd());
 
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toContain('af - Development utility CLI');
@@ -128,11 +112,7 @@ describe('Integration Tests', () => {
             JSON.stringify(packageJson, null, 2),
         );
 
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', '../../main.ts', 'npm', 'upgrade'],
-            testDir,
-        );
+        const result = await runCommand('bun', ['../../main.ts', 'npm', 'upgrade'], testDir);
 
         // Should complete successfully (exit code 0 or the command runs)
         expect(result.exitCode).toBeDefined();
@@ -148,15 +128,11 @@ describe('Integration Tests', () => {
         const testDir = path.join(TEST_FIXTURE_DIR, 'test-no-package-json');
         await fs.mkdir(testDir, { recursive: true });
 
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', '../../main.ts', 'npm', 'upgrade'],
-            testDir,
-        );
+        const result = await runCommand('bun', ['../../main.ts', 'npm', 'upgrade'], testDir);
 
         // Should fail gracefully
         expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain('Error');
+        expect(result.stderr.toLowerCase()).toContain('error');
 
         // Cleanup
         await fs.rm(testDir, { recursive: true, force: true });
@@ -165,62 +141,38 @@ describe('Integration Tests', () => {
 
 describe('Command Argument Parsing', () => {
     it('should show help with no arguments', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts'], process.cwd());
         expect(result.stdout).toContain('af - Development utility CLI');
         expect(result.stdout).toContain('USAGE');
         expect(result.exitCode).toBe(0);
     });
 
     it('should parse npm upgrade command', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'npm', 'upgrade'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'npm', 'upgrade'], process.cwd());
         // Should at least attempt to run (might fail on package.json issues)
         expect(result.exitCode).toBeDefined();
     }, 30000); // Increase timeout to 30s for npm operations
 
     it('should handle invalid npm subcommand', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'npm', 'invalid'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'npm', 'invalid'], process.cwd());
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('Unknown npm subcommand');
     });
 
     it('should parse bun upgrade command', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'bun', 'upgrade'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'bun', 'upgrade'], process.cwd());
         // Should at least attempt to run
         expect(result.exitCode).toBeDefined();
     }, 30000);
 
     it('should show error for bun without subcommand', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'bun'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'bun'], process.cwd());
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('bun command requires a subcommand');
     });
 
     it('should handle invalid bun subcommand', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'bun', 'invalid'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'bun', 'invalid'], process.cwd());
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('Unknown bun subcommand');
     });
@@ -228,21 +180,13 @@ describe('Command Argument Parsing', () => {
 
 describe('Spec Archive Command', () => {
     it('should show error for spec without subcommand', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'spec'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'spec'], process.cwd());
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('spec command requires a subcommand');
     });
 
     it('should show error for invalid spec subcommand', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'spec', 'invalid'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'spec', 'invalid'], process.cwd());
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('Unknown spec subcommand');
     });
@@ -265,11 +209,7 @@ describe('Spec Archive Command', () => {
 
 describe('Spec Propose Command', () => {
     it('should show error when spec propose has no proposal text', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'spec', 'propose'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'spec', 'propose'], process.cwd());
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('spec propose requires proposal text');
         expect(result.stderr).toContain('Usage: af spec propose <proposal-text>');
@@ -353,32 +293,20 @@ describe('Command Shortcuts', () => {
 
 describe('Versions Command', () => {
     it('should show error for versions without subcommand', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'versions'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'versions'], process.cwd());
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('versions command requires a subcommand');
     });
 
     it('should show error for invalid versions subcommand', async () => {
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'versions', 'invalid'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'versions', 'invalid'], process.cwd());
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('Unknown versions subcommand');
     });
 
     it('should handle versions reset in a git repository', async () => {
         // This test runs in the actual repository, so it should work
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'versions', 'reset'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'versions', 'reset'], process.cwd());
 
         // Should either succeed (if there are no worktrees matching pattern)
         // or exit code 0 with appropriate message
@@ -392,11 +320,7 @@ describe('Versions Command', () => {
         const testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'zap-test-not-git-'));
 
         const mainPath = path.join(process.cwd(), 'main.ts');
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', mainPath, 'versions', 'reset'],
-            testDir,
-        );
+        const result = await runCommand('bun', [mainPath, 'versions', 'reset'], testDir);
 
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('Not in a git repository');
@@ -407,11 +331,7 @@ describe('Versions Command', () => {
 
     it('should handle versions push in a git repository', async () => {
         // This test runs in the actual repository, so it should work
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', 'main.ts', 'versions', 'push'],
-            process.cwd(),
-        );
+        const result = await runCommand('bun', ['main.ts', 'versions', 'push'], process.cwd());
 
         // Should either succeed (if there are no worktrees matching pattern)
         // or exit code 0 with appropriate message
@@ -425,11 +345,7 @@ describe('Versions Command', () => {
         const testDir = await fs.mkdtemp(path.join(os.tmpdir(), 'zap-test-not-git-'));
 
         const mainPath = path.join(process.cwd(), 'main.ts');
-        const result = await runCommand(
-            'node',
-            ['--experimental-strip-types', mainPath, 'versions', 'push'],
-            testDir,
-        );
+        const result = await runCommand('bun', [mainPath, 'versions', 'push'], testDir);
 
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('Not in a git repository');

@@ -4,7 +4,7 @@ import { spawn } from 'child_process';
 // Create a test helper to run zap commands
 function runZap(args: string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> {
     return new Promise(resolve => {
-        const proc = spawn('node', ['main.ts', ...args]);
+        const proc = spawn('bun', ['main.ts', ...args]);
         let stdout = '';
         let stderr = '';
 
