@@ -7,6 +7,7 @@ import { handleNpmUpgrade } from './commands/npm.ts';
 import { handleSetup } from './commands/setup.tsx';
 import {
     handleCommitApply,
+    handleCommitSave,
     handleSpecApply,
     handleSpecArchive,
     handleSpecPropose,
@@ -95,7 +96,12 @@ export async function route(args: string[]): Promise<number> {
 
     // Route commit commands
     if (command === 'commit') {
-        if (subcommand === 'apply' || !subcommand) {
+        if (subcommand === 'save') {
+            // commit save "<message>" [Key=Value...]
+            const message = args[2];
+            const trailerArgs = args.slice(3);
+            return handleCommitSave(message, trailerArgs);
+        } else if (subcommand === 'apply' || !subcommand) {
             // Both 'commit apply' and 'commit' (shorthand) do the same thing
             const changeId = subcommand === 'apply' ? args[2] : args[1];
             return await handleCommitApply(changeId);

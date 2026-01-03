@@ -1,6 +1,12 @@
 import { spawn } from 'node:child_process';
 import { getAgentCommand } from '../utils/claude.ts';
-import { stageAllAndCommit, stageAndCommit, stageDirectory } from '../utils/git.ts';
+import {
+    hasChangesToCommit,
+    stageAllAndCommit,
+    stageAllAndCommitWithTrailers,
+    stageAndCommit,
+    stageDirectory,
+} from '../utils/git.ts';
 import { listOngoingChanges } from '../utils/openspec.ts';
 import { error, info, success, warn } from '../utils/output.ts';
 import { extractProposalTitle, getLatestChangeId } from '../utils/proposal.ts';
@@ -333,4 +339,67 @@ export async function handleCommitApply(changeId: string | undefined): Promise<n
     }
 
     return commitForChange(selectedId);
+}
+
+/**
+ * Parse a Key=Value argument into a trailer object.
+ *
+ * @param arg - The argument string in Key=Value format
+ * @returns Trailer object or null if not a valid Key=Value format
+ */
+function parseTrailer(arg: string): { key: string; value: string } | null {
+    const eqIndex = arg.indexOf('=');
+    if (eqIndex === -1) {
+        return null;
+    }
+    const key = arg.substring(0, eqIndex);
+    const value = arg.substring(eqIndex + 1);
+    if (!key || !value) {
+        return null;
+    }
+    return { key, value };
+}
+
+/**
+ * Handle the 'commit save "<message>" [Key=Value...]' command.
+ * Stages all changes and commits with the provided message.
+ * Additional arguments in Key=Value format are added as git trailers.
+ *
+ * @param message - The commit message
+ * @param trailerArgs - Additional arguments that may be Key=Value trailers
+ * @returns Exit code (0 for success, 1 for error)
+ */
+export function handleCommitSave(message: string | undefined, trailerArgs: string[]): number {
+    // Validate message is provided
+    if (!message || message.trim() === '') {
+        error('Error: commit save requires a message');
+        console.error('Usage: af commit save "<message>" [Key=Value...]');
+        return 1;
+    }
+
+    // Check if there are changes to commit
+    if (!hasChangesToCommit()) {
+        info('Nothing to commit');
+        return 0;
+    }
+
+    // Parse trailers from remaining arguments
+    const trailers: Array<{ key: string; value: string }> = [];
+    for (const arg of trailerArgs) {
+        const trailer = parseTrailer(arg);
+        if (trailer) {
+            trailers.push(trailer);
+        }
+    }
+
+    // Commit with trailers
+    const result = stageAllAndCommitWithTrailers(message, trailers);
+
+    if (!result.success) {
+        error(`Error: ${result.error}`);
+        return 1;
+    }
+
+    success(`Committed: ${message}`);
+    return 0;
 }

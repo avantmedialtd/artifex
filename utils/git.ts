@@ -72,3 +72,49 @@ export function stageAllAndCommit(message: string): { success: boolean; error?: 
 
     return { success: true };
 }
+
+/**
+ * Check if there are any changes to commit.
+ *
+ * @returns true if there are staged or unstaged changes, false otherwise
+ */
+export function hasChangesToCommit(): boolean {
+    try {
+        const status = execSync('git status --porcelain', { stdio: 'pipe' }).toString();
+        return status.trim().length > 0;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Stage all changes and create a commit with optional trailers.
+ *
+ * @param message - The commit message
+ * @param trailers - Array of trailer objects with key and value
+ * @returns Object with success status and optional error message
+ */
+export function stageAllAndCommitWithTrailers(
+    message: string,
+    trailers: Array<{ key: string; value: string }> = [],
+): { success: boolean; error?: string } {
+    try {
+        execSync('git add .', { stdio: 'pipe' });
+    } catch {
+        return { success: false, error: 'Failed to stage files' };
+    }
+
+    // Build commit command with trailers
+    const trailerArgs = trailers.map(t => `--trailer "${t.key}: ${t.value}"`).join(' ');
+    const commitCmd = trailerArgs
+        ? `git commit -m "${message}" ${trailerArgs}`
+        : `git commit -m "${message}"`;
+
+    try {
+        execSync(commitCmd, { stdio: 'pipe' });
+    } catch {
+        return { success: false, error: 'Failed to create commit' };
+    }
+
+    return { success: true };
+}
