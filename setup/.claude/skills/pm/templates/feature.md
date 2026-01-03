@@ -64,15 +64,15 @@ When breaking down a feature epic, create these subtasks:
 
 ```bash
 # Create subtasks for PROJ-400 (the epic)
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Analyze requirements for email notifications" --parent PROJ-400
+af jira create --project PROJ --type Sub-task --summary "Analyze requirements for email notifications" --parent PROJ-400
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Design email notification system" --parent PROJ-400
+af jira create --project PROJ --type Sub-task --summary "Design email notification system" --parent PROJ-400
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Implement email notification backend" --parent PROJ-400
+af jira create --project PROJ --type Sub-task --summary "Implement email notification backend" --parent PROJ-400
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Implement email notification UI" --parent PROJ-400
+af jira create --project PROJ --type Sub-task --summary "Implement email notification UI" --parent PROJ-400
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Write tests for email notifications" --parent PROJ-400
+af jira create --project PROJ --type Sub-task --summary "Write tests for email notifications" --parent PROJ-400
 ```
 
 ## Definition of Done

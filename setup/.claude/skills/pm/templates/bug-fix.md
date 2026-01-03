@@ -49,13 +49,13 @@ For simple bugs, combine into fewer tasks:
 
 ```bash
 # Create subtasks for PROJ-300 (the bug)
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Reproduce login timeout bug" --parent PROJ-300
+af jira create --project PROJ --type Sub-task --summary "Reproduce login timeout bug" --parent PROJ-300
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Investigate root cause of login timeout" --parent PROJ-300
+af jira create --project PROJ --type Sub-task --summary "Investigate root cause of login timeout" --parent PROJ-300
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Fix login timeout bug" --parent PROJ-300
+af jira create --project PROJ --type Sub-task --summary "Fix login timeout bug" --parent PROJ-300
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Add regression test for login timeout" --parent PROJ-300
+af jira create --project PROJ --type Sub-task --summary "Add regression test for login timeout" --parent PROJ-300
 ```
 
 ## Investigation Checklist

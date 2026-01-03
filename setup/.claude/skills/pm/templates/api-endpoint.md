@@ -50,13 +50,13 @@ When breaking down an API endpoint epic, create these subtasks:
 
 ```bash
 # Create subtasks for PROJ-100 (the epic)
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Design user preferences API contract" --parent PROJ-100
+af jira create --project PROJ --type Sub-task --summary "Design user preferences API contract" --parent PROJ-100
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Implement user preferences controller" --parent PROJ-100
+af jira create --project PROJ --type Sub-task --summary "Implement user preferences controller" --parent PROJ-100
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Add validation for user preferences inputs" --parent PROJ-100
+af jira create --project PROJ --type Sub-task --summary "Add validation for user preferences inputs" --parent PROJ-100
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Write unit tests for user preferences endpoint" --parent PROJ-100
+af jira create --project PROJ --type Sub-task --summary "Write unit tests for user preferences endpoint" --parent PROJ-100
 ```
 
 ## Checklist

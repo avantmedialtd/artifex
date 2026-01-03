@@ -55,15 +55,15 @@ When breaking down a UI component epic, create these subtasks:
 
 ```bash
 # Create subtasks for PROJ-200 (the epic)
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Create BookingCalendar component structure" --parent PROJ-200
+af jira create --project PROJ --type Sub-task --summary "Create BookingCalendar component structure" --parent PROJ-200
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Implement BookingCalendar styling" --parent PROJ-200
+af jira create --project PROJ --type Sub-task --summary "Implement BookingCalendar styling" --parent PROJ-200
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Connect BookingCalendar to booking API" --parent PROJ-200
+af jira create --project PROJ --type Sub-task --summary "Connect BookingCalendar to booking API" --parent PROJ-200
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Write tests for BookingCalendar" --parent PROJ-200
+af jira create --project PROJ --type Sub-task --summary "Write tests for BookingCalendar" --parent PROJ-200
 
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Add E2E test for BookingCalendar flow" --parent PROJ-200
+af jira create --project PROJ --type Sub-task --summary "Add E2E test for BookingCalendar flow" --parent PROJ-200
 ```
 
 ## Checklist

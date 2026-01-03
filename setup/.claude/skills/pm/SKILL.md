@@ -1,11 +1,11 @@
 ---
 name: pm
-description: Project management workflows for sprint planning, epic breakdowns, progress reporting, and backlog grooming. Uses the jira-cli skill for all Jira operations.
+description: Project management workflows for sprint planning, epic breakdowns, progress reporting, and backlog grooming. Uses the jira skill for all Jira operations.
 ---
 
 # Project Manager Skill
 
-High-level project management workflows that use the Jira CLI (`jira-cli` skill) for operations.
+High-level project management workflows that use the Jira CLI (`jira` skill) for operations.
 
 ## When to Use This Skill
 
@@ -17,11 +17,11 @@ Use the PM skill when the user wants to:
 - Get project context for informed planning decisions
 - Groom or refine the backlog
 
-For individual issue operations (get, update, transition, comment), use the `jira-cli` skill directly.
+For individual issue operations (get, update, transition, comment), use the `jira` skill directly.
 
 ## Prerequisites
 
-The `jira-cli` skill must be configured. See `.claude/skills/jira/SKILL.md` for setup.
+The `jira` skill must be configured. See `.claude/skills/jira/SKILL.md` for setup.
 
 ## Sub-Agent Behavior
 
@@ -33,13 +33,13 @@ Before planning or making recommendations, gather project state:
 
 ```bash
 # Get open sprint issues
-./scripts/jira/jira.ts search "project = PROJ AND sprint in openSprints() ORDER BY priority DESC"
+af jira search "project = PROJ AND sprint in openSprints() ORDER BY priority DESC"
 
 # Check for blockers
-./scripts/jira/jira.ts search "project = PROJ AND (status = Blocked OR labels = blocked)"
+af jira search "project = PROJ AND (status = Blocked OR labels = blocked)"
 
 # Recent activity (last 48h)
-./scripts/jira/jira.ts search "project = PROJ AND updated >= -2d ORDER BY updated DESC"
+af jira search "project = PROJ AND updated >= -2d ORDER BY updated DESC"
 ```
 
 ### 2. Use Templates for Consistency
@@ -78,16 +78,16 @@ Gather comprehensive project state before planning:
 
 ```bash
 # 1. Active sprint overview
-./scripts/jira/jira.ts search "project = PROJ AND sprint in openSprints() ORDER BY status ASC, priority DESC" --limit 50
+af jira search "project = PROJ AND sprint in openSprints() ORDER BY status ASC, priority DESC" --limit 50
 
 # 2. Blocked issues requiring attention
-./scripts/jira/jira.ts search "project = PROJ AND (status = Blocked OR labels = blocked) ORDER BY priority DESC"
+af jira search "project = PROJ AND (status = Blocked OR labels = blocked) ORDER BY priority DESC"
 
 # 3. Upcoming deadlines (next 7 days)
-./scripts/jira/jira.ts search "project = PROJ AND duedate >= now() AND duedate <= 7d AND status != Done ORDER BY duedate ASC"
+af jira search "project = PROJ AND duedate >= now() AND duedate <= 7d AND status != Done ORDER BY duedate ASC"
 
 # 4. Unassigned high-priority items
-./scripts/jira/jira.ts search "project = PROJ AND assignee IS EMPTY AND priority in (Highest, High) ORDER BY created ASC"
+af jira search "project = PROJ AND assignee IS EMPTY AND priority in (Highest, High) ORDER BY created ASC"
 ```
 
 Present findings organized by:
@@ -102,13 +102,13 @@ Help plan upcoming sprints:
 
 ```bash
 # 1. Check current sprint velocity (completed in last sprint)
-./scripts/jira/jira.ts search "project = PROJ AND sprint in closedSprints() AND status = Done ORDER BY resolutiondate DESC" --limit 30
+af jira search "project = PROJ AND sprint in closedSprints() AND status = Done ORDER BY resolutiondate DESC" --limit 30
 
 # 2. Get backlog candidates (not in any sprint, prioritized)
-./scripts/jira/jira.ts search "project = PROJ AND sprint IS EMPTY AND status = Backlog ORDER BY priority DESC, created ASC" --limit 30
+af jira search "project = PROJ AND sprint IS EMPTY AND status = Backlog ORDER BY priority DESC, created ASC" --limit 30
 
 # 3. Check team capacity (assigned work)
-./scripts/jira/jira.ts search "project = PROJ AND assignee IS NOT EMPTY AND status != Done"
+af jira search "project = PROJ AND assignee IS NOT EMPTY AND status != Done"
 ```
 
 Planning steps:
@@ -123,10 +123,10 @@ Break down an epic into implementable tasks:
 
 ```bash
 # 1. Get epic details
-./scripts/jira/jira.ts get PROJ-123
+af jira get PROJ-123
 
 # 2. Check for existing subtasks
-./scripts/jira/jira.ts search "parent = PROJ-123"
+af jira search "parent = PROJ-123"
 ```
 
 Breakdown process:
@@ -137,7 +137,7 @@ Breakdown process:
 5. Create subtasks after confirmation:
 
 ```bash
-./scripts/jira/jira.ts create --project PROJ --type Sub-task --summary "Task title" --parent PROJ-123
+af jira create --project PROJ --type Sub-task --summary "Task title" --parent PROJ-123
 ```
 
 ### Progress Report
@@ -147,31 +147,31 @@ Generate status reports:
 **Daily Report:**
 ```bash
 # Completed yesterday
-./scripts/jira/jira.ts search "project = PROJ AND status changed to Done AFTER -1d"
+af jira search "project = PROJ AND status changed to Done AFTER -1d"
 
 # In progress today
-./scripts/jira/jira.ts search "project = PROJ AND status = 'In Progress' ORDER BY assignee"
+af jira search "project = PROJ AND status = 'In Progress' ORDER BY assignee"
 
 # Blocked
-./scripts/jira/jira.ts search "project = PROJ AND (status = Blocked OR labels = blocked)"
+af jira search "project = PROJ AND (status = Blocked OR labels = blocked)"
 ```
 
 **Weekly Report:**
 ```bash
 # Completed this week
-./scripts/jira/jira.ts search "project = PROJ AND status changed to Done AFTER -7d ORDER BY resolutiondate DESC"
+af jira search "project = PROJ AND status changed to Done AFTER -7d ORDER BY resolutiondate DESC"
 
 # Created this week
-./scripts/jira/jira.ts search "project = PROJ AND created >= -7d ORDER BY created DESC"
+af jira search "project = PROJ AND created >= -7d ORDER BY created DESC"
 
 # Scope changes (added to sprint mid-week)
-./scripts/jira/jira.ts search "project = PROJ AND sprint in openSprints() AND created >= -7d"
+af jira search "project = PROJ AND sprint in openSprints() AND created >= -7d"
 ```
 
 **Sprint Report:**
 ```bash
 # Sprint completion
-./scripts/jira/jira.ts search "project = PROJ AND sprint in openSprints()" --limit 100
+af jira search "project = PROJ AND sprint in openSprints()" --limit 100
 
 # Calculate: done / total issues
 # Identify: carried over items, added mid-sprint items
@@ -183,13 +183,13 @@ Generate daily standup content from Jira activity:
 
 ```bash
 # Done (status changed to Done in last 24h)
-./scripts/jira/jira.ts search "project = PROJ AND status changed to Done AFTER -1d"
+af jira search "project = PROJ AND status changed to Done AFTER -1d"
 
 # In Progress (currently being worked on)
-./scripts/jira/jira.ts search "project = PROJ AND status = 'In Progress' AND assignee = currentUser()"
+af jira search "project = PROJ AND status = 'In Progress' AND assignee = currentUser()"
 
 # Blockers
-./scripts/jira/jira.ts search "project = PROJ AND (status = Blocked OR labels = blocked) AND assignee = currentUser()"
+af jira search "project = PROJ AND (status = Blocked OR labels = blocked) AND assignee = currentUser()"
 ```
 
 Format as:
@@ -203,19 +203,19 @@ Find issues that need attention:
 
 ```bash
 # Overdue (past due date, not done)
-./scripts/jira/jira.ts search "project = PROJ AND duedate < now() AND status != Done ORDER BY duedate ASC"
+af jira search "project = PROJ AND duedate < now() AND status != Done ORDER BY duedate ASC"
 
 # Stale (no updates in 7+ days, not done)
-./scripts/jira/jira.ts search "project = PROJ AND status != Done AND updated < -7d ORDER BY updated ASC"
+af jira search "project = PROJ AND status != Done AND updated < -7d ORDER BY updated ASC"
 
 # Blocked
-./scripts/jira/jira.ts search "project = PROJ AND (status = Blocked OR labels = blocked)"
+af jira search "project = PROJ AND (status = Blocked OR labels = blocked)"
 
 # Scope creep (added to sprint after start)
-./scripts/jira/jira.ts search "project = PROJ AND sprint in openSprints() AND created >= startOfSprint()"
+af jira search "project = PROJ AND sprint in openSprints() AND created >= startOfSprint()"
 
 # Under-resourced (unassigned high priority)
-./scripts/jira/jira.ts search "project = PROJ AND assignee IS EMPTY AND priority in (Highest, High) AND status != Done"
+af jira search "project = PROJ AND assignee IS EMPTY AND priority in (Highest, High) AND status != Done"
 ```
 
 Categorize and present:
@@ -229,10 +229,10 @@ Help prioritize and refine backlog:
 
 ```bash
 # Get backlog items
-./scripts/jira/jira.ts search "project = PROJ AND sprint IS EMPTY AND status = Backlog ORDER BY created ASC" --limit 50
+af jira search "project = PROJ AND sprint IS EMPTY AND status = Backlog ORDER BY created ASC" --limit 50
 
 # Check for duplicates or related items
-./scripts/jira/jira.ts search "project = PROJ AND summary ~ 'keyword'"
+af jira search "project = PROJ AND summary ~ 'keyword'"
 ```
 
 Grooming activities:
@@ -246,7 +246,7 @@ Grooming activities:
 
 To update priority after confirmation:
 ```bash
-./scripts/jira/jira.ts update PROJ-123 --priority High
+af jira update PROJ-123 --priority High
 ```
 
 ### Dependency Analysis
@@ -255,13 +255,13 @@ Map dependencies for an issue:
 
 ```bash
 # Get issue with links
-./scripts/jira/jira.ts get PROJ-123
+af jira get PROJ-123
 
 # Find related issues by summary/labels
-./scripts/jira/jira.ts search "project = PROJ AND (summary ~ 'related-keyword' OR labels = related-label)"
+af jira search "project = PROJ AND (summary ~ 'related-keyword' OR labels = related-label)"
 
 # Find potential blockers (same component, earlier in pipeline)
-./scripts/jira/jira.ts search "project = PROJ AND component = 'Component' AND status != Done"
+af jira search "project = PROJ AND component = 'Component' AND status != Done"
 ```
 
 Present as:
@@ -291,4 +291,4 @@ Common queries for project management:
 - **Replace PROJ**: Substitute with actual project key in all queries
 - **Adjust time ranges**: `-7d`, `-2d`, etc. can be customized
 - **Use --json for parsing**: When you need to analyze results programmatically
-- **Combine with jira-cli**: This skill provides workflows; jira-cli provides operations
+- **Combine with jira**: This skill provides workflows; jira provides operations
