@@ -38,7 +38,7 @@ describe('af commit apply', () => {
 
             expect(result.exitCode).toBe(0);
             expect(result.stdout).toContain('af commit');
-            expect(result.stdout).toContain('Commit all changes');
+            expect(result.stdout).toContain('Commit changes with message and optional trailers');
         });
     });
 });
