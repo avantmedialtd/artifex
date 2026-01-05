@@ -13,7 +13,7 @@
  *   npm run e2e -- --workers 2 --max-failures=1
  *
  * Always appended:
- *   --reporter=./copy-prompt-reporter.js,html   # AI-friendly + HTML reports
+ *   --reporter=./copy-prompt-reporter.ts,html   # AI-friendly + HTML reports
  *
  * Environment:
  *   CI=1                 # Show verbose command output
@@ -25,7 +25,9 @@
  */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { extractResource } from '../utils/resources.ts';
 
 const SHOW_AGENT_DETAILS = !!process.env.CI;
 const SHOULD_SHOW_SPINNER = !process.env.CI;
@@ -273,6 +275,25 @@ async function main() {
 
     clearPreviousLine();
     logSuccess('All services ready');
+
+    // Copy reporter to container
+    logInfo('Copying test reporter to container');
+    const tempReporterPath = path.join(tmpdir(), 'copy-prompt-reporter.ts');
+    try {
+        await extractResource('copy-prompt-reporter.ts', tempReporterPath);
+        const copyReporterCode = await compose(
+            ['cp', tempReporterPath, 'e2e:/workspace/copy-prompt-reporter.ts'],
+            { profileTesting: true, allowFailure: false },
+        );
+        if (copyReporterCode !== 0) {
+            throw new Error(`docker compose cp failed with exit code ${copyReporterCode}`);
+        }
+        clearPreviousLine();
+        logSuccess('Test reporter copied to container');
+    } catch (err) {
+        logError(`Failed to copy test reporter: ${err instanceof Error ? err.message : err}`);
+        process.exit(1);
+    }
 
     // Step 2: Run E2E tests
     logStep('Running E2E tests');
