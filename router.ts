@@ -5,6 +5,7 @@ import { handleHelp } from './commands/help.ts';
 import { handleJira } from './commands/jira.ts';
 import { handleLicenses } from './commands/licenses.ts';
 import { handleNpmUpgrade } from './commands/npm.ts';
+import { handleScaffold } from './commands/scaffold.ts';
 import { handleSetup } from './commands/setup.tsx';
 import {
     handleCommitApply,
@@ -182,6 +183,11 @@ export async function route(args: string[]): Promise<number> {
     // Route licenses command
     if (command === 'licenses') {
         return await handleLicenses();
+    }
+
+    // Route scaffold command
+    if (command === 'scaffold') {
+        return handleScaffold(args.slice(1));
     }
 
     // Route setup command
