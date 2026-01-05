@@ -6,10 +6,10 @@
 
 ```typescript
 // In beforeEach
-await page.goto(process.env.AREA51_WEB_URL ?? '');
+await page.goto(process.env.BASE_URL ?? '');
 
 // Navigate to specific pages in tests
-await page.goto(`${process.env.AREA51_WEB_URL ?? ''}/page-path`);
+await page.goto(`${process.env.BASE_URL ?? ''}/page-path`);
 ```
 
 ### Strict Mode Compliance
@@ -30,11 +30,8 @@ getByText('Complete checkout') // not getByText('checkout')
 ### Test Organization
 
 - Group tests by page/feature
-- Follow patterns in `area51-web-*.spec.ts` files
-- Each test file uses dedicated booking IDs:
-  - `CheckinApi.spec.ts`: booking9 (Sarah Thompson)
-  - `area51-web-checkin.spec.ts`: booking6 (Emily Johnson)
-  - `area51-web-contact.spec.ts`: No booking needed
+- Each test file should use dedicated test data to avoid conflicts
+- Document which test data is used at the top of each file
 
 ## Visual Regression Testing
 
@@ -47,6 +44,7 @@ getByText('Complete checkout') // not getByText('checkout')
 ### When to Update Baselines
 
 Update for **intentional** design changes:
+
 - CSS modifications
 - Layout adjustments
 - Responsive design changes
@@ -55,28 +53,28 @@ Update for **intentional** design changes:
 
 ```bash
 # Update all
-./scripts/update-visual-baselines.ts
+af e2e npm run e2e -- --update-snapshots
 
 # Update specific test
-./scripts/update-visual-baselines.ts homepage
+af e2e npm run e2e -- --grep "page name" --update-snapshots
 ```
 
 ### Visual Test Pattern
 
 ```typescript
 test(
-  'should match homepage visual baseline',
-  { tag: ['@area51-web', '@visual'] },
+  'should match visual baseline',
+  { tag: ['@feature', '@visual'] },
   async ({ page }) => {
-    await openPage(page, 'area51-web', '/');
+    await page.goto(process.env.BASE_URL ?? '');
 
     // Wait for key element (NOT networkidle)
     await expect(
-      page.getByRole('heading', { name: 'Area 51 Budapest', level: 1 })
+      page.getByRole('heading', { name: 'Title', level: 1 })
     ).toBeVisible();
 
     // Capture screenshot
-    await expect(page).toHaveScreenshot('homepage.png', {
+    await expect(page).toHaveScreenshot('page.png', {
       fullPage: true,
     });
   },
@@ -84,15 +82,6 @@ test(
 ```
 
 **Important:** Never use `waitForLoadState('networkidle')` - it's unreliable and causes timeouts.
-
-### Current Visual Test Coverage
-
-- Homepage: Hero, features, CTA sections
-- Booking Page: Form with date pickers, payment
-- Contact Page: Contact info and forms
-- Legal Pages: Cancellation and refund policies
-
-All tests run across 10 viewport configurations.
 
 ## Debugging Tips
 

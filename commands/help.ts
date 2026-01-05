@@ -62,6 +62,14 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
         usage: 'af changes',
         examples: ['af changes  # Show all active OpenSpec changes'],
     },
+    e2e: {
+        description: 'Run E2E tests in a fresh Docker environment',
+        usage: 'af e2e [args...]',
+        examples: [
+            'af e2e                                        # Run all tests with defaults',
+            'af e2e npm run e2e -- --grep "booking"   # Custom command',
+        ],
+    },
     todo: {
         description: 'Show all TODO items from active OpenSpec changes',
         usage: 'af todo',
@@ -137,6 +145,7 @@ function showGeneralHelp(): void {
     listItem('commit save <msg>      Commit all changes with message and trailers');
     listItem('commit [apply] [id]    Commit all changes with "Apply: <title>"');
     listItem('changes                List all OpenSpec changes');
+    listItem('e2e [args...]          Run E2E tests in Docker');
     listItem('todo                   Show all TODO items from active changes');
     listItem('watch                  Continuously show updated TODO items (with idle indicator)');
     listItem('versions reset         Reset version worktrees to HEAD');

@@ -1,5 +1,6 @@
 import { handleBunUpgrade } from './commands/bun.ts';
 import { handleChanges } from './commands/changes.ts';
+import { handleE2e } from './commands/e2e.ts';
 import { handleHelp } from './commands/help.ts';
 import { handleJira } from './commands/jira.ts';
 import { handleLicenses } from './commands/licenses.ts';
@@ -132,6 +133,11 @@ export async function route(args: string[]): Promise<number> {
         // Pass true if any additional arguments were provided
         const hasArgs = args.length > 1;
         return await handleChanges(hasArgs);
+    }
+
+    // Route e2e command
+    if (command === 'e2e') {
+        return await handleE2e(args.slice(1));
     }
 
     if (command === 'todo') {

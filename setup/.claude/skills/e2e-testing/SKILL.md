@@ -5,22 +5,22 @@ description: E2E and visual regression testing with Playwright. Use when writing
 
 # E2E Testing Guide
 
-Playwright-based E2E and visual regression testing for area51-web.
+Playwright-based E2E and visual regression testing.
 
 ## Quick Reference
 
 ```bash
 # Run all tests
-CI=1 FAIL_FAST=1 ./scripts/e2e_tests.ts
+CI=1 af e2e
 
 # Run specific test
-CI=1 FAIL_FAST=1 ./scripts/e2e_tests.ts -- --grep "booking flow"
+CI=1 af e2e npm run e2e -- --grep "test name"
 
 # Run specific file
-CI=1 FAIL_FAST=1 ./scripts/e2e_tests.ts -- Homepage.spec.ts
+CI=1 af e2e npm run e2e -- Feature.spec.ts
 
 # Update visual baselines
-./scripts/update-visual-baselines.ts
+af e2e npm run e2e -- --update-snapshots
 ```
 
 ## Critical Requirements
@@ -29,7 +29,7 @@ CI=1 FAIL_FAST=1 ./scripts/e2e_tests.ts -- Homepage.spec.ts
 - **ALWAYS run E2E tests** after code changes
 - **NEVER run tests outside Docker**
 - **Read `error-context.md`** in `./test-results/` for DOM state at failure
-- **ALWAYS** confirm all tests are passing by running all tests after you believe you are finished.
+- **ALWAYS** confirm all tests are passing by running all tests after you believe you are finished
 
 ## Output Directories
 
@@ -37,6 +37,8 @@ CI=1 FAIL_FAST=1 ./scripts/e2e_tests.ts -- Homepage.spec.ts
 - `test-results/` - Failure artifacts including `error-context.md`
 
 For test patterns and visual testing, see [PATTERNS.md](PATTERNS.md).
+
+---
 
 # E2E Testing Skill
 
@@ -47,20 +49,22 @@ You are now in E2E testing mode. Help the user write new tests or debug failing 
 **Only use this command:**
 
 ```bash
-CI=1 FAIL_FAST=1 ./scripts/e2e_tests.ts
+CI=1 af e2e
 ```
 
 **For faster iteration on specific tests:**
 
 ```bash
-CI=1 FAIL_FAST=1 ./scripts/e2e_tests.ts -- --grep "test name pattern"
+CI=1 af e2e npm run e2e -- --grep "test name pattern"
 ```
 
 **For specific test file:**
 
 ```bash
-CI=1 FAIL_FAST=1 ./scripts/e2e_tests.ts -- Homepage.spec.ts
+CI=1 af e2e npm run e2e -- Feature.spec.ts
 ```
+
+**Note:** The test runner output is already context-efficient. Do NOT pipe to `head`, `tail`, or other commands to reduce output - the reporter is optimized for AI consumption.
 
 ## Debugging Failures
 
@@ -72,26 +76,17 @@ When tests fail:
 
 ## Writing Tests
 
-### File Structure
-
-Tests go in `e2e/tests/`. Use these naming conventions:
-
-- `area51-web-*.spec.ts` - area51-web specific tests
-- `area51-web-visual-*.spec.ts` - visual regression tests
-- Feature-based names for cross-app tests (e.g., `BookingJourney.spec.ts`)
-
 ### Basic Test Pattern
 
 ```typescript
 import { expect, test } from '@playwright/test';
-import openPage from '../steps/openPage';
 
 test.describe('Feature Name', () => {
   test.beforeEach(async ({ page }) => {
-    await openPage(page, 'area51-web', '/');
+    await page.goto(process.env.BASE_URL ?? '');
   });
 
-  test('should do something', { tag: '@area51-web' }, async ({ page }) => {
+  test('should do something', { tag: '@feature' }, async ({ page }) => {
     // Test implementation
   });
 });
@@ -99,66 +94,28 @@ test.describe('Feature Name', () => {
 
 ### Navigation
 
-Always use `openPage` helper:
+Use a consistent navigation helper or direct page.goto:
 
 ```typescript
+// Direct navigation
+await page.goto(`${process.env.BASE_URL}/path`);
+
+// Or use a project-specific helper
 import openPage from '../steps/openPage';
-
-// area51-web
-await openPage(page, 'area51-web', '/book');
-
-// hosting-web
-await openPage(page, 'hosting-web', '/1/calendar');
+await openPage(page, 'app-name', '/path');
 ```
-
-### Hosting-Web Login Patterns
-
-For tests requiring authentication in hosting-web:
-
-**Multi-property user (istvan - globalAdmin):**
-
-```typescript
-import selectProperty from '../steps/selectProperty';
-
-await openPage(page, 'hosting-web', '/');
-await page.getByLabel('Username').fill(process.env.TEST_ADMIN_USER!);
-await page.getByLabel('Password').fill(process.env.TEST_ADMIN_PASSWORD!);
-await page.getByRole('button', { name: 'Login' }).click();
-
-// Must select property when user has access to multiple
-await selectProperty(page, 'Area 51 Budapest ID: 1');
-await expect(page.getByRole('heading', { name: 'Bookings' })).toBeVisible({ timeout: 20000 });
-```
-
-**Single-property user (demo - Heavenly Haven only):**
-
-When a user has access to only one property, the property selection dialog auto-selects and redirects. Don't call `selectProperty`:
-
-```typescript
-await openPage(page, 'hosting-web', '/');
-await page.getByLabel('Username').fill('demo');
-await page.getByLabel('Password').fill(process.env.TEST_ADMIN_PASSWORD!);
-await page.getByRole('button', { name: 'Login' }).click();
-
-// No selectProperty needed - auto-redirects to Heavenly Haven
-await expect(page.getByRole('heading', { name: 'Bookings' })).toBeVisible({ timeout: 20000 });
-```
-
-**Seed data users:**
-
-- `istvan` (globalAdmin): Access to all properties
-- `demo` (propertyAdmin): Access to Heavenly Haven (ID: 2) only
 
 ### Tags
 
-Apply appropriate tags to tests:
+Apply appropriate tags to tests for filtering:
 
-- `@area51-web` - area51-web tests
-- `@hosting-web` - hosting-web tests
-- `@hosting-server` - API tests
-- `@visual` - visual regression tests
+```typescript
+// Single tag
+test('should work', { tag: '@api' }, async ({ page }) => {});
 
-Multiple tags: `{ tag: ['@area51-web', '@visual'] }`
+// Multiple tags
+test('should work', { tag: ['@feature', '@visual'] }, async ({ page }) => {});
+```
 
 ### Selector Patterns
 
@@ -176,13 +133,13 @@ await expect(page.getByRole('heading', { name: 'Title' })).toBeVisible();
 
 ```typescript
 const heroSection = page.locator('section').first();
-await expect(heroSection.getByText('Premium Industrial Loft')).toBeVisible();
+await expect(heroSection.getByText('Welcome')).toBeVisible();
 ```
 
 **Use `.first()` when multiple matches are acceptable:**
 
 ```typescript
-await expect(page.getByText('€800').first()).toBeVisible();
+await expect(page.getByText('Item').first()).toBeVisible();
 ```
 
 **Handle mobile vs desktop:**
@@ -200,15 +157,15 @@ if (isMobile) {
 
 ```typescript
 test(
-  'should match homepage visual baseline',
-  { tag: ['@area51-web', '@visual'] },
+  'should match visual baseline',
+  { tag: ['@feature', '@visual'] },
   async ({ page }) => {
-    await openPage(page, 'area51-web', '/');
+    await page.goto(process.env.BASE_URL ?? '');
 
     // Wait for key element - NEVER use networkidle
-    await expect(page.getByRole('heading', { name: 'Area 51 Budapest', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Title', level: 1 })).toBeVisible();
 
-    await expect(page).toHaveScreenshot('homepage.png', {
+    await expect(page).toHaveScreenshot('page-name.png', {
       fullPage: true,
     });
   },
@@ -218,46 +175,38 @@ test(
 **Update baselines (Docker only):**
 
 ```bash
-./scripts/update-visual-baselines.ts
-./scripts/update-visual-baselines.ts homepage  # specific test
+af e2e npm run e2e -- --update-snapshots
+af e2e npm run e2e -- --grep "page name" --update-snapshots  # specific test
 ```
 
 ### Masking Dynamic Content in Visual Tests
 
-When testing pages with dynamic content (dates, counts, revenue), use the `mask` option to hide elements that change between test runs:
+When testing pages with dynamic content (dates, counts, etc.), use the `mask` option:
 
-**Option 1: Use data-testid attributes (recommended for reliable masking)**
-
-Add `data-testid` to dynamic elements in production code:
+**Option 1: Use data-testid attributes (recommended)**
 
 ```tsx
 // In component
-<Box data-testid="notification-button">{totalCount} Actions</Box>
+<Box data-testid="dynamic-content">{count} Items</Box>
 ```
 
 Then mask in test:
 
 ```typescript
-await expect(page).toHaveScreenshot('dashboard.png', {
+await expect(page).toHaveScreenshot('page.png', {
   fullPage: true,
-  mask: [page.locator('[data-testid="notification-button"]')],
+  mask: [page.locator('[data-testid="dynamic-content"]')],
 });
 ```
 
 **Option 2: Use CSS selectors or text patterns**
 
 ```typescript
-await expect(page).toHaveScreenshot('dashboard.png', {
+await expect(page).toHaveScreenshot('page.png', {
   fullPage: true,
   mask: [
-    // Mask by CSS class
-    page.locator('.MuiCard-root'),
-
-    // Mask all headings (month/year headers with revenue)
+    page.locator('.dynamic-class'),
     page.locator('h2'),
-    page.locator('h3'),
-
-    // Mask by text pattern (less reliable)
     page.locator('text=/\\d+ days|today|tomorrow/'),
   ],
 });
@@ -267,23 +216,22 @@ await expect(page).toHaveScreenshot('dashboard.png', {
 
 - Prefer `data-testid` for precise, reliable masking
 - Text pattern matching (`text=/regex/`) can be fragile with nested elements
-- If too much content is dynamic, the page may not be suitable for visual regression testing
 - Masked areas appear as pink rectangles in screenshots
 
 ### API Tests
 
 ```typescript
-test('should handle API request', { tag: '@hosting-server' }, async ({ request }) => {
-  const baseApiUrl = process.env.HOSTING_SERVER_URL;
+test('should handle API request', { tag: '@api' }, async ({ request }) => {
+  const baseUrl = process.env.API_URL;
 
-  const response = await request.post(`${baseApiUrl}/graphql`, {
+  const response = await request.post(`${baseUrl}/graphql`, {
     data: {
       query: `query { ... }`,
       variables: { id: 1 },
     },
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `bearer ${testKey}`,
+      Authorization: `bearer ${authToken}`,
     },
   });
 
@@ -293,32 +241,28 @@ test('should handle API request', { tag: '@hosting-server' }, async ({ request }
 
 ### Test Data
 
-Each test file should use dedicated booking IDs to avoid conflicts:
-
-- Document which booking IDs are used at the top of the file
-- Use seed data keys (generated SHA1 hashes), never mock keys
+- Each test file should use dedicated test data to avoid conflicts
+- Document which test data is used at the top of the file
+- Use real generated keys from seed data, never mock keys
 
 ```typescript
-// Real keys generated from seed data - DEDICATED TO this-test.spec.ts
-const testKeys = {
-  booking6: 'guest;6;d01326200b96edc6a7118034966619859aa1ca28',
-  booking9: 'guest;9;04488338939dccfe1ae3d6d82c831224baab955f',
-};
+// Document test data at top of file
+// DEDICATED TO this-test.spec.ts: booking ID 6, user "testuser"
 ```
 
-### Date Handling for Bookings
+### Date Handling
 
 Use future dates with unique offsets to avoid conflicts:
 
 ```typescript
 const unique = Date.now();
 const uniqueYear = 2030 + Math.floor((unique % 1000000) / 10000) + 1;
-const checkinDate = new Date(uniqueYear, 0, 15);
+const testDate = new Date(uniqueYear, 0, 15);
 ```
 
 ### File Upload Tests
 
-Use minimal valid JPEG for upload tests:
+Use minimal valid files for upload tests:
 
 ```typescript
 const VALID_JPEG_IMAGE = Buffer.from(
@@ -332,7 +276,7 @@ const VALID_JPEG_IMAGE = Buffer.from(
 Mark long-running tests:
 
 ```typescript
-test('should complete booking flow', async ({ page }) => {
+test('should complete flow', async ({ page }) => {
   test.slow(); // Triples timeout
   // ...
 });
@@ -341,7 +285,7 @@ test('should complete booking flow', async ({ page }) => {
 ### Retries for Flaky Tests
 
 ```typescript
-test.describe('Booking Journey', () => {
+test.describe('Feature', () => {
   test.describe.configure({ retries: 10 });
   // ...
 });
@@ -362,7 +306,7 @@ test.describe('Booking Journey', () => {
 - Wait for specific visible elements before assertions
 - Use `level` parameter for heading selectors
 - Scope selectors to avoid strict mode violations
-- Run tests via `CI=1 FAIL_FAST=1 ./scripts/e2e_tests.ts`
+- Run tests via `CI=1 af e2e`
 - Read `error-context.md` for debugging failures
 
 ## Workflow
@@ -380,5 +324,5 @@ test.describe('Booking Journey', () => {
    - Fix selectors based on actual DOM
 
 3. **Visual regression failures:**
-   - If intentional change: update baseline with `./scripts/update-visual-baselines.ts`
+   - If intentional change: update baseline with `af e2e npm run e2e -- --update-snapshots`
    - If unintentional: fix the CSS/layout issue
