@@ -57,6 +57,18 @@ export function formatIssue(issue: JiraIssue): string {
         lines.push(`| Parent | ${f.parent.key}: ${f.parent.fields.summary} |`);
     }
 
+    // Time tracking
+    if (f.timetracking) {
+        const tt = f.timetracking;
+        if (tt.originalEstimate || tt.remainingEstimate || tt.timeSpent) {
+            const parts: string[] = [];
+            if (tt.originalEstimate) parts.push(`Original: ${tt.originalEstimate}`);
+            if (tt.remainingEstimate) parts.push(`Remaining: ${tt.remainingEstimate}`);
+            if (tt.timeSpent) parts.push(`Spent: ${tt.timeSpent}`);
+            lines.push(`| Estimate | ${parts.join(' / ')} |`);
+        }
+    }
+
     // Description
     const description = adfToText(f.description);
     if (description) {
@@ -106,16 +118,18 @@ export function formatIssueList(result: JiraSearchResult): string {
         return lines.join('\n');
     }
 
-    lines.push(`| Key | Type | Status | Summary | Assignee |`);
-    lines.push(`|-----|------|--------|---------|----------|`);
+    lines.push(`| Key | Type | Status | Summary | Assignee | Estimate |`);
+    lines.push(`|-----|------|--------|---------|----------|----------|`);
 
     for (const issue of result.issues) {
         const f = issue.fields;
         const assignee = f.assignee?.displayName ?? 'Unassigned';
         // Truncate summary if too long
         const summary = f.summary.length > 50 ? f.summary.slice(0, 47) + '...' : f.summary;
+        const estimate =
+            f.timetracking?.remainingEstimate ?? f.timetracking?.originalEstimate ?? '-';
         lines.push(
-            `| ${issue.key} | ${f.issuetype.name} | ${f.status.name} | ${summary} | ${assignee} |`,
+            `| ${issue.key} | ${f.issuetype.name} | ${f.status.name} | ${summary} | ${assignee} | ${estimate} |`,
         );
     }
 

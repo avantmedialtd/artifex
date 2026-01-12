@@ -376,6 +376,7 @@ export async function createIssue(
     priority?: string,
     labels?: string[],
     parentKey?: string,
+    originalEstimate?: string,
 ): Promise<JiraIssue> {
     const body: JiraCreateIssueRequest = {
         fields: {
@@ -397,6 +398,9 @@ export async function createIssue(
     if (parentKey) {
         body.fields.parent = { key: parentKey };
     }
+    if (originalEstimate) {
+        body.fields.timetracking = { originalEstimate };
+    }
 
     return request<JiraIssue>('/issue', {
         method: 'POST',
@@ -411,6 +415,8 @@ export async function updateIssue(
         description?: string;
         priority?: string;
         labels?: string[];
+        originalEstimate?: string;
+        remainingEstimate?: string;
     },
 ): Promise<void> {
     const body: JiraUpdateIssueRequest = { fields: {} };
@@ -426,6 +432,15 @@ export async function updateIssue(
     }
     if (updates.labels !== undefined) {
         body.fields.labels = updates.labels;
+    }
+    if (updates.originalEstimate !== undefined || updates.remainingEstimate !== undefined) {
+        body.fields.timetracking = {};
+        if (updates.originalEstimate !== undefined) {
+            body.fields.timetracking.originalEstimate = updates.originalEstimate;
+        }
+        if (updates.remainingEstimate !== undefined) {
+            body.fields.timetracking.remainingEstimate = updates.remainingEstimate;
+        }
     }
 
     await request(`/issue/${issueKey}`, {

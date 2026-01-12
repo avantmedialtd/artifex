@@ -15,6 +15,8 @@ interface JiraOptions {
     add?: string;
     limit?: number;
     parent?: string;
+    estimate?: string;
+    remaining?: string;
 }
 
 /**
@@ -92,12 +94,15 @@ CREATE OPTIONS:
   --priority <name>         Priority (e.g., High, Medium, Low)
   --labels <a,b,c>          Comma-separated labels
   --parent <issue-key>      Parent issue (for subtasks)
+  --estimate <time>         Original estimate (e.g., "2h", "1d", "30m")
 
 UPDATE OPTIONS:
   --summary "<text>"        New summary
   --description "<text>"    New description
   --priority <name>         New priority
   --labels <a,b,c>          New labels (replaces existing)
+  --estimate <time>         Original estimate (e.g., "2h", "1d", "30m")
+  --remaining <time>        Remaining estimate (e.g., "1h", "4h")
 
 COMMENT OPTIONS:
   --add "<text>"            Add a comment (omit to list comments)
@@ -113,7 +118,9 @@ EXAMPLES:
   af jira list PROJ --limit 20
   af jira search "assignee = currentUser() AND status != Done"
   af jira create --project PROJ --type Bug --summary "Login broken"
+  af jira create --project PROJ --type Task --summary "Feature" --estimate "4h"
   af jira update PROJ-123 --summary "Updated title" --priority High
+  af jira update PROJ-123 --estimate "8h" --remaining "2h"
   af jira comment PROJ-123 --add "Working on this"
   af jira transition PROJ-123 --to "In Progress"
   af jira assign PROJ-123 --to user@example.com
@@ -192,7 +199,8 @@ export async function handleJira(args: string[]): Promise<number> {
             }
 
             case 'create': {
-                const { project, type, summary, description, priority, labels, parent } = options;
+                const { project, type, summary, description, priority, labels, parent, estimate } =
+                    options;
                 if (!project || !type || !summary) {
                     error('Error: --project, --type, and --summary are required');
                     console.error(
@@ -209,6 +217,7 @@ export async function handleJira(args: string[]): Promise<number> {
                     priority,
                     labelList,
                     parent,
+                    estimate,
                 );
                 fmt.output(json ? issue : fmt.formatSuccess(`Created issue ${issue.key}`), json);
                 break;
@@ -227,10 +236,14 @@ export async function handleJira(args: string[]): Promise<number> {
                 if (options.labels !== undefined) {
                     updates.labels = options.labels.split(',').map(l => l.trim());
                 }
+                if (options.estimate !== undefined) updates.originalEstimate = options.estimate;
+                if (options.remaining !== undefined) updates.remainingEstimate = options.remaining;
 
                 if (Object.keys(updates).length === 0) {
                     error('Error: No update options provided');
-                    console.error('Use --summary, --description, --priority, or --labels');
+                    console.error(
+                        'Use --summary, --description, --priority, --labels, --estimate, or --remaining',
+                    );
                     return 1;
                 }
 

@@ -36,6 +36,15 @@ export interface JiraProject {
     projectTypeKey: string;
 }
 
+export interface JiraTimeTracking {
+    originalEstimate?: string;
+    originalEstimateSeconds?: number;
+    remainingEstimate?: string;
+    remainingEstimateSeconds?: number;
+    timeSpent?: string;
+    timeSpentSeconds?: number;
+}
+
 export interface JiraComment {
     id: string;
     author: JiraUser;
@@ -94,6 +103,7 @@ export interface JiraIssueFields {
             status: JiraStatus;
         };
     }>;
+    timetracking?: JiraTimeTracking;
 }
 
 export interface JiraIssue {
@@ -126,6 +136,9 @@ export interface JiraCreateIssueRequest {
         assignee?: { accountId: string };
         labels?: string[];
         parent?: { key: string };
+        timetracking?: {
+            originalEstimate?: string;
+        };
     };
 }
 
@@ -136,6 +149,10 @@ export interface JiraUpdateIssueRequest {
         priority: { name: string };
         assignee: { accountId: string } | null;
         labels: string[];
+        timetracking: {
+            originalEstimate?: string;
+            remainingEstimate?: string;
+        };
     }>;
 }
 
