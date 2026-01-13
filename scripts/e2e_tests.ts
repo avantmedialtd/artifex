@@ -32,8 +32,8 @@ import { extractResource } from '../utils/resources.ts';
 const SHOW_AGENT_DETAILS = !!process.env.CI;
 const SHOULD_SHOW_SPINNER = !process.env.CI;
 
-// All positional args become the literal test command
-const passThroughArgs = process.argv.slice(2);
+// Module-level args variable, set by runE2eTests or standalone execution
+let passThroughArgs: string[] = [];
 
 function composeArgs(
     args: string[],
@@ -230,7 +230,8 @@ function runAllowFailure(
     });
 }
 
-async function main() {
+export async function runE2eTests(args: string[]): Promise<number> {
+    passThroughArgs = args;
     // Welcome message
     process.stdout.write(`\n${BOLD}${BLUE}🔬 End to end tests${NC}\n`);
     process.stdout.write(
@@ -264,13 +265,9 @@ async function main() {
     logSuccess('Docker image cache cleared');
 
     logInfo('Building and starting services');
-    await compose(['build', '--no-cache'], {
+    await compose(['up', '-d', '--build', '--wait'], {
         profileTesting: true,
-        showSpinner: SHOULD_SHOW_SPINNER,
-    });
-    await compose(['up', '-d', '--wait'], {
-        profileTesting: true,
-        showSpinner: SHOULD_SHOW_SPINNER,
+        inheritStdio: true,
     });
 
     clearPreviousLine();
@@ -398,7 +395,7 @@ async function main() {
     }
 
     process.stdout.write('\n');
-    process.exit(e2eExitCode);
+    return e2eExitCode;
 }
 
 // Ensure we attempt to tear down on Ctrl+C
@@ -410,11 +407,15 @@ process.on('SIGINT', async () => {
     }
 });
 
-// Top-level run with error trap (equivalent to set -e)
-main().catch(err => {
-    logError(err?.message ?? String(err));
-    // best-effort teardown
-    compose(['down', '-v'], { profileTesting: true, allowFailure: true }).finally(() =>
-        process.exit(1),
-    );
-});
+// Standalone execution for direct script usage
+if (import.meta.main) {
+    runE2eTests(process.argv.slice(2))
+        .then(code => process.exit(code))
+        .catch(err => {
+            logError(err?.message ?? String(err));
+            // best-effort teardown
+            compose(['down', '-v'], { profileTesting: true, allowFailure: true }).finally(() =>
+                process.exit(1),
+            );
+        });
+}

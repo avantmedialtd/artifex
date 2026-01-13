@@ -121,13 +121,18 @@ class CopyPromptReporter implements Reporter {
                       : result.status === 'timedOut'
                         ? '⏲️'
                         : '⏭️';
-            if (status === '❌') {
-                const duration = result.duration ? `(${result.duration}ms)` : '';
-                console.log(`\r\x1b[K${status} ${test.title} ${duration}`);
-            }
-            if (status === '⏲️') {
-                const duration = result.duration ? `(${result.duration}ms)` : '';
-                console.log(`\r\x1b[K\x1b[31m${status} Timeout: ${test.title} ${duration}\x1b[0m`);
+            const duration = result.duration ? `(${result.duration}ms)` : '';
+            const suiteName = test.parent.title ? `${test.parent.title} › ` : '';
+            if (status === '✅') {
+                console.log(`\r\x1b[K${status} ${suiteName}${test.title} ${duration}`);
+            } else if (status === '❌') {
+                console.log(`\r\x1b[K${status} ${suiteName}${test.title} ${duration}`);
+            } else if (status === '⏲️') {
+                console.log(
+                    `\r\x1b[K\x1b[31m${status} Timeout: ${suiteName}${test.title} ${duration}\x1b[0m`,
+                );
+            } else {
+                console.log(`\r\x1b[K${status} ${suiteName}${test.title} ${duration}`);
             }
             // If test failed, show brief error info
             if (result.status !== 'passed' && result.status !== 'skipped') {
