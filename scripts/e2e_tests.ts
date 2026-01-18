@@ -35,20 +35,16 @@ const SHOULD_SHOW_SPINNER = !process.env.CI;
 // Module-level args variable, set by runE2eTests or standalone execution
 let passThroughArgs: string[] = [];
 
-function composeArgs(
-    args: string[],
-    { profileTesting }: { profileTesting?: boolean } = {},
-): string[] {
+function composeArgs(args: string[]): string[] {
     const out: string[] = ['compose'];
     const projectName = process.env.PROJECT_NAME;
     if (projectName && projectName.trim().length > 0) {
         out.push('-p', projectName.trim());
     }
     out.push('-f', 'docker-compose.yml');
-    if (profileTesting) {
-        out.push('-f', 'docker-compose.test.yml');
-        out.push('--profile', 'testing');
-    }
+    out.push('-f', 'docker-compose.test.yml');
+    out.push('--profile', 'testing');
+
     out.push(...args);
     return out;
 }
@@ -56,13 +52,12 @@ function composeArgs(
 async function compose(
     args: string[],
     opts?: {
-        profileTesting?: boolean;
         showSpinner?: boolean;
         inheritStdio?: boolean;
         allowFailure?: boolean;
     },
 ) {
-    const fullArgs = composeArgs(args, { profileTesting: opts?.profileTesting });
+    const fullArgs = composeArgs(args);
     const runOpts: SpawnOpts & { showSpinner?: boolean } = {
         showSpinner: opts?.showSpinner,
         inheritStdio: opts?.inheritStdio,
@@ -212,6 +207,12 @@ function runAllowFailure(
     args: string[],
     opts: SpawnOpts & { showSpinner?: boolean } = {},
 ): Promise<number> {
+    if (SHOW_AGENT_DETAILS) {
+        console.log(
+            `Running command: ${cmd} ${args.map(a => (a.includes(' ') ? `"${a}"` : a)).join(' ')}`,
+        );
+    }
+
     return new Promise(resolve => {
         const child = spawn(cmd, args, {
             cwd: opts.cwd ?? process.cwd(),
@@ -241,32 +242,33 @@ export async function runE2eTests(args: string[]): Promise<number> {
     // Step 1: Environment setup
     logStep('Setting up fresh environment');
     logInfo('Tearing down existing containers');
-    await compose(['down', '-v'], { profileTesting: true, allowFailure: true });
+    await compose(['down', '-v'], { allowFailure: true });
 
     clearPreviousLine();
     logSuccess('Cleaned up existing environment');
 
-    logInfo('Pruning cached Docker images');
-    // Prune only images from this compose project (uses PROJECT_NAME or directory name)
-    const composeProjectName = process.env.PROJECT_NAME?.trim() || path.basename(repoRoot);
-    await run(
-        'docker',
-        [
-            'image',
-            'prune',
-            '-f',
-            '--filter',
-            `label=com.docker.compose.project=${composeProjectName}`,
-        ],
-        { showSpinner: SHOULD_SHOW_SPINNER },
-    );
+    if (process.env.CLEAN_DOCKER_VOLUMES === '1') {
+        logInfo('Pruning cached Docker images');
+        // Prune only images from this compose project (uses PROJECT_NAME or directory name)
+        const composeProjectName = process.env.PROJECT_NAME?.trim() || path.basename(repoRoot);
+        await run(
+            'docker',
+            [
+                'image',
+                'prune',
+                '-f',
+                '--filter',
+                `label=com.docker.compose.project=${composeProjectName}`,
+            ],
+            { showSpinner: SHOULD_SHOW_SPINNER },
+        );
 
-    clearPreviousLine();
-    logSuccess('Docker image cache cleared');
+        clearPreviousLine();
+        logSuccess('Docker image cache cleared');
+    }
 
     logInfo('Building and starting services');
     await compose(['up', '-d', '--build', '--wait'], {
-        profileTesting: true,
         inheritStdio: true,
     });
 
@@ -280,7 +282,7 @@ export async function runE2eTests(args: string[]): Promise<number> {
         await extractResource('copy-prompt-reporter.ts', tempReporterPath);
         const copyReporterCode = await compose(
             ['cp', tempReporterPath, 'e2e:/workspace/copy-prompt-reporter.ts'],
-            { profileTesting: true, allowFailure: false },
+            { allowFailure: false },
         );
         if (copyReporterCode !== 0) {
             throw new Error(`docker compose cp failed with exit code ${copyReporterCode}`);
@@ -311,7 +313,6 @@ export async function runE2eTests(args: string[]): Promise<number> {
 
     // We allow failure to capture exit code without throwing
     const e2eExitCode = await compose(['exec', '-T', 'e2e', 'sh', '-c', testCommand], {
-        profileTesting: true,
         inheritStdio: true,
         allowFailure: true,
     });
@@ -321,9 +322,7 @@ export async function runE2eTests(args: string[]): Promise<number> {
         logSuccess(`All tests passed (${formatDuration(TEST_DURATION)})`);
     } else {
         logError(`Tests completed with failures (${formatDuration(TEST_DURATION)})`);
-        const dockerArgsStr = composeArgs(['logs', '--no-color'], { profileTesting: true }).join(
-            ' ',
-        );
+        const dockerArgsStr = composeArgs(['logs', '--no-color']).join(' ');
         await runAllowFailure('sh', ['-c', `docker ${dockerArgsStr} > docker.log 2>&1`]);
         logInfo('Logs saved to docker.log');
     }
@@ -342,7 +341,6 @@ export async function runE2eTests(args: string[]): Promise<number> {
     const copyCode = await compose(
         ['cp', 'e2e:/workspace/playwright-report', './playwright-report'],
         {
-            profileTesting: true,
             allowFailure: true,
         },
     );
@@ -357,7 +355,6 @@ export async function runE2eTests(args: string[]): Promise<number> {
 
     // Copy test-results (screenshots, traces) for AI agent access
     const copyResultsCode = await compose(['cp', 'e2e:/workspace/test-results', './test-results'], {
-        profileTesting: true,
         allowFailure: true,
     });
     if (copyResultsCode === 0 && fs.existsSync('./test-results')) {
@@ -371,7 +368,7 @@ export async function runE2eTests(args: string[]): Promise<number> {
     logInfo('Tearing down existing containers');
     process.stdout.write('\b'.repeat('Tearing down existing containers'.length + 2));
 
-    await compose(['down', '-v'], { profileTesting: true, allowFailure: true });
+    await compose(['down', '-v'], { allowFailure: true });
 
     process.stdout.write(`\n${BOLD}${BLUE}📊 Test Summary${NC}\n`);
     process.stdout.write(
@@ -401,7 +398,7 @@ export async function runE2eTests(args: string[]): Promise<number> {
 // Ensure we attempt to tear down on Ctrl+C
 process.on('SIGINT', async () => {
     try {
-        await compose(['down', '-v'], { profileTesting: true, allowFailure: true });
+        await compose(['down', '-v'], { allowFailure: true });
     } finally {
         process.exit(130);
     }
@@ -414,8 +411,6 @@ if (import.meta.main) {
         .catch(err => {
             logError(err?.message ?? String(err));
             // best-effort teardown
-            compose(['down', '-v'], { profileTesting: true, allowFailure: true }).finally(() =>
-                process.exit(1),
-            );
+            compose(['down', '-v'], { allowFailure: true }).finally(() => process.exit(1));
         });
 }
