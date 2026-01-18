@@ -17,6 +17,7 @@ import {
 import { handleTodo } from './commands/todo.ts';
 import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts';
 import { handleWatch } from './commands/watch.ts';
+import { handleWorktree } from './commands/worktree.ts';
 import { error } from './utils/output.ts';
 
 /**
@@ -193,6 +194,11 @@ export async function route(args: string[]): Promise<number> {
     // Route setup command
     if (command === 'setup') {
         return await handleSetup(args.slice(1));
+    }
+
+    // Route worktree command
+    if (command === 'worktree') {
+        return await handleWorktree(args.slice(1));
     }
 
     // Unknown command

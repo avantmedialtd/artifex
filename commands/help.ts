@@ -122,6 +122,14 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af setup --force      # Overwrite existing files',
         ],
     },
+    worktree: {
+        description: 'Manage git worktrees',
+        usage: 'af worktree <subcommand> [args]',
+        examples: [
+            'af worktree new feature-x        # Create worktree with new branch',
+            'af worktree new hotfix --detach  # Create worktree with detached HEAD',
+        ],
+    },
     help: {
         description: 'Display help information',
         usage: 'af help [command]',
@@ -159,6 +167,7 @@ function showGeneralHelp(): void {
     listItem('licenses               Show license and copyright information');
     listItem('scaffold <subcommand>  Generate project files from templates');
     listItem('setup                  Copy Claude + OpenCode config files');
+    listItem('worktree new <name>    Create new worktree with env files');
     listItem('help [command]         Show help for a command');
 
     section('OPTIONS');

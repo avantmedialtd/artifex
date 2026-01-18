@@ -9,7 +9,9 @@ import {
 } from './bun-upgrade.js';
 
 // Mock child_process module
-vi.mock('child_process');
+vi.mock('child_process', () => ({
+    spawn: vi.fn(),
+}));
 
 class MockChildProcess extends EventEmitter {
     stdout = new EventEmitter();

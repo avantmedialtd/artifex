@@ -11,7 +11,9 @@ import {
 } from './git-worktree.js';
 
 // Mock child_process module
-vi.mock('child_process');
+vi.mock('child_process', () => ({
+    execSync: vi.fn(),
+}));
 
 describe('git-worktree', () => {
     const mockExecSync = vi.mocked(execSync);
