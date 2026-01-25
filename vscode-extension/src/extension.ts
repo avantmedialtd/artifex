@@ -2,50 +2,73 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { OpenSpecTaskProvider, OpenSpecTaskItem } from './taskProvider';
 import { ChangeData } from './types';
+import { getWorkspaceFoldersWithOpenSpec } from './taskParser';
 
 let treeView: vscode.TreeView<any> | undefined;
 let taskProvider: OpenSpecTaskProvider | undefined;
-let fileWatcher: vscode.FileSystemWatcher | undefined;
-let proposalWatcher: vscode.FileSystemWatcher | undefined;
-let directoryWatcher: vscode.FileSystemWatcher | undefined;
+
+// Map of workspace folder URI to its watchers
+const workspaceFolderWatchers: Map<
+    string,
+    {
+        fileWatcher: vscode.FileSystemWatcher;
+        proposalWatcher: vscode.FileSystemWatcher;
+        directoryWatcher: vscode.FileSystemWatcher;
+    }
+> = new Map();
 
 /**
  * Activate the extension
  */
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     console.log('OpenSpec Tasks extension is now active');
 
-    // Get workspace root
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) {
-        console.log('No workspace folder found');
+    // Check if any workspace folder has OpenSpec changes
+    const foldersWithOpenSpec = await getWorkspaceFoldersWithOpenSpec();
+
+    if (foldersWithOpenSpec.length === 0) {
+        console.log('No openspec/changes directory found in any workspace folder');
         return;
     }
 
-    const workspaceRoot = workspaceFolder.uri.fsPath;
+    // Initialize the extension (no longer needs a specific workspace root)
+    initializeExtension(context);
 
-    // Check if openspec/changes directory exists
-    const changesPath = path.join(workspaceRoot, 'openspec', 'changes');
-    const changesUri = vscode.Uri.file(changesPath);
+    // Set up watchers for each workspace folder with OpenSpec
+    for (const folderRef of foldersWithOpenSpec) {
+        setupWatchersForFolder(context, folderRef.uri);
+    }
 
-    vscode.workspace.fs.stat(changesUri).then(
-        () => {
-            // Directory exists, initialize the extension
-            initializeExtension(context, workspaceRoot);
-        },
-        () => {
-            // Directory doesn't exist, don't initialize
-            console.log('No openspec/changes directory found, extension will not activate');
-        },
+    // Subscribe to workspace folder changes to handle dynamic additions/removals
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeWorkspaceFolders(async event => {
+            // Handle added folders
+            for (const added of event.added) {
+                const changesDir = path.join(added.uri.fsPath, 'openspec', 'changes');
+                try {
+                    await vscode.workspace.fs.stat(vscode.Uri.file(changesDir));
+                    setupWatchersForFolder(context, added.uri.fsPath);
+                    taskProvider?.refresh();
+                } catch {
+                    // No OpenSpec in this folder
+                }
+            }
+
+            // Handle removed folders
+            for (const removed of event.removed) {
+                disposeWatchersForFolder(removed.uri.fsPath);
+                taskProvider?.refresh();
+            }
+        }),
     );
 }
 
 /**
  * Initialize the extension components
  */
-function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: string) {
-    // Create task provider
-    taskProvider = new OpenSpecTaskProvider(workspaceRoot);
+function initializeExtension(context: vscode.ExtensionContext) {
+    // Create task provider (no longer needs workspace root - scans all workspaces)
+    taskProvider = new OpenSpecTaskProvider();
 
     // Register tree view
     treeView = vscode.window.createTreeView('openspecTasks', {
@@ -73,52 +96,6 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
             }
         }, 100);
     });
-
-    // Set up file watcher for tasks.md files
-    const pattern = new vscode.RelativePattern(workspaceRoot, 'openspec/changes/**/tasks.md');
-    fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
-
-    // Debounce refresh to avoid excessive updates
-    let refreshTimeout: NodeJS.Timeout | undefined;
-    const debouncedRefresh = () => {
-        if (refreshTimeout) {
-            clearTimeout(refreshTimeout);
-        }
-        refreshTimeout = setTimeout(() => {
-            if (taskProvider) {
-                taskProvider.refresh();
-                updateBadge();
-            }
-        }, 100);
-    };
-
-    fileWatcher.onDidChange(debouncedRefresh);
-    fileWatcher.onDidCreate(debouncedRefresh);
-    fileWatcher.onDidDelete(debouncedRefresh);
-
-    context.subscriptions.push(fileWatcher);
-
-    // Set up file watcher for proposal.md files to refresh when titles change
-    const proposalPattern = new vscode.RelativePattern(
-        workspaceRoot,
-        'openspec/changes/**/proposal.md',
-    );
-    proposalWatcher = vscode.workspace.createFileSystemWatcher(proposalPattern);
-
-    proposalWatcher.onDidChange(debouncedRefresh);
-    proposalWatcher.onDidCreate(debouncedRefresh);
-    proposalWatcher.onDidDelete(debouncedRefresh);
-
-    context.subscriptions.push(proposalWatcher);
-
-    // Set up directory watcher for openspec/changes to detect when change directories are added/removed
-    const directoryPattern = new vscode.RelativePattern(workspaceRoot, 'openspec/changes/*');
-    directoryWatcher = vscode.workspace.createFileSystemWatcher(directoryPattern);
-
-    directoryWatcher.onDidCreate(debouncedRefresh);
-    directoryWatcher.onDidDelete(debouncedRefresh);
-
-    context.subscriptions.push(directoryWatcher);
 
     // Register refresh command
     const refreshCommand = vscode.commands.registerCommand('openspecTasks.refresh', () => {
@@ -157,13 +134,13 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
     // Register command to open proposal.md file for a change
     const openProposalCommand = vscode.commands.registerCommand(
         'openspecTasks.openProposal',
-        async (changeId: string) => {
+        async (changeData: ChangeData) => {
             try {
                 const proposalPath = path.join(
-                    workspaceRoot,
+                    changeData.workspaceFolder.uri,
                     'openspec',
                     'changes',
-                    changeId,
+                    changeData.changeId,
                     'proposal.md',
                 );
                 const uri = vscode.Uri.file(proposalPath);
@@ -171,7 +148,7 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
                 await vscode.window.showTextDocument(document);
             } catch (error) {
                 vscode.window.showErrorMessage(
-                    `Failed to open proposal.md: The proposal file was not found for change "${changeId}"`,
+                    `Failed to open proposal.md: The proposal file was not found for change "${changeData?.changeId}"`,
                 );
             }
         },
@@ -228,11 +205,12 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
             try {
                 const changeData = item?.data as ChangeData;
                 const changeId = changeData?.changeId;
-                if (!changeId) {
-                    vscode.window.showErrorMessage('Could not determine change ID');
+                const workspaceFolderUri = changeData?.workspaceFolder?.uri;
+                if (!changeId || !workspaceFolderUri) {
+                    vscode.window.showErrorMessage('Could not determine change ID or workspace');
                     return;
                 }
-                await executeZapCommand('apply', changeId);
+                await executeZapCommand('apply', changeId, workspaceFolderUri);
             } catch (error) {
                 vscode.window.showErrorMessage(`Failed to apply change: ${error}`);
             }
@@ -248,11 +226,12 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
             try {
                 const changeData = item?.data as ChangeData;
                 const changeId = changeData?.changeId;
-                if (!changeId) {
-                    vscode.window.showErrorMessage('Could not determine change ID');
+                const workspaceFolderUri = changeData?.workspaceFolder?.uri;
+                if (!changeId || !workspaceFolderUri) {
+                    vscode.window.showErrorMessage('Could not determine change ID or workspace');
                     return;
                 }
-                await executeZapCommand('archive', changeId);
+                await executeZapCommand('archive', changeId, workspaceFolderUri);
             } catch (error) {
                 vscode.window.showErrorMessage(`Failed to archive change: ${error}`);
             }
@@ -265,19 +244,103 @@ function initializeExtension(context: vscode.ExtensionContext, workspaceRoot: st
 }
 
 /**
+ * Set up file watchers for a specific workspace folder
+ */
+function setupWatchersForFolder(context: vscode.ExtensionContext, workspaceFolderUri: string) {
+    // Check if watchers already exist for this folder
+    if (workspaceFolderWatchers.has(workspaceFolderUri)) {
+        return;
+    }
+
+    // Debounce refresh to avoid excessive updates
+    let refreshTimeout: NodeJS.Timeout | undefined;
+    const debouncedRefresh = () => {
+        if (refreshTimeout) {
+            clearTimeout(refreshTimeout);
+        }
+        refreshTimeout = setTimeout(() => {
+            if (taskProvider) {
+                taskProvider.refresh();
+                updateBadge();
+            }
+        }, 100);
+    };
+
+    // Set up file watcher for tasks.md files
+    const tasksPattern = new vscode.RelativePattern(
+        workspaceFolderUri,
+        'openspec/changes/**/tasks.md',
+    );
+    const fileWatcher = vscode.workspace.createFileSystemWatcher(tasksPattern);
+    fileWatcher.onDidChange(debouncedRefresh);
+    fileWatcher.onDidCreate(debouncedRefresh);
+    fileWatcher.onDidDelete(debouncedRefresh);
+    context.subscriptions.push(fileWatcher);
+
+    // Set up file watcher for proposal.md files
+    const proposalPattern = new vscode.RelativePattern(
+        workspaceFolderUri,
+        'openspec/changes/**/proposal.md',
+    );
+    const proposalWatcher = vscode.workspace.createFileSystemWatcher(proposalPattern);
+    proposalWatcher.onDidChange(debouncedRefresh);
+    proposalWatcher.onDidCreate(debouncedRefresh);
+    proposalWatcher.onDidDelete(debouncedRefresh);
+    context.subscriptions.push(proposalWatcher);
+
+    // Set up directory watcher for openspec/changes
+    const directoryPattern = new vscode.RelativePattern(workspaceFolderUri, 'openspec/changes/*');
+    const directoryWatcher = vscode.workspace.createFileSystemWatcher(directoryPattern);
+    directoryWatcher.onDidCreate(debouncedRefresh);
+    directoryWatcher.onDidDelete(debouncedRefresh);
+    context.subscriptions.push(directoryWatcher);
+
+    // Store watchers for this folder
+    workspaceFolderWatchers.set(workspaceFolderUri, {
+        fileWatcher,
+        proposalWatcher,
+        directoryWatcher,
+    });
+}
+
+/**
+ * Dispose watchers for a specific workspace folder
+ */
+function disposeWatchersForFolder(workspaceFolderUri: string) {
+    const watchers = workspaceFolderWatchers.get(workspaceFolderUri);
+    if (watchers) {
+        watchers.fileWatcher.dispose();
+        watchers.proposalWatcher.dispose();
+        watchers.directoryWatcher.dispose();
+        workspaceFolderWatchers.delete(workspaceFolderUri);
+    }
+}
+
+/**
  * Execute an af command (apply or archive) in the integrated terminal using the Task API.
  * The terminal auto-closes on success but stays open on failure to show error messages.
  */
-async function executeZapCommand(subcommand: 'apply' | 'archive', changeId: string): Promise<void> {
+async function executeZapCommand(
+    subcommand: 'apply' | 'archive',
+    changeId: string,
+    workspaceFolderUri: string,
+): Promise<void> {
     const taskDefinition: vscode.TaskDefinition = {
         type: 'shell',
     };
 
-    const execution = new vscode.ShellExecution(`af spec ${subcommand} ${changeId}`);
+    // Find the workspace folder by URI to use as the scope
+    const workspaceFolder = vscode.workspace.workspaceFolders?.find(
+        folder => folder.uri.fsPath === workspaceFolderUri,
+    );
+
+    const execution = new vscode.ShellExecution(`af spec ${subcommand} ${changeId}`, {
+        cwd: workspaceFolderUri,
+    });
 
     const task = new vscode.Task(
         taskDefinition,
-        vscode.TaskScope.Workspace,
+        workspaceFolder || vscode.TaskScope.Workspace,
         `af spec ${subcommand} ${changeId}`,
         'af',
         execution,
@@ -322,15 +385,14 @@ function updateBadge() {
  * Deactivate the extension
  */
 export function deactivate() {
-    if (fileWatcher) {
-        fileWatcher.dispose();
+    // Dispose all workspace folder watchers
+    for (const [, watchers] of workspaceFolderWatchers) {
+        watchers.fileWatcher.dispose();
+        watchers.proposalWatcher.dispose();
+        watchers.directoryWatcher.dispose();
     }
-    if (proposalWatcher) {
-        proposalWatcher.dispose();
-    }
-    if (directoryWatcher) {
-        directoryWatcher.dispose();
-    }
+    workspaceFolderWatchers.clear();
+
     if (treeView) {
         treeView.dispose();
     }

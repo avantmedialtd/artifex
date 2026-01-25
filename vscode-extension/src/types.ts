@@ -25,4 +25,18 @@ export interface ChangeData {
     sections: Section[];
     totalTasks: number;
     completedTasks: number;
+    /** The workspace folder this change belongs to */
+    workspaceFolder: WorkspaceFolderRef;
+}
+
+/**
+ * Reference to a workspace folder
+ */
+export interface WorkspaceFolderRef {
+    /** The workspace folder URI path */
+    uri: string;
+    /** The workspace folder name */
+    name: string;
+    /** The workspace folder index (for ordering) */
+    index: number;
 }

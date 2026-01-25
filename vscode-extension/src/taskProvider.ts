@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { getAllChangeData } from './taskParser';
+import { getAllChangeDataFromAllWorkspaces } from './taskParser';
 import { ChangeData, Section, Task } from './types';
 
 /**
@@ -47,11 +47,11 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
     readonly onDidChangeTreeData: vscode.Event<OpenSpecTaskItem | undefined | null | void> =
         this._onDidChangeTreeData.event;
 
-    private workspaceRoot: string;
     private changeDataCache: ChangeData[] = [];
+    private isMultiRoot: boolean = false;
 
-    constructor(workspaceRoot: string) {
-        this.workspaceRoot = workspaceRoot;
+    constructor() {
+        // No longer need workspace root - we scan all workspaces
     }
 
     /**
@@ -85,14 +85,14 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
      * Get the children of an element
      */
     async getChildren(element?: OpenSpecTaskItem): Promise<OpenSpecTaskItem[]> {
-        if (!this.workspaceRoot) {
-            return [];
-        }
-
         // Root level: show changes (expanded by default for immediate visibility)
         if (!element) {
             try {
-                this.changeDataCache = await getAllChangeData(this.workspaceRoot);
+                this.changeDataCache = await getAllChangeDataFromAllWorkspaces();
+
+                // Determine if we're in a multi-root workspace with changes from multiple folders
+                const uniqueFolders = new Set(this.changeDataCache.map(c => c.workspaceFolder.uri));
+                this.isMultiRoot = uniqueFolders.size > 1;
 
                 if (this.changeDataCache.length === 0) {
                     // No changes found
@@ -107,9 +107,19 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
 
                 return this.changeDataCache.map(changeData => {
                     // Format: "Title (change-id) - X/Y tasks completed" or "change-id (X/Y tasks completed)"
-                    const label = changeData.title
-                        ? `${changeData.title} (${changeData.changeId}) - ${changeData.completedTasks}/${changeData.totalTasks} tasks completed`
-                        : `${changeData.changeId} (${changeData.completedTasks}/${changeData.totalTasks} tasks completed)`;
+                    // In multi-root workspaces, prepend workspace folder name
+                    let label: string;
+                    if (changeData.title) {
+                        label = `${changeData.title} (${changeData.changeId}) - ${changeData.completedTasks}/${changeData.totalTasks} tasks completed`;
+                    } else {
+                        label = `${changeData.changeId} (${changeData.completedTasks}/${changeData.totalTasks} tasks completed)`;
+                    }
+
+                    // Add workspace folder name in multi-root workspaces
+                    if (this.isMultiRoot) {
+                        label = `[${changeData.workspaceFolder.name}] ${label}`;
+                    }
+
                     const item = new OpenSpecTaskItem(
                         'change',
                         label,
@@ -121,7 +131,7 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
                     item.command = {
                         command: 'openspecTasks.openProposal',
                         title: 'Open Proposal',
-                        arguments: [changeData.changeId],
+                        arguments: [changeData],
                     };
 
                     // Set context value to encode completion status and title presence
@@ -194,9 +204,9 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
                 );
 
                 // Add command to open task location if line number is available
-                if (task.lineNumber && changeId) {
+                if (task.lineNumber && changeId && changeData?.workspaceFolder) {
                     const tasksFilePath = path.join(
-                        this.workspaceRoot,
+                        changeData.workspaceFolder.uri,
                         'openspec',
                         'changes',
                         changeId,
@@ -220,12 +230,12 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
      * Load data without refreshing the tree view
      */
     async loadData(): Promise<void> {
-        if (!this.workspaceRoot) {
-            return;
-        }
-
         try {
-            this.changeDataCache = await getAllChangeData(this.workspaceRoot);
+            this.changeDataCache = await getAllChangeDataFromAllWorkspaces();
+
+            // Update multi-root status
+            const uniqueFolders = new Set(this.changeDataCache.map(c => c.workspaceFolder.uri));
+            this.isMultiRoot = uniqueFolders.size > 1;
         } catch (error) {
             console.error('Error loading change data:', error);
         }

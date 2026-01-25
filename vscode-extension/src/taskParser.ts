@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { ChangeData, Section, Task } from './types';
+import { ChangeData, Section, Task, WorkspaceFolderRef } from './types';
 import { extractProposalTitle } from './titleExtractor';
 
 /**
@@ -106,9 +106,14 @@ export async function getActiveChanges(workspaceRoot: string): Promise<string[]>
  *
  * @param workspaceRoot - The workspace root path
  * @param changeId - The change directory name
+ * @param workspaceFolder - Reference to the workspace folder this change belongs to
  * @returns ChangeData with parsed tasks
  */
-export async function getChangeData(workspaceRoot: string, changeId: string): Promise<ChangeData> {
+export async function getChangeData(
+    workspaceRoot: string,
+    changeId: string,
+    workspaceFolder: WorkspaceFolderRef,
+): Promise<ChangeData> {
     const tasksFilePath = path.join(workspaceRoot, 'openspec', 'changes', changeId, 'tasks.md');
     const { sections, totalTasks, completedTasks } = await parseTasksFile(tasksFilePath);
 
@@ -122,17 +127,98 @@ export async function getChangeData(workspaceRoot: string, changeId: string): Pr
         sections,
         totalTasks,
         completedTasks,
+        workspaceFolder,
     };
 }
 
 /**
- * Get task data for all active changes
+ * Get task data for all active changes in a specific workspace folder
  *
  * @param workspaceRoot - The workspace root path
- * @returns Array of ChangeData for all active changes
+ * @param workspaceFolder - Reference to the workspace folder
+ * @returns Array of ChangeData for all active changes in the workspace folder
  */
-export async function getAllChangeData(workspaceRoot: string): Promise<ChangeData[]> {
+export async function getAllChangeData(
+    workspaceRoot: string,
+    workspaceFolder: WorkspaceFolderRef,
+): Promise<ChangeData[]> {
     const changes = await getActiveChanges(workspaceRoot);
-    const changeDataPromises = changes.map(changeId => getChangeData(workspaceRoot, changeId));
+    const changeDataPromises = changes.map(changeId =>
+        getChangeData(workspaceRoot, changeId, workspaceFolder),
+    );
     return Promise.all(changeDataPromises);
+}
+
+/**
+ * Get task data for all active changes across all workspace folders
+ *
+ * @returns Array of ChangeData for all active changes across all workspace folders
+ */
+export async function getAllChangeDataFromAllWorkspaces(): Promise<ChangeData[]> {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        return [];
+    }
+
+    const allChanges: ChangeData[] = [];
+
+    for (const folder of workspaceFolders) {
+        const workspaceRoot = folder.uri.fsPath;
+        const changesDir = path.join(workspaceRoot, 'openspec', 'changes');
+
+        // Check if openspec/changes directory exists in this workspace folder
+        try {
+            const uri = vscode.Uri.file(changesDir);
+            await vscode.workspace.fs.stat(uri);
+
+            const workspaceFolderRef: WorkspaceFolderRef = {
+                uri: folder.uri.fsPath,
+                name: folder.name,
+                index: folder.index,
+            };
+
+            const changes = await getAllChangeData(workspaceRoot, workspaceFolderRef);
+            allChanges.push(...changes);
+        } catch {
+            // Directory doesn't exist in this workspace folder, skip it
+            continue;
+        }
+    }
+
+    return allChanges;
+}
+
+/**
+ * Get all workspace folders that contain OpenSpec changes
+ *
+ * @returns Array of workspace folder references that have openspec/changes directories
+ */
+export async function getWorkspaceFoldersWithOpenSpec(): Promise<WorkspaceFolderRef[]> {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        return [];
+    }
+
+    const foldersWithOpenSpec: WorkspaceFolderRef[] = [];
+
+    for (const folder of workspaceFolders) {
+        const workspaceRoot = folder.uri.fsPath;
+        const changesDir = path.join(workspaceRoot, 'openspec', 'changes');
+
+        try {
+            const uri = vscode.Uri.file(changesDir);
+            await vscode.workspace.fs.stat(uri);
+
+            foldersWithOpenSpec.push({
+                uri: folder.uri.fsPath,
+                name: folder.name,
+                index: folder.index,
+            });
+        } catch {
+            // Directory doesn't exist in this workspace folder, skip it
+            continue;
+        }
+    }
+
+    return foldersWithOpenSpec;
 }
