@@ -11,6 +11,7 @@ import { join, relative, dirname } from 'node:path';
 
 const SETUP_DIR = 'setup';
 const RESOURCES_DIR = 'resources';
+const VSCODE_EXTENSION_DIR = 'vscode-extension';
 const OUTPUT_FILE = 'generated/setup-manifest.ts';
 
 interface FileEntry {
@@ -22,6 +23,13 @@ interface FileEntry {
 
 interface ResourceEntry {
     /** File name (e.g., "copy-prompt-reporter.ts") */
+    name: string;
+    /** Safe variable name for import */
+    importName: string;
+}
+
+interface ExtensionEntry {
+    /** File name (e.g., "openspec-tasks-0.1.0.vsix") */
     name: string;
     /** Safe variable name for import */
     importName: string;
@@ -88,11 +96,36 @@ function getResourceFiles(): ResourceEntry[] {
 }
 
 /**
+ * Find the .vsix extension file in vscode-extension directory.
+ */
+function getExtensionFile(): ExtensionEntry | null {
+    if (!existsSync(VSCODE_EXTENSION_DIR)) {
+        return null;
+    }
+
+    for (const entry of readdirSync(VSCODE_EXTENSION_DIR)) {
+        if (entry.endsWith('.vsix')) {
+            const importName =
+                'extension_' +
+                entry
+                    .replace(/[^a-zA-Z0-9]/g, '_')
+                    .replace(/_+/g, '_')
+                    .replace(/^_/, '')
+                    .replace(/_$/, '');
+            return { name: entry, importName };
+        }
+    }
+
+    return null;
+}
+
+/**
  * Generate the manifest TypeScript file.
  */
 function generateManifest(): void {
     const files = getFiles(SETUP_DIR);
     const resources = getResourceFiles();
+    const extension = getExtensionFile();
 
     if (files.length === 0) {
         console.error(`Error: No files found in ${SETUP_DIR}/`);
@@ -108,7 +141,17 @@ function generateManifest(): void {
         .map(r => `import ${r.importName} from '../resources/${r.name}' with { type: 'file' };`)
         .join('\n');
 
-    const allImports = resourceImports ? `${setupImports}\n\n${resourceImports}` : setupImports;
+    const extensionImport = extension
+        ? `import ${extension.importName} from '../vscode-extension/${extension.name}' with { type: 'file' };`
+        : '';
+
+    let allImports = setupImports;
+    if (resourceImports) {
+        allImports += `\n\n${resourceImports}`;
+    }
+    if (extensionImport) {
+        allImports += `\n\n${extensionImport}`;
+    }
 
     // Generate manifest entries
     const setupEntries = files
@@ -151,6 +194,15 @@ export const RESOURCE_FILES: ResourceFile[] = [
 ${resourceEntries}
 ];
 
+export interface ExtensionFile {
+    /** File name (e.g., "openspec-tasks-0.1.0.vsix") */
+    name: string;
+    /** Path to embedded file (bun internal path or dev file path) */
+    embeddedPath: string;
+}
+
+export const EXTENSION_FILE: ExtensionFile | null = ${extension ? `{ name: '${extension.name}', embeddedPath: ${extension.importName} }` : 'null'};
+
 /**
  * Check if running from compiled binary (embedded files contain $bunfs in path)
  */
@@ -169,6 +221,10 @@ export function isCompiled(): boolean {
     if (resources.length > 0) {
         console.log(`  Resource files (${resources.length}):`);
         resources.forEach(r => console.log(`    - ${r.name}`));
+    }
+    if (extension) {
+        console.log(`  Extension file:`);
+        console.log(`    - ${extension.name}`);
     }
 }
 

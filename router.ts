@@ -2,6 +2,7 @@ import { handleBunUpgrade } from './commands/bun.ts';
 import { handleChanges } from './commands/changes.ts';
 import { handleE2e } from './commands/e2e.ts';
 import { handleHelp } from './commands/help.ts';
+import { handleInstallExtension } from './commands/install-extension.ts';
 import { handleJira } from './commands/jira.ts';
 import { handleLicenses } from './commands/licenses.ts';
 import { handleNpmUpgrade } from './commands/npm.ts';
@@ -194,6 +195,11 @@ export async function route(args: string[]): Promise<number> {
     // Route setup command
     if (command === 'setup') {
         return await handleSetup(args.slice(1));
+    }
+
+    // Route install-extension command
+    if (command === 'install-extension') {
+        return await handleInstallExtension();
     }
 
     // Route worktree command
