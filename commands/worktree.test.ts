@@ -14,6 +14,9 @@ import {
     createWorktree,
     handleWorktreeNew,
     handleWorktree,
+    getCurrentWorktree,
+    findWorktreeByName,
+    handleWorktreeReset,
 } from './worktree.ts';
 
 describe('worktree command', () => {
@@ -436,6 +439,239 @@ describe('worktree command', () => {
 
             // Cleanup
             execSync(`git worktree remove --force "${resolve(testDir, 'detached-wt3')}"`, {
+                cwd: testRepo,
+                stdio: 'pipe',
+            });
+        });
+
+        it('should route to handleWorktreeReset for "reset" subcommand', async () => {
+            process.chdir(testRepo);
+
+            // Create a worktree first
+            execSync('git worktree add -b reset-test ../reset-test-wt', {
+                cwd: testRepo,
+                stdio: 'pipe',
+            });
+
+            const exitCode = await handleWorktree(['reset', 'reset-test']);
+
+            expect(exitCode).toBe(0);
+
+            // Cleanup
+            execSync(`git worktree remove --force "${resolve(testDir, 'reset-test-wt')}"`, {
+                cwd: testRepo,
+                stdio: 'pipe',
+            });
+        });
+    });
+
+    describe('getCurrentWorktree', () => {
+        it('should return null when in main repository', () => {
+            process.chdir(testRepo);
+
+            const result = getCurrentWorktree();
+
+            expect(result).toBeNull();
+        });
+
+        it('should return worktree info when in a worktree', () => {
+            process.chdir(testRepo);
+
+            // Create a worktree
+            execSync('git worktree add -b wt-current ../wt-current', {
+                cwd: testRepo,
+                stdio: 'pipe',
+            });
+
+            const worktreePath = resolve(testDir, 'wt-current');
+            process.chdir(worktreePath);
+
+            const result = getCurrentWorktree();
+
+            expect(result).not.toBeNull();
+            expect(result!.branch).toBe('wt-current');
+            expect(result!.path).toBe(realpathSync(worktreePath));
+
+            // Cleanup
+            process.chdir(testRepo);
+            execSync(`git worktree remove --force "${worktreePath}"`, {
+                cwd: testRepo,
+                stdio: 'pipe',
+            });
+        });
+    });
+
+    describe('findWorktreeByName', () => {
+        it('should return worktree when found by branch name', () => {
+            process.chdir(testRepo);
+
+            // Create a worktree
+            execSync('git worktree add -b find-test ../find-test-wt', {
+                cwd: testRepo,
+                stdio: 'pipe',
+            });
+
+            const result = findWorktreeByName('find-test');
+
+            expect(result).not.toBeNull();
+            expect(result!.branch).toBe('find-test');
+
+            // Cleanup
+            execSync(`git worktree remove --force "${resolve(testDir, 'find-test-wt')}"`, {
+                cwd: testRepo,
+                stdio: 'pipe',
+            });
+        });
+
+        it('should return null when worktree not found', () => {
+            process.chdir(testRepo);
+
+            const result = findWorktreeByName('nonexistent-branch');
+
+            expect(result).toBeNull();
+        });
+    });
+
+    describe('handleWorktreeReset', () => {
+        it('should return error when not in a git repository', () => {
+            const nonGitDir = resolve(testDir, 'non-git');
+            mkdirSync(nonGitDir, { recursive: true });
+            process.chdir(nonGitDir);
+
+            const exitCode = handleWorktreeReset(undefined);
+
+            expect(exitCode).toBe(1);
+        });
+
+        it('should return error when named worktree not found', () => {
+            process.chdir(testRepo);
+
+            const exitCode = handleWorktreeReset('nonexistent');
+
+            expect(exitCode).toBe(1);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                expect.stringContaining("Worktree 'nonexistent' not found"),
+            );
+        });
+
+        it('should return error when not in a worktree and no name provided', () => {
+            process.chdir(testRepo);
+
+            const exitCode = handleWorktreeReset(undefined);
+
+            expect(exitCode).toBe(1);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Not in a worktree'),
+            );
+        });
+
+        it('should return error when worktree has uncommitted changes', () => {
+            process.chdir(testRepo);
+
+            // Create a worktree
+            execSync('git worktree add -b dirty-test ../dirty-test-wt', {
+                cwd: testRepo,
+                stdio: 'pipe',
+            });
+
+            const worktreePath = resolve(testDir, 'dirty-test-wt');
+
+            // Create uncommitted changes
+            writeFileSync(`${worktreePath}/dirty.txt`, 'uncommitted content');
+
+            const exitCode = handleWorktreeReset('dirty-test');
+
+            expect(exitCode).toBe(1);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(
+                expect.stringContaining('uncommitted changes'),
+            );
+
+            // Cleanup
+            execSync(`git worktree remove --force "${worktreePath}"`, {
+                cwd: testRepo,
+                stdio: 'pipe',
+            });
+        });
+
+        it('should reset named worktree successfully', () => {
+            process.chdir(testRepo);
+
+            // Create a worktree
+            execSync('git worktree add -b reset-named ../reset-named-wt', {
+                cwd: testRepo,
+                stdio: 'pipe',
+            });
+
+            const worktreePath = resolve(testDir, 'reset-named-wt');
+
+            // Make a new commit in main repo
+            writeFileSync(`${testRepo}/new-file.txt`, 'new content');
+            execSync('git add .', { cwd: testRepo, stdio: 'pipe' });
+            execSync('git commit -m "New commit"', { cwd: testRepo, stdio: 'pipe' });
+
+            // Get the HEAD commit
+            const headCommit = execSync('git rev-parse HEAD', {
+                cwd: testRepo,
+                encoding: 'utf-8',
+            }).trim();
+
+            // Reset the worktree
+            const exitCode = handleWorktreeReset('reset-named');
+
+            expect(exitCode).toBe(0);
+
+            // Verify the worktree is now at the same commit
+            const worktreeCommit = execSync('git rev-parse HEAD', {
+                cwd: worktreePath,
+                encoding: 'utf-8',
+            }).trim();
+            expect(worktreeCommit).toBe(headCommit);
+
+            // Cleanup
+            execSync(`git worktree remove --force "${worktreePath}"`, {
+                cwd: testRepo,
+                stdio: 'pipe',
+            });
+        });
+
+        it('should reset current worktree when no name provided and in worktree', () => {
+            process.chdir(testRepo);
+
+            // Create a worktree
+            execSync('git worktree add -b reset-current ../reset-current-wt', {
+                cwd: testRepo,
+                stdio: 'pipe',
+            });
+
+            const worktreePath = resolve(testDir, 'reset-current-wt');
+
+            // Make a new commit in main repo
+            writeFileSync(`${testRepo}/another-file.txt`, 'another content');
+            execSync('git add .', { cwd: testRepo, stdio: 'pipe' });
+            execSync('git commit -m "Another commit"', { cwd: testRepo, stdio: 'pipe' });
+
+            // Get the HEAD commit from main repo
+            const headCommit = execSync('git rev-parse HEAD', {
+                cwd: testRepo,
+                encoding: 'utf-8',
+            }).trim();
+
+            // Change to worktree directory and reset
+            process.chdir(worktreePath);
+            const exitCode = handleWorktreeReset(undefined);
+
+            expect(exitCode).toBe(0);
+
+            // Verify the worktree is now at the same commit
+            const worktreeCommit = execSync('git rev-parse HEAD', {
+                cwd: worktreePath,
+                encoding: 'utf-8',
+            }).trim();
+            expect(worktreeCommit).toBe(headCommit);
+
+            // Cleanup
+            process.chdir(testRepo);
+            execSync(`git worktree remove --force "${worktreePath}"`, {
                 cwd: testRepo,
                 stdio: 'pipe',
             });

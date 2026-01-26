@@ -133,6 +133,8 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
         examples: [
             'af worktree new feature-x        # Create worktree with new branch',
             'af worktree new hotfix --detach  # Create worktree with detached HEAD',
+            'af worktree reset                # Reset current worktree to HEAD',
+            'af worktree reset feature-x      # Reset named worktree to HEAD',
         ],
     },
     help: {
@@ -174,6 +176,7 @@ function showGeneralHelp(): void {
     listItem('setup                  Copy Claude + OpenCode config files');
     listItem('install-extension      Install VSCode extension');
     listItem('worktree new <name>    Create new worktree with env files');
+    listItem('worktree reset [name]  Reset worktree to HEAD');
     listItem('help [command]         Show help for a command');
 
     section('OPTIONS');

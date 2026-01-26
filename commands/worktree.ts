@@ -1,6 +1,12 @@
 import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, copyFileSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import {
+    hasUncommittedChanges,
+    listWorktrees,
+    resetWorktree,
+    type Worktree,
+} from '../git-worktree.ts';
 import { error, info, success } from '../utils/output.ts';
 
 /**
@@ -246,6 +252,146 @@ export function handleWorktreeNew(name: string | undefined, detach: boolean = fa
 }
 
 /**
+ * Get the current worktree information if running from within a worktree.
+ *
+ * Compares the current working directory against the list of worktrees
+ * to determine if we're in a worktree (excluding the main repository).
+ *
+ * @returns The current worktree if in one, or null if in the main repository
+ */
+export function getCurrentWorktree(): Worktree | null {
+    const currentPath = getGitRoot();
+    if (!currentPath) {
+        return null;
+    }
+
+    const worktrees = listWorktrees();
+
+    // The first worktree in the list is typically the main repository
+    // We need to find if current path matches any non-main worktree
+    for (let i = 1; i < worktrees.length; i++) {
+        if (worktrees[i].path === currentPath) {
+            return worktrees[i];
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Find a worktree by its branch name.
+ *
+ * @param name - The branch name to search for
+ * @returns The worktree if found, or null
+ */
+export function findWorktreeByName(name: string): Worktree | null {
+    const worktrees = listWorktrees();
+    return worktrees.find(wt => wt.branch === name) || null;
+}
+
+/**
+ * Get the main repository's worktree (the first in the list).
+ *
+ * @returns The main repository worktree, or null if not in a repo
+ */
+export function getMainWorktree(): Worktree | null {
+    const worktrees = listWorktrees();
+    return worktrees.length > 0 ? worktrees[0] : null;
+}
+
+/**
+ * Handle the 'worktree reset [name]' command.
+ * Resets a worktree to the current HEAD revision.
+ *
+ * @param name - Optional worktree name (branch). If not provided, resets current worktree.
+ * @returns Exit code (0 for success, 1 for error)
+ */
+export function handleWorktreeReset(name: string | undefined): number {
+    // Check if in a git repository
+    if (!isGitRepository()) {
+        error('Error: Not in a git repository');
+        return 1;
+    }
+
+    let targetWorktree: Worktree | null;
+
+    if (name) {
+        // Find worktree by name
+        targetWorktree = findWorktreeByName(name);
+        if (!targetWorktree) {
+            error(`Error: Worktree '${name}' not found`);
+            return 1;
+        }
+    } else {
+        // Use current worktree
+        targetWorktree = getCurrentWorktree();
+        if (!targetWorktree) {
+            error(
+                'Error: Not in a worktree. Specify a worktree name or run from within a worktree.',
+            );
+            return 1;
+        }
+    }
+
+    // Get the main repository to get its HEAD commit
+    const mainWorktree = getMainWorktree();
+    if (!mainWorktree) {
+        error('Error: Could not find main repository');
+        return 1;
+    }
+
+    // Get current HEAD commit from the main repository
+    let targetRevision: string;
+    try {
+        targetRevision = execSync('git rev-parse HEAD', {
+            cwd: mainWorktree.path,
+            encoding: 'utf-8',
+        }).trim();
+    } catch (err) {
+        if (err instanceof Error) {
+            error(`Error: Failed to get current HEAD commit: ${err.message}`);
+        } else {
+            error('Error: Failed to get current HEAD commit');
+        }
+        return 1;
+    }
+
+    // Check for uncommitted changes
+    try {
+        if (hasUncommittedChanges(targetWorktree.path)) {
+            error('Error: Cannot reset worktree with uncommitted changes');
+            console.error(`Worktree '${targetWorktree.branch}' at ${targetWorktree.path}`);
+            console.error('\nPlease commit or stash changes and try again.');
+            console.error('You can check the status by running: git status');
+            return 1;
+        }
+    } catch (err) {
+        if (err instanceof Error) {
+            error(err.message);
+        } else {
+            error(`Failed to check worktree '${targetWorktree.branch}'`);
+        }
+        return 1;
+    }
+
+    // Reset the worktree
+    info(`Resetting worktree ${targetWorktree.branch}...`);
+    try {
+        resetWorktree(targetWorktree.path, targetRevision);
+    } catch (err) {
+        if (err instanceof Error) {
+            error(err.message);
+        } else {
+            error(`Failed to reset worktree '${targetWorktree.branch}'`);
+        }
+        return 1;
+    }
+
+    success(`Successfully reset worktree '${targetWorktree.branch}'`);
+    return 0;
+}
+
+/**
  * Handle the 'worktree' command routing.
  *
  * @param args - Command arguments after 'worktree'
@@ -259,6 +405,11 @@ export async function handleWorktree(args: string[]): Promise<number> {
         const detach = restArgs.includes('--detach');
         const name = restArgs.find(arg => !arg.startsWith('--'));
         return handleWorktreeNew(name, detach);
+    }
+
+    if (subcommand === 'reset') {
+        const name = restArgs.find(arg => !arg.startsWith('--'));
+        return handleWorktreeReset(name);
     }
 
     if (!subcommand) {
