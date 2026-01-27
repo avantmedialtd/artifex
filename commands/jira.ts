@@ -17,6 +17,15 @@ interface JiraOptions {
     parent?: string;
     estimate?: string;
     remaining?: string;
+    name?: string;
+    'start-date'?: string;
+    'release-date'?: string;
+    released?: boolean;
+    unreleased?: boolean;
+    'fix-version'?: string;
+    'affected-version'?: string;
+    'move-fix-issues-to'?: string;
+    'move-affected-issues-to'?: string;
 }
 
 /**
@@ -36,6 +45,10 @@ function parseArgs(argv: string[]): {
 
         if (arg === '--json') {
             options.json = true;
+        } else if (arg === '--released') {
+            options.released = true;
+        } else if (arg === '--unreleased') {
+            options.unreleased = true;
         } else if (arg.startsWith('--')) {
             const key = arg.slice(2) as keyof JiraOptions;
             const value = argv[++i];
@@ -82,6 +95,13 @@ COMMANDS:
   projects                  List all projects
   types <project>           List issue types for a project
 
+VERSION COMMANDS:
+  versions <project>        List all versions in a project
+  version <version-id>      Get version details
+  version-create            Create a new version
+  version-update <id>       Update a version
+  version-delete <id>       Delete a version
+
 OPTIONS:
   --json                    Output as JSON instead of markdown
   --limit <n>               Limit results (default: 50)
@@ -95,6 +115,8 @@ CREATE OPTIONS:
   --labels <a,b,c>          Comma-separated labels
   --parent <issue-key>      Parent issue (for subtasks)
   --estimate <time>         Original estimate (e.g., "2h", "1d", "30m")
+  --fix-version <v1,v2>     Fix version(s), comma-separated
+  --affected-version <v>    Affected version(s), comma-separated
 
 UPDATE OPTIONS:
   --summary "<text>"        New summary
@@ -103,6 +125,28 @@ UPDATE OPTIONS:
   --labels <a,b,c>          New labels (replaces existing)
   --estimate <time>         Original estimate (e.g., "2h", "1d", "30m")
   --remaining <time>        Remaining estimate (e.g., "1h", "4h")
+  --fix-version <v1,v2>     Fix version(s), comma-separated (empty to clear)
+  --affected-version <v>    Affected version(s), comma-separated (empty to clear)
+
+VERSION-CREATE OPTIONS:
+  --project <key>           Project key (required)
+  --name "<text>"           Version name (required)
+  --description "<text>"    Description
+  --start-date <YYYY-MM-DD> Start date
+  --release-date <YYYY-MM-DD> Release date
+  --released                Mark as released
+
+VERSION-UPDATE OPTIONS:
+  --name "<text>"           New version name
+  --description "<text>"    New description
+  --start-date <YYYY-MM-DD> New start date
+  --release-date <YYYY-MM-DD> New release date
+  --released                Mark as released
+  --unreleased              Mark as unreleased
+
+VERSION-DELETE OPTIONS:
+  --move-fix-issues-to <id>      Move fix version issues to this version
+  --move-affected-issues-to <id> Move affected version issues to this version
 
 COMMENT OPTIONS:
   --add "<text>"            Add a comment (omit to list comments)
@@ -119,11 +163,16 @@ EXAMPLES:
   af jira search "assignee = currentUser() AND status != Done"
   af jira create --project PROJ --type Bug --summary "Login broken"
   af jira create --project PROJ --type Task --summary "Feature" --estimate "4h"
+  af jira create --project PROJ --type Bug --summary "Bug" --fix-version "v1.0.0"
   af jira update PROJ-123 --summary "Updated title" --priority High
   af jira update PROJ-123 --estimate "8h" --remaining "2h"
+  af jira update PROJ-123 --fix-version "v2.0.0" --affected-version "v1.0.0"
   af jira comment PROJ-123 --add "Working on this"
   af jira transition PROJ-123 --to "In Progress"
   af jira assign PROJ-123 --to user@example.com
+  af jira versions PROJ
+  af jira version-create --project PROJ --name "v1.0.0" --release-date 2024-06-01
+  af jira version-update 12345 --released
 `);
 }
 
@@ -209,6 +258,14 @@ export async function handleJira(args: string[]): Promise<number> {
                     return 1;
                 }
                 const labelList = labels?.split(',').map(l => l.trim());
+                const fixVersionList = options['fix-version']
+                    ?.split(',')
+                    .map(v => v.trim())
+                    .filter(v => v);
+                const affectedVersionList = options['affected-version']
+                    ?.split(',')
+                    .map(v => v.trim())
+                    .filter(v => v);
                 const issue = await client.createIssue(
                     project,
                     type,
@@ -218,6 +275,8 @@ export async function handleJira(args: string[]): Promise<number> {
                     labelList,
                     parent,
                     estimate,
+                    fixVersionList,
+                    affectedVersionList,
                 );
                 fmt.output(json ? issue : fmt.formatSuccess(`Created issue ${issue.key}`), json);
                 break;
@@ -238,11 +297,21 @@ export async function handleJira(args: string[]): Promise<number> {
                 }
                 if (options.estimate !== undefined) updates.originalEstimate = options.estimate;
                 if (options.remaining !== undefined) updates.remainingEstimate = options.remaining;
+                if (options['fix-version'] !== undefined) {
+                    updates.fixVersions = options['fix-version']
+                        ? options['fix-version'].split(',').map(v => v.trim())
+                        : [];
+                }
+                if (options['affected-version'] !== undefined) {
+                    updates.affectedVersions = options['affected-version']
+                        ? options['affected-version'].split(',').map(v => v.trim())
+                        : [];
+                }
 
                 if (Object.keys(updates).length === 0) {
                     error('Error: No update options provided');
                     console.error(
-                        'Use --summary, --description, --priority, --labels, --estimate, or --remaining',
+                        'Use --summary, --description, --priority, --labels, --estimate, --remaining, --fix-version, or --affected-version',
                     );
                     return 1;
                 }
@@ -377,6 +446,106 @@ export async function handleJira(args: string[]): Promise<number> {
                 }
                 const types = await client.getIssueTypes(projectKey);
                 fmt.output(json ? types : fmt.formatIssueTypes(projectKey, types), json);
+                break;
+            }
+
+            case 'versions': {
+                const projectKey = subArgs[0];
+                if (!projectKey) {
+                    error('Error: Project key required. Usage: af jira versions <project>');
+                    return 1;
+                }
+                const versions = await client.getProjectVersions(projectKey);
+                fmt.output(json ? versions : fmt.formatVersions(projectKey, versions), json);
+                break;
+            }
+
+            case 'version': {
+                const versionId = subArgs[0];
+                if (!versionId) {
+                    error('Error: Version ID required. Usage: af jira version <version-id>');
+                    return 1;
+                }
+                const version = await client.getVersion(versionId);
+                fmt.output(json ? version : fmt.formatVersion(version), json);
+                break;
+            }
+
+            case 'version-create': {
+                const { project, name, description } = options;
+                if (!project || !name) {
+                    error('Error: --project and --name are required');
+                    console.error('Usage: af jira version-create --project PROJ --name "v1.0.0"');
+                    return 1;
+                }
+                const version = await client.createVersion(project, name, {
+                    description,
+                    startDate: options['start-date'],
+                    releaseDate: options['release-date'],
+                    released: options.released,
+                });
+                fmt.output(
+                    json
+                        ? version
+                        : fmt.formatSuccess(`Created version ${version.name} (ID: ${version.id})`),
+                    json,
+                );
+                break;
+            }
+
+            case 'version-update': {
+                const versionId = subArgs[0];
+                if (!versionId) {
+                    error(
+                        'Error: Version ID required. Usage: af jira version-update <version-id> [options]',
+                    );
+                    return 1;
+                }
+                const versionUpdates: Parameters<typeof client.updateVersion>[1] = {};
+                if (options.name !== undefined) versionUpdates.name = options.name;
+                if (options.description !== undefined)
+                    versionUpdates.description = options.description;
+                if (options['start-date'] !== undefined)
+                    versionUpdates.startDate = options['start-date'];
+                if (options['release-date'] !== undefined)
+                    versionUpdates.releaseDate = options['release-date'];
+                if (options.released) versionUpdates.released = true;
+                if (options.unreleased) versionUpdates.released = false;
+
+                if (Object.keys(versionUpdates).length === 0) {
+                    error('Error: No update options provided');
+                    console.error(
+                        'Use --name, --description, --start-date, --release-date, --released, or --unreleased',
+                    );
+                    return 1;
+                }
+
+                const updatedVersion = await client.updateVersion(versionId, versionUpdates);
+                fmt.output(
+                    json
+                        ? updatedVersion
+                        : fmt.formatSuccess(`Updated version ${updatedVersion.name}`),
+                    json,
+                );
+                break;
+            }
+
+            case 'version-delete': {
+                const versionId = subArgs[0];
+                if (!versionId) {
+                    error('Error: Version ID required. Usage: af jira version-delete <version-id>');
+                    return 1;
+                }
+                await client.deleteVersion(versionId, {
+                    moveFixIssuesTo: options['move-fix-issues-to'],
+                    moveAffectedIssuesTo: options['move-affected-issues-to'],
+                });
+                fmt.output(
+                    json
+                        ? { success: true, id: versionId }
+                        : fmt.formatSuccess(`Deleted version ${versionId}`),
+                    json,
+                );
                 break;
             }
 

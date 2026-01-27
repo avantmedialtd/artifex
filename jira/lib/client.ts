@@ -11,6 +11,9 @@ import type {
     JiraAdfDocument,
     JiraError,
     JiraUser,
+    JiraVersion,
+    JiraCreateVersionRequest,
+    JiraUpdateVersionRequest,
 } from './types.ts';
 
 // Lazy config loading - only fetched when first API call is made
@@ -377,6 +380,8 @@ export async function createIssue(
     labels?: string[],
     parentKey?: string,
     originalEstimate?: string,
+    fixVersions?: string[],
+    affectedVersions?: string[],
 ): Promise<JiraIssue> {
     const body: JiraCreateIssueRequest = {
         fields: {
@@ -401,6 +406,12 @@ export async function createIssue(
     if (originalEstimate) {
         body.fields.timetracking = { originalEstimate };
     }
+    if (fixVersions?.length) {
+        body.fields.fixVersions = fixVersions.map(name => ({ name }));
+    }
+    if (affectedVersions?.length) {
+        body.fields.versions = affectedVersions.map(name => ({ name }));
+    }
 
     return request<JiraIssue>('/issue', {
         method: 'POST',
@@ -417,6 +428,8 @@ export async function updateIssue(
         labels?: string[];
         originalEstimate?: string;
         remainingEstimate?: string;
+        fixVersions?: string[];
+        affectedVersions?: string[];
     },
 ): Promise<void> {
     const body: JiraUpdateIssueRequest = { fields: {} };
@@ -441,6 +454,12 @@ export async function updateIssue(
         if (updates.remainingEstimate !== undefined) {
             body.fields.timetracking.remainingEstimate = updates.remainingEstimate;
         }
+    }
+    if (updates.fixVersions !== undefined) {
+        body.fields.fixVersions = updates.fixVersions.map(name => ({ name }));
+    }
+    if (updates.affectedVersions !== undefined) {
+        body.fields.versions = updates.affectedVersions.map(name => ({ name }));
     }
 
     await request(`/issue/${issueKey}`, {
@@ -599,4 +618,109 @@ export async function getProjects(): Promise<JiraProject[]> {
 export async function getIssueTypes(projectKey: string): Promise<JiraIssueType[]> {
     const project = await request<{ issueTypes: JiraIssueType[] }>(`/project/${projectKey}`);
     return project.issueTypes;
+}
+
+// Versions
+export async function getProjectVersions(projectKey: string): Promise<JiraVersion[]> {
+    return request<JiraVersion[]>(`/project/${projectKey}/versions`);
+}
+
+export async function getVersion(versionId: string): Promise<JiraVersion> {
+    return request<JiraVersion>(`/version/${versionId}`);
+}
+
+export async function createVersion(
+    projectKey: string,
+    name: string,
+    options?: {
+        description?: string;
+        startDate?: string;
+        releaseDate?: string;
+        released?: boolean;
+    },
+): Promise<JiraVersion> {
+    // First get the project to obtain the numeric project ID
+    const project = await request<{ id: string }>(`/project/${projectKey}`);
+
+    const body: JiraCreateVersionRequest = {
+        name,
+        projectId: parseInt(project.id, 10),
+    };
+
+    if (options?.description) {
+        body.description = options.description;
+    }
+    if (options?.startDate) {
+        body.startDate = options.startDate;
+    }
+    if (options?.releaseDate) {
+        body.releaseDate = options.releaseDate;
+    }
+    if (options?.released !== undefined) {
+        body.released = options.released;
+    }
+
+    return request<JiraVersion>('/version', {
+        method: 'POST',
+        body: JSON.stringify(body),
+    });
+}
+
+export async function updateVersion(
+    versionId: string,
+    updates: {
+        name?: string;
+        description?: string;
+        startDate?: string;
+        releaseDate?: string;
+        released?: boolean;
+    },
+): Promise<JiraVersion> {
+    const body: JiraUpdateVersionRequest = {};
+
+    if (updates.name !== undefined) {
+        body.name = updates.name;
+    }
+    if (updates.description !== undefined) {
+        body.description = updates.description;
+    }
+    if (updates.startDate !== undefined) {
+        body.startDate = updates.startDate;
+    }
+    if (updates.releaseDate !== undefined) {
+        body.releaseDate = updates.releaseDate;
+    }
+    if (updates.released !== undefined) {
+        body.released = updates.released;
+    }
+
+    return request<JiraVersion>(`/version/${versionId}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+    });
+}
+
+export async function deleteVersion(
+    versionId: string,
+    options?: {
+        moveFixIssuesTo?: string;
+        moveAffectedIssuesTo?: string;
+    },
+): Promise<void> {
+    let endpoint = `/version/${versionId}`;
+    const params: string[] = [];
+
+    if (options?.moveFixIssuesTo) {
+        params.push(`moveFixIssuesTo=${options.moveFixIssuesTo}`);
+    }
+    if (options?.moveAffectedIssuesTo) {
+        params.push(`moveAffectedIssuesTo=${options.moveAffectedIssuesTo}`);
+    }
+    if (params.length > 0) {
+        endpoint += `?${params.join('&')}`;
+    }
+
+    await request(endpoint, {
+        method: 'DELETE',
+    });
 }

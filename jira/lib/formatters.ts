@@ -5,6 +5,7 @@ import type {
     JiraTransition,
     JiraComment,
     JiraSearchResult,
+    JiraVersion,
 } from './types.ts';
 import type { JiraAttachment } from './client.ts';
 import { adfToText } from './client.ts';
@@ -67,6 +68,16 @@ export function formatIssue(issue: JiraIssue): string {
             if (tt.timeSpent) parts.push(`Spent: ${tt.timeSpent}`);
             lines.push(`| Estimate | ${parts.join(' / ')} |`);
         }
+    }
+
+    // Fix Versions
+    if (f.fixVersions?.length) {
+        lines.push(`| Fix Versions | ${f.fixVersions.map(v => v.name).join(', ')} |`);
+    }
+
+    // Affected Versions (stored as 'versions' in API)
+    if (f.versions?.length) {
+        lines.push(`| Affected Versions | ${f.versions.map(v => v.name).join(', ')} |`);
     }
 
     // Description
@@ -253,4 +264,69 @@ export function formatAttachments(issueKey: string, attachments: JiraAttachment[
 // Success message
 export function formatSuccess(message: string): string {
     return `**Success:** ${message}`;
+}
+
+// Date formatting for versions (date only, no time)
+function formatVersionDate(dateStr: string | undefined): string {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+    });
+}
+
+// Versions list to markdown
+export function formatVersions(projectKey: string, versions: JiraVersion[]): string {
+    const lines: string[] = [];
+
+    lines.push(`# Versions for ${projectKey} (${versions.length})`);
+    lines.push('');
+
+    if (versions.length === 0) {
+        lines.push('No versions found.');
+        return lines.join('\n');
+    }
+
+    lines.push(`| Name | Status | Release Date | Description |`);
+    lines.push(`|------|--------|--------------|-------------|`);
+
+    for (const version of versions) {
+        const status = version.released ? 'Released' : version.archived ? 'Archived' : 'Unreleased';
+        const desc = version.description?.slice(0, 40) ?? '';
+        const releaseDate = formatVersionDate(version.releaseDate);
+        lines.push(`| ${version.name} | ${status} | ${releaseDate} | ${desc} |`);
+    }
+
+    return lines.join('\n');
+}
+
+// Single version to markdown
+export function formatVersion(version: JiraVersion): string {
+    const lines: string[] = [];
+
+    lines.push(`# Version: ${version.name}`);
+    lines.push('');
+    lines.push(`| Field | Value |`);
+    lines.push(`|-------|-------|`);
+    lines.push(`| ID | ${version.id} |`);
+    lines.push(
+        `| Status | ${version.released ? 'Released' : version.archived ? 'Archived' : 'Unreleased'} |`,
+    );
+
+    if (version.startDate) {
+        lines.push(`| Start Date | ${formatVersionDate(version.startDate)} |`);
+    }
+    if (version.releaseDate) {
+        lines.push(`| Release Date | ${formatVersionDate(version.releaseDate)} |`);
+    }
+
+    if (version.description) {
+        lines.push('');
+        lines.push('## Description');
+        lines.push('');
+        lines.push(version.description);
+    }
+
+    return lines.join('\n');
 }

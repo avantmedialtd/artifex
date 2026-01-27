@@ -36,6 +36,18 @@ export interface JiraProject {
     projectTypeKey: string;
 }
 
+export interface JiraVersion {
+    id: string;
+    name: string;
+    description?: string;
+    archived: boolean;
+    released: boolean;
+    startDate?: string;
+    releaseDate?: string;
+    projectId?: number;
+    self?: string;
+}
+
 export interface JiraTimeTracking {
     originalEstimate?: string;
     originalEstimateSeconds?: number;
@@ -104,6 +116,8 @@ export interface JiraIssueFields {
         };
     }>;
     timetracking?: JiraTimeTracking;
+    fixVersions?: JiraVersion[];
+    versions?: JiraVersion[]; // affectedVersions in API response
 }
 
 export interface JiraIssue {
@@ -139,6 +153,8 @@ export interface JiraCreateIssueRequest {
         timetracking?: {
             originalEstimate?: string;
         };
+        fixVersions?: Array<{ name: string }>;
+        versions?: Array<{ name: string }>; // affectedVersions
     };
 }
 
@@ -153,7 +169,28 @@ export interface JiraUpdateIssueRequest {
             originalEstimate?: string;
             remainingEstimate?: string;
         };
+        fixVersions: Array<{ name: string }>;
+        versions: Array<{ name: string }>; // affectedVersions
     }>;
+}
+
+export interface JiraCreateVersionRequest {
+    name: string;
+    projectId: number;
+    description?: string;
+    startDate?: string;
+    releaseDate?: string;
+    released?: boolean;
+    archived?: boolean;
+}
+
+export interface JiraUpdateVersionRequest {
+    name?: string;
+    description?: string;
+    startDate?: string;
+    releaseDate?: string;
+    released?: boolean;
+    archived?: boolean;
 }
 
 export interface JiraCreateCommentRequest {
@@ -179,6 +216,8 @@ export interface CommandOptions {
     add?: string;
     limit?: number;
     parent?: string;
+    fixVersion?: string;
+    affectedVersion?: string;
 }
 
 export interface ParsedArgs {
