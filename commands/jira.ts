@@ -278,7 +278,10 @@ export async function handleJira(args: string[]): Promise<number> {
                     fixVersionList,
                     affectedVersionList,
                 );
-                fmt.output(json ? issue : fmt.formatSuccess(`Created issue ${issue.key}`), json);
+                fmt.output(
+                    json ? issue : fmt.formatSuccess(`Created issue ${fmt.issueLink(issue.key)}`),
+                    json,
+                );
                 break;
             }
 
@@ -320,7 +323,7 @@ export async function handleJira(args: string[]): Promise<number> {
                 fmt.output(
                     json
                         ? { success: true, key: issueKey }
-                        : fmt.formatSuccess(`Updated issue ${issueKey}`),
+                        : fmt.formatSuccess(`Updated issue ${fmt.issueLink(issueKey)}`),
                     json,
                 );
                 break;
@@ -336,7 +339,7 @@ export async function handleJira(args: string[]): Promise<number> {
                 fmt.output(
                     json
                         ? { success: true, key: issueKey }
-                        : fmt.formatSuccess(`Deleted issue ${issueKey}`),
+                        : fmt.formatSuccess(`Deleted issue ${fmt.issueLink(issueKey)}`),
                     json,
                 );
                 break;
@@ -353,7 +356,9 @@ export async function handleJira(args: string[]): Promise<number> {
                 if (options.add) {
                     const comment = await client.addComment(issueKey, options.add);
                     fmt.output(
-                        json ? comment : fmt.formatSuccess(`Added comment to ${issueKey}`),
+                        json
+                            ? comment
+                            : fmt.formatSuccess(`Added comment to ${fmt.issueLink(issueKey)}`),
                         json,
                     );
                 } else {
@@ -374,7 +379,9 @@ export async function handleJira(args: string[]): Promise<number> {
                 fmt.output(
                     json
                         ? { success: true, key: issueKey, status: options.to }
-                        : fmt.formatSuccess(`Transitioned ${issueKey} to "${options.to}"`),
+                        : fmt.formatSuccess(
+                              `Transitioned ${fmt.issueLink(issueKey)} to "${options.to}"`,
+                          ),
                     json,
                 );
                 break;
@@ -403,7 +410,7 @@ export async function handleJira(args: string[]): Promise<number> {
                     fmt.output(
                         json
                             ? { success: true, key: issueKey, assignee: null }
-                            : fmt.formatSuccess(`Unassigned ${issueKey}`),
+                            : fmt.formatSuccess(`Unassigned ${fmt.issueLink(issueKey)}`),
                         json,
                     );
                 } else {
@@ -411,7 +418,9 @@ export async function handleJira(args: string[]): Promise<number> {
                     fmt.output(
                         json
                             ? { success: true, key: issueKey, assignee: options.to }
-                            : fmt.formatSuccess(`Assigned ${issueKey} to ${options.to}`),
+                            : fmt.formatSuccess(
+                                  `Assigned ${fmt.issueLink(issueKey)} to ${options.to}`,
+                              ),
                         json,
                     );
                 }

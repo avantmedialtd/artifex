@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { colors, error, header, info, listItem, section, success, warn } from './output.ts';
+import { colors, error, header, info, link, listItem, section, success, warn } from './output.ts';
 
 describe('output utilities', () => {
     let consoleLogSpy: ReturnType<typeof vi.spyOn>;
@@ -146,6 +146,39 @@ describe('output utilities', () => {
 
             listItem('Failed item', '✗');
             expect(consoleLogSpy).toHaveBeenCalledWith(`  ${chalk.gray('✗')} Failed item`);
+        });
+    });
+
+    describe('link', () => {
+        it('should create OSC 8 hyperlink with correct escape sequences', () => {
+            const result = link('Click here', 'https://example.com');
+            expect(result).toBe('\x1b]8;;https://example.com\x07Click here\x1b]8;;\x07');
+        });
+
+        it('should handle empty text', () => {
+            const result = link('', 'https://example.com');
+            expect(result).toBe('\x1b]8;;https://example.com\x07\x1b]8;;\x07');
+        });
+
+        it('should handle complex URLs', () => {
+            const url = 'https://jira.example.com/browse/PROJ-123?param=value';
+            const result = link('PROJ-123', url);
+            expect(result).toBe(`\x1b]8;;${url}\x07PROJ-123\x1b]8;;\x07`);
+        });
+
+        it('should handle special characters in text', () => {
+            const result = link('Issue: PROJ-123 (Critical)', 'https://example.com');
+            expect(result).toBe(
+                '\x1b]8;;https://example.com\x07Issue: PROJ-123 (Critical)\x1b]8;;\x07',
+            );
+        });
+
+        it('should return a string that can be concatenated', () => {
+            const linkedText = link('PROJ-123', 'https://example.com');
+            const fullMessage = `Created issue ${linkedText}`;
+            expect(fullMessage).toContain('Created issue');
+            expect(fullMessage).toContain('PROJ-123');
+            expect(fullMessage).toContain('\x1b]8;;');
         });
     });
 });

@@ -83,3 +83,22 @@ export function section(message: string): void {
 export function listItem(message: string, symbol: string = '•'): void {
     console.log(`  ${chalk.gray(symbol)} ${message}`);
 }
+
+/**
+ * Create a clickable hyperlink using OSC 8 escape sequences.
+ * In terminals that support OSC 8 (iTerm2, GNOME Terminal, Windows Terminal, etc.),
+ * the text will be displayed as a clickable link. In unsupported terminals,
+ * the text is displayed without the URL (graceful degradation).
+ *
+ * @param text - The visible text to display
+ * @param url - The URL to open when clicked
+ * @returns A string with OSC 8 escape sequences
+ */
+export function link(text: string, url: string): string {
+    // OSC 8 format: \x1b]8;;URL\x07TEXT\x1b]8;;\x07
+    // - \x1b]8;; starts the hyperlink with URL
+    // - \x07 (BEL) terminates the URL
+    // - TEXT is displayed
+    // - \x1b]8;;\x07 closes the hyperlink
+    return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
+}

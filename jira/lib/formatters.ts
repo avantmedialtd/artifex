@@ -9,6 +9,24 @@ import type {
 } from './types.ts';
 import type { JiraAttachment } from './client.ts';
 import { adfToText } from './client.ts';
+import { link } from '../../utils/output.ts';
+
+// Jira URL helpers - requires JIRA_BASE_URL environment variable
+function getBaseUrl(): string {
+    return process.env.JIRA_BASE_URL?.replace(/\/$/, '') ?? '';
+}
+
+export function issueLink(issueKey: string): string {
+    const baseUrl = getBaseUrl();
+    if (!baseUrl) return issueKey;
+    return link(issueKey, `${baseUrl}/browse/${issueKey}`);
+}
+
+function projectLink(projectKey: string): string {
+    const baseUrl = getBaseUrl();
+    if (!baseUrl) return projectKey;
+    return link(projectKey, `${baseUrl}/jira/software/projects/${projectKey}/boards`);
+}
 
 // Output helper
 export function output(data: unknown, asJson: boolean): void {
@@ -35,7 +53,7 @@ export function formatIssue(issue: JiraIssue): string {
     const f = issue.fields;
     const lines: string[] = [];
 
-    lines.push(`# ${issue.key}: ${f.summary}`);
+    lines.push(`# ${issueLink(issue.key)}: ${f.summary}`);
     lines.push('');
     lines.push(`| Field | Value |`);
     lines.push(`|-------|-------|`);
@@ -55,7 +73,7 @@ export function formatIssue(issue: JiraIssue): string {
     }
 
     if (f.parent) {
-        lines.push(`| Parent | ${f.parent.key}: ${f.parent.fields.summary} |`);
+        lines.push(`| Parent | ${issueLink(f.parent.key)}: ${f.parent.fields.summary} |`);
     }
 
     // Time tracking
@@ -97,7 +115,9 @@ export function formatIssue(issue: JiraIssue): string {
         for (const subtask of f.subtasks) {
             const status = subtask.fields.status.name;
             const checkbox = status.toLowerCase() === 'done' ? '[x]' : '[ ]';
-            lines.push(`- ${checkbox} **${subtask.key}**: ${subtask.fields.summary} (${status})`);
+            lines.push(
+                `- ${checkbox} **${issueLink(subtask.key)}**: ${subtask.fields.summary} (${status})`,
+            );
         }
     }
 
@@ -140,7 +160,7 @@ export function formatIssueList(result: JiraSearchResult): string {
         const estimate =
             f.timetracking?.remainingEstimate ?? f.timetracking?.originalEstimate ?? '-';
         lines.push(
-            `| ${issue.key} | ${f.issuetype.name} | ${f.status.name} | ${summary} | ${assignee} | ${estimate} |`,
+            `| ${issueLink(issue.key)} | ${f.issuetype.name} | ${f.status.name} | ${summary} | ${assignee} | ${estimate} |`,
         );
     }
 
@@ -166,7 +186,7 @@ export function formatProjects(projects: JiraProject[]): string {
     lines.push(`|-----|------|------|`);
 
     for (const project of projects) {
-        lines.push(`| ${project.key} | ${project.name} | ${project.projectTypeKey} |`);
+        lines.push(`| ${projectLink(project.key)} | ${project.name} | ${project.projectTypeKey} |`);
     }
 
     return lines.join('\n');
@@ -193,7 +213,7 @@ export function formatIssueTypes(projectKey: string, types: JiraIssueType[]): st
 export function formatTransitions(issueKey: string, transitions: JiraTransition[]): string {
     const lines: string[] = [];
 
-    lines.push(`# Available Transitions for ${issueKey}`);
+    lines.push(`# Available Transitions for ${issueLink(issueKey)}`);
     lines.push('');
 
     if (transitions.length === 0) {
@@ -215,7 +235,7 @@ export function formatTransitions(issueKey: string, transitions: JiraTransition[
 export function formatComments(issueKey: string, comments: JiraComment[]): string {
     const lines: string[] = [];
 
-    lines.push(`# Comments on ${issueKey} (${comments.length})`);
+    lines.push(`# Comments on ${issueLink(issueKey)} (${comments.length})`);
 
     if (comments.length === 0) {
         lines.push('');
@@ -237,7 +257,7 @@ export function formatComments(issueKey: string, comments: JiraComment[]): strin
 export function formatAttachments(issueKey: string, attachments: JiraAttachment[]): string {
     const lines: string[] = [];
 
-    lines.push(`# Attachments added to ${issueKey}`);
+    lines.push(`# Attachments added to ${issueLink(issueKey)}`);
     lines.push('');
 
     if (attachments.length === 0) {
