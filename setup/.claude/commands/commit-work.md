@@ -27,7 +27,16 @@ Examples:
      4. If no changes exist, ask the user for the ID and title
      5. Extract the title from the first heading in `openspec/changes/<id>/proposal.md`
 
-2. Run the following command to stage all changes and create a commit:
+2. **Archive the OpenSpec change (if not already archived):**
+   - Check if `openspec/changes/<id>/` directory exists
+   - If it exists, perform the full archive workflow:
+     1. Run `openspec archive <id> --yes` to move the change and apply spec updates
+     2. Review the output to confirm specs were updated and the change landed in `changes/archive/`
+     3. Validate with `openspec validate --strict` and inspect with `openspec show <id>` if anything looks off
+     4. Ensure everything meets the project's formatting rules (run `bun run format` if needed)
+   - If the directory does not exist (already archived), skip this step
+
+3. Run the following command to stage all changes and create a commit:
    ```bash
    af commit save "<title>" OpenSpec-Id=<openspec-id>
    ```
