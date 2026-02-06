@@ -356,6 +356,66 @@ Where `<Title>` is extracted from the archived proposal.md file.
 
 Applies an approved OpenSpec change (does not auto-commit, as changes are applied during implementation).
 
+### Stop Hook Command
+
+The `af stop-hook` command conditionally runs E2E tests based on whether relevant source files have changed. It's designed to be used as a Claude Code Stop hook to avoid running slow E2E tests when only non-code files (like OpenSpec proposals) were modified.
+
+#### Usage
+
+```bash
+af stop-hook  # Check for changes and run e2e if needed
+```
+
+#### Behavior
+
+1. Detects changed files using git (staged, unstaged, and untracked)
+2. Filters out ignored paths (default: `openspec/`)
+3. If relevant files changed: runs `af e2e`
+4. If only ignored paths changed: exits 0 (skips e2e)
+
+#### Exit Codes
+
+- `0` - Success (e2e passed or skipped)
+- `2` - E2E tests failed
+
+#### Configuration
+
+Create an optional `af.json` in the project root to customize behavior:
+
+```json
+{
+    "stopHook": {
+        "ignoredPaths": ["openspec/", "docs/", "scripts/"],
+        "command": "npm run test:e2e"
+    }
+}
+```
+
+All settings are optional. If `ignoredPaths` is specified, it completely replaces the defaults.
+
+#### Claude Code Hook Setup
+
+Add to your `.claude/settings.json`:
+
+```json
+{
+    "hooks": {
+        "Stop": [
+            {
+                "matcher": "",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "af stop-hook",
+                        "timeout": 3600
+                    }
+                ]
+            }
+        ]
+    }
+}
+```
+
 ### Setup Command
 
 The `af setup` command copies bundled Claude configuration files (commands, skills, settings) to the user's home directory (`~/.claude/`).

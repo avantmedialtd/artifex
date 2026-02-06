@@ -15,6 +15,7 @@ import {
     handleSpecArchive,
     handleSpecPropose,
 } from './commands/spec.ts';
+import { handleStopHook } from './commands/stop-hook.ts';
 import { handleTodo } from './commands/todo.ts';
 import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts';
 import { handleWatch } from './commands/watch.ts';
@@ -141,6 +142,11 @@ export async function route(args: string[]): Promise<number> {
     // Route e2e command
     if (command === 'e2e') {
         return await handleE2e(args.slice(1));
+    }
+
+    // Route stop-hook command
+    if (command === 'stop-hook') {
+        return await handleStopHook();
     }
 
     if (command === 'todo') {

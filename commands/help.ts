@@ -70,6 +70,11 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af e2e npm run e2e -- --grep "booking"   # Custom command',
         ],
     },
+    'stop-hook': {
+        description: 'Conditionally run e2e tests if relevant files changed',
+        usage: 'af stop-hook',
+        examples: ['af stop-hook  # Run e2e only if source files changed (not just openspec/)'],
+    },
     todo: {
         description: 'Show all TODO items from active OpenSpec changes',
         usage: 'af todo',
@@ -166,6 +171,7 @@ function showGeneralHelp(): void {
     listItem('commit [apply] [id]    Commit all changes with "Apply: <title>"');
     listItem('changes                List all OpenSpec changes');
     listItem('e2e [args...]          Run E2E tests in Docker');
+    listItem('stop-hook              Run e2e only if relevant files changed');
     listItem('todo                   Show all TODO items from active changes');
     listItem('watch                  Continuously show updated TODO items (with idle indicator)');
     listItem('versions reset         Reset version worktrees to HEAD');
