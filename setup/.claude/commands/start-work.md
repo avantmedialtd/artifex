@@ -30,36 +30,22 @@ Examples:
 1. Fetch the issue details using `af jira get <issue-key>`.
 2. Assign the issue to yourself using `af jira assign <issue-key> --to $(af jira get <issue-key> --json | jq -r '.reporter.emailAddress')` — but first check who the current user is by looking at the Jira config or asking.
 3. Transition the issue to "In Progress" using `af jira transition <issue-key> --to "In Progress"`. If this fails, run `af jira transitions <issue-key>` to find the correct status name.
-4. Create an OpenSpec proposal based on the issue:
-   - Use the issue key and summary to derive a `change-id` (kebab-case, verb-led)
-   - Review `openspec/project.md`, run `openspec list` and `openspec list --specs` to understand current context
-   - Scaffold `proposal.md`, `tasks.md`, and spec deltas under `openspec/changes/<id>/`
-   - Include a link to the Jira issue in `proposal.md`
-   - Draft spec deltas with `## ADDED|MODIFIED|REMOVED Requirements` and at least one `#### Scenario:` per requirement
-   - Validate with `openspec validate <id> --strict`
+4. Create an OpenSpec change using the artifact workflow:
+   - Derive a `change-id` from the issue key and summary (kebab-case, verb-led)
+   - Create the change: `openspec new change "<change-id>"`
+   - Get the artifact status: `openspec status --change "<change-id>" --json`
+   - Get proposal artifact instructions: `openspec instructions proposal --change "<change-id>" --json`
+   - Create the proposal artifact using the template from instructions, enriching it with:
+     - Jira issue link: `**Jira**: [ISSUE-KEY](jira-url)`
+     - Why section derived from Jira issue description
+     - What Changes derived from issue details
+   - Show the updated status
+5. **STOP and hand off to OPSX workflow**
 
-**Proposal Template**
-
-```markdown
-# Issue summary
-
-## Why
-
-[Derived from Jira issue description]
-
-**Jira**: [ISSUE-KEY](jira-url)
-
-## What Changes
-
-- [Bullet list derived from issue]
-
-## Impact
-
-- Affected specs: [list capabilities]
-- Affected code: [key files/systems]
-```
+   Suggest: "Proposal created. Run `/opsx:continue` to create the next artifact, or `/opsx:ff` to generate all remaining artifacts."
 
 **Reference**
 
 - See `openspec/AGENTS.md` for OpenSpec conventions
 - Run `af jira --help` for Jira CLI options
+- See `/opsx:new` and `/opsx:ff` for the full artifact workflow
