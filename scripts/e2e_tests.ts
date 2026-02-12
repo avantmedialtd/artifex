@@ -269,7 +269,7 @@ export async function runE2eTests(args: string[]): Promise<number> {
 
     logInfo('Building and starting services');
     await compose(['up', '-d', '--build', '--wait'], {
-        inheritStdio: true,
+        inheritStdio: SHOW_AGENT_DETAILS,
     });
 
     clearPreviousLine();
