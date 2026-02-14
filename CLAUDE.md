@@ -1,4 +1,3 @@
-
 ## Plan Mode and OpenSpec
 
 For significant changes, Claude MUST scaffold an OpenSpec proposal immediately after the user approves the plan and Plan mode exits.

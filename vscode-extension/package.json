@@ -1,7 +1,7 @@
 {
-    "name": "openspec-tasks",
-    "displayName": "OpenSpec Tasks",
-    "description": "Monitor OpenSpec change tasks in a dedicated panel",
+    "name": "openspec",
+    "displayName": "OpenSpec",
+    "description": "Monitor OpenSpec changes in a dedicated panel",
     "version": "0.1.0",
     "publisher": "avantmedia",
     "engines": {
@@ -27,15 +27,15 @@
         "views": {
             "openspec": [
                 {
-                    "id": "openspecTasks",
+                    "id": "openspecChanges",
                     "name": "Changes"
                 }
             ]
         },
         "configuration": {
-            "title": "OpenSpec Tasks",
+            "title": "OpenSpec",
             "properties": {
-                "openspecTasks.autoCollapseCompletedSections": {
+                "openspec.autoCollapseCompletedSections": {
                     "type": "boolean",
                     "default": false,
                     "description": "Automatically collapse task sections where all todos are checked"
@@ -45,45 +45,45 @@
         "menus": {
             "view/item/context": [
                 {
-                    "command": "openspecTasks.applyChange",
-                    "when": "view == openspecTasks && viewItem =~ /^change-incomplete/",
+                    "command": "openspec.applyChange",
+                    "when": "view == openspecChanges && viewItem =~ /^change-incomplete/",
                     "group": "1_actions"
                 },
                 {
-                    "command": "openspecTasks.archiveChange",
-                    "when": "view == openspecTasks && viewItem =~ /^change-complete/",
+                    "command": "openspec.archiveChange",
+                    "when": "view == openspecChanges && viewItem =~ /^change-complete/",
                     "group": "1_actions"
                 },
                 {
-                    "command": "openspecTasks.copyTitle",
-                    "when": "view == openspecTasks && viewItem =~ /with-title$/",
+                    "command": "openspec.copyTitle",
+                    "when": "view == openspecChanges && viewItem =~ /with-title$/",
                     "group": "2_copy"
                 },
                 {
-                    "command": "openspecTasks.copyChangeId",
-                    "when": "view == openspecTasks && viewItem =~ /^change/",
+                    "command": "openspec.copyChangeId",
+                    "when": "view == openspecChanges && viewItem =~ /^change/",
                     "group": "2_copy"
                 }
             ]
         },
         "commands": [
             {
-                "command": "openspecTasks.applyChange",
+                "command": "openspec.applyChange",
                 "title": "Apply Change",
                 "icon": "$(play)"
             },
             {
-                "command": "openspecTasks.archiveChange",
+                "command": "openspec.archiveChange",
                 "title": "Archive Change",
                 "icon": "$(archive)"
             },
             {
-                "command": "openspecTasks.copyChangeId",
+                "command": "openspec.copyChangeId",
                 "title": "Copy Change ID",
                 "icon": "$(copy)"
             },
             {
-                "command": "openspecTasks.copyTitle",
+                "command": "openspec.copyTitle",
                 "title": "Copy Title",
                 "icon": "$(copy)"
             }
@@ -95,7 +95,7 @@
         "watch": "tsc -watch -p ./",
         "lint": "eslint src --ext ts",
         "package": "vsce package",
-        "install-extension": "code --install-extension openspec-tasks-0.1.0.vsix"
+        "install-extension": "code --install-extension openspec-0.1.0.vsix"
     },
     "devDependencies": {
         "@types/node": "^20.0.0",

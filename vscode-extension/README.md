@@ -1,6 +1,6 @@
-# OpenSpec Tasks - VSCode Extension
+# OpenSpec - VSCode Extension
 
-Monitor OpenSpec change tasks in a dedicated panel within Visual Studio Code.
+Monitor OpenSpec changes in a dedicated panel within Visual Studio Code.
 
 ## Features
 
@@ -62,7 +62,7 @@ Monitor OpenSpec change tasks in a dedicated panel within Visual Studio Code.
 ## Usage
 
 1. Open a workspace that contains an `openspec/changes/` directory
-2. The "OpenSpec Tasks" panel will automatically appear in the panel area (bottom of VSCode, alongside Problems, Output, Terminal)
+2. The "OpenSpec" panel will automatically appear in the panel area (bottom of VSCode, alongside Problems, Output, Terminal)
 3. Expand changes to see sections and individual tasks
 4. Click on any task to open the `tasks.md` file at the specific line where the task is defined
 5. The badge on the panel tab shows the count of active changes that have unchecked tasks
@@ -88,11 +88,11 @@ af spec apply <change-id>
 
 ### Panel Location
 
-The OpenSpec Tasks panel appears in the bottom panel area by default. You can:
+The OpenSpec panel appears in the bottom panel area by default. You can:
 
 - Show/hide it using the panel toggle button
 - Move it to a different location by dragging the panel tab
-- Access it via View → OpenSpec Tasks in the menu
+- Access it via View → OpenSpec in the menu
 
 ## Configuration
 
@@ -100,7 +100,7 @@ The extension provides the following configuration options:
 
 ### Auto-Collapse Completed Sections
 
-**Setting**: `openspecTasks.autoCollapseCompletedSections`
+**Setting**: `openspec.autoCollapseCompletedSections`
 **Type**: Boolean
 **Default**: `false`
 
@@ -118,7 +118,7 @@ Add this to your workspace or user settings:
 
 ```json
 {
-    "openspecTasks.autoCollapseCompletedSections": true
+    "openspec.autoCollapseCompletedSections": true
 }
 ```
 
@@ -178,7 +178,7 @@ npm test               # Run unit tests
 ### Badge not updating
 
 - The badge updates automatically when `tasks.md` files change
-- You can manually refresh using the refresh command (Ctrl+Shift+P → "OpenSpec Tasks: Refresh")
+- You can manually refresh using the refresh command (Ctrl+Shift+P → "OpenSpec: Refresh")
 
 ## Known Limitations
 

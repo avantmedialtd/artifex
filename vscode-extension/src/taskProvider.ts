@@ -160,7 +160,7 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
         if (element.type === 'change') {
             const changeData = element.data as ChangeData;
             // Read the auto-collapse setting
-            const config = vscode.workspace.getConfiguration('openspecTasks');
+            const config = vscode.workspace.getConfiguration('openspec');
             const autoCollapseCompletedSections = config.get<boolean>(
                 'autoCollapseCompletedSections',
                 false,

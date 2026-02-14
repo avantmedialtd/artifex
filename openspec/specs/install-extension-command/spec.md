@@ -11,7 +11,7 @@ The CLI SHALL provide an `install-extension` command that installs the bundled V
 
 - **WHEN** user runs `af install-extension`
 - **AND** VSCode CLI (`code`) is available
-- **THEN** the OpenSpec Tasks extension is installed to VSCode
+- **THEN** the OpenSpec extension is installed to VSCode
 - **AND** a success message is displayed
 
 #### Scenario: VSCode CLI not available

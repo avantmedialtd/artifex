@@ -29,7 +29,7 @@ interface ResourceEntry {
 }
 
 interface ExtensionEntry {
-    /** File name (e.g., "openspec-tasks-0.1.0.vsix") */
+    /** File name (e.g., "openspec-0.1.0.vsix") */
     name: string;
     /** Safe variable name for import */
     importName: string;
@@ -195,7 +195,7 @@ ${resourceEntries}
 ];
 
 export interface ExtensionFile {
-    /** File name (e.g., "openspec-tasks-0.1.0.vsix") */
+    /** File name (e.g., "openspec-0.1.0.vsix") */
     name: string;
     /** Path to embedded file (bun internal path or dev file path) */
     embeddedPath: string;

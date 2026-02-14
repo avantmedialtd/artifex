@@ -1,8 +1,5 @@
-# vscode-extension-collapsed-sections Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change collapse-completed-sections. Update Purpose after archive.
-## Requirements
 ### Requirement: Configuration setting for auto-collapse behavior
 
 The VSCode extension MUST provide a configuration setting that controls whether completed task sections are automatically collapsed.
@@ -25,43 +22,6 @@ The VSCode extension MUST provide a configuration setting that controls whether 
 - **AND** it displays as a checkbox control
 - **AND** the description clearly explains the behavior
 - **AND** changes to the setting are saved to workspace or user settings
-
-### Requirement: Detect fully completed sections
-
-The task provider MUST accurately determine when a section has all its tasks completed.
-
-#### Scenario: Section with all tasks checked is identified
-
-- **GIVEN** a task section contains 5 tasks
-- **AND** all 5 tasks have checkbox state `[x]` (checked)
-- **WHEN** the task provider evaluates the section
-- **THEN** it identifies the section as "fully completed"
-- **AND** the section is eligible for auto-collapse if the setting is enabled
-
-#### Scenario: Section with mixed task states is not fully completed
-
-- **GIVEN** a task section contains 5 tasks
-- **AND** 4 tasks are checked `[x]` and 1 task is unchecked `[ ]`
-- **WHEN** the task provider evaluates the section
-- **THEN** it identifies the section as NOT fully completed
-- **AND** the section is NOT eligible for auto-collapse
-- **AND** the section displays in expanded state regardless of the setting
-
-#### Scenario: Section with no tasks is not considered completed
-
-- **GIVEN** a task section has a title but contains zero tasks
-- **WHEN** the task provider evaluates the section
-- **THEN** it identifies the section as NOT fully completed
-- **AND** the section displays in expanded state
-- **AND** prevents incorrect collapse behavior for empty sections
-
-#### Scenario: Section completion detection uses task data
-
-- **GIVEN** the task provider has parsed section data including task list
-- **WHEN** checking if a section is fully completed
-- **THEN** it iterates through all tasks in `section.tasks`
-- **AND** checks the `completed` property of each task
-- **AND** returns `true` only if all tasks have `completed: true` and task count > 0
 
 ### Requirement: Conditionally collapse completed sections
 
@@ -124,28 +84,6 @@ The task provider MUST read the current value of the configuration setting when 
 - **OR** refreshes on next manual refresh or file change
 - **AND** section collapse states update to reflect the new setting value
 
-### Requirement: Maintain existing expansion behavior for changes
-
-The change-level tree items MUST continue to display in expanded state regardless of task completion.
-
-#### Scenario: Changes remain expanded with auto-collapse enabled
-
-- **GIVEN** the setting `openspec.autoCollapseCompletedSections` is `true`
-- **AND** a change has all sections with all tasks completed
-- **WHEN** the task provider creates the tree item for the change
-- **THEN** the change's `collapsibleState` remains `vscode.TreeItemCollapsibleState.Expanded`
-- **AND** the change is visible in expanded form
-- **AND** only the sections within it are collapsed
-- **AND** users can see the change structure at a glance
-
-#### Scenario: Auto-collapse setting does not affect task items
-
-- **GIVEN** the setting `openspec.autoCollapseCompletedSections` is `true` or `false`
-- **WHEN** the task provider creates tree items for individual tasks
-- **THEN** task items have `collapsibleState` of `vscode.TreeItemCollapsibleState.None`
-- **AND** tasks display as leaf nodes in the tree
-- **AND** the setting has no effect on task item rendering
-
 ### Requirement: Documentation of the feature
 
 The VSCode extension README MUST document the auto-collapse completed sections feature and its configuration.
@@ -166,4 +104,3 @@ The VSCode extension README MUST document the auto-collapse completed sections f
 - **THEN** it includes a JSON snippet showing how to configure the setting
 - **AND** the snippet uses correct VSCode settings syntax
 - **AND** example: `"openspec.autoCollapseCompletedSections": true`
-

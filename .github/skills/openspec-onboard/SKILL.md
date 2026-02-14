@@ -207,6 +207,8 @@ Here's a draft proposal:
 
 ---
 
+# Title of proposal
+
 ## Why
 
 [1-2 sentences explaining the problem/opportunity]

@@ -21,7 +21,7 @@ const workspaceFolderWatchers: Map<
  * Activate the extension
  */
 export async function activate(context: vscode.ExtensionContext) {
-    console.log('OpenSpec Tasks extension is now active');
+    console.log('OpenSpec extension is now active');
 
     // Check if any workspace folder has OpenSpec changes
     const foldersWithOpenSpec = await getWorkspaceFoldersWithOpenSpec();
@@ -71,7 +71,7 @@ function initializeExtension(context: vscode.ExtensionContext) {
     taskProvider = new OpenSpecTaskProvider();
 
     // Register tree view
-    treeView = vscode.window.createTreeView('openspecTasks', {
+    treeView = vscode.window.createTreeView('openspecChanges', {
         treeDataProvider: taskProvider,
         showCollapseAll: true,
     });
@@ -98,7 +98,7 @@ function initializeExtension(context: vscode.ExtensionContext) {
     });
 
     // Register refresh command
-    const refreshCommand = vscode.commands.registerCommand('openspecTasks.refresh', () => {
+    const refreshCommand = vscode.commands.registerCommand('openspec.refresh', () => {
         if (taskProvider) {
             taskProvider.refresh();
             updateBadge();
@@ -109,7 +109,7 @@ function initializeExtension(context: vscode.ExtensionContext) {
 
     // Register command to open task location
     const openTaskLocationCommand = vscode.commands.registerCommand(
-        'openspecTasks.openTaskLocation',
+        'openspec.openTaskLocation',
         async (filePath: string, lineNumber: number) => {
             try {
                 const uri = vscode.Uri.file(filePath);
@@ -133,7 +133,7 @@ function initializeExtension(context: vscode.ExtensionContext) {
 
     // Register command to open proposal.md file for a change
     const openProposalCommand = vscode.commands.registerCommand(
-        'openspecTasks.openProposal',
+        'openspec.openProposal',
         async (changeData: ChangeData) => {
             try {
                 const proposalPath = path.join(
@@ -158,7 +158,7 @@ function initializeExtension(context: vscode.ExtensionContext) {
 
     // Register command to copy title (from context menu)
     const copyTitleCommand = vscode.commands.registerCommand(
-        'openspecTasks.copyTitle',
+        'openspec.copyTitle',
         async (item: any) => {
             try {
                 // Extract title from the tree item's data
@@ -179,7 +179,7 @@ function initializeExtension(context: vscode.ExtensionContext) {
 
     // Register command to copy change ID
     const copyChangeIdCommand = vscode.commands.registerCommand(
-        'openspecTasks.copyChangeId',
+        'openspec.copyChangeId',
         async (item: any) => {
             try {
                 // Extract changeId from the tree item's data
@@ -200,7 +200,7 @@ function initializeExtension(context: vscode.ExtensionContext) {
 
     // Register command to apply a change
     const applyChangeCommand = vscode.commands.registerCommand(
-        'openspecTasks.applyChange',
+        'openspec.applyChange',
         async (item: OpenSpecTaskItem) => {
             try {
                 const changeData = item?.data as ChangeData;
@@ -221,7 +221,7 @@ function initializeExtension(context: vscode.ExtensionContext) {
 
     // Register command to archive a change
     const archiveChangeCommand = vscode.commands.registerCommand(
-        'openspecTasks.archiveChange',
+        'openspec.archiveChange',
         async (item: OpenSpecTaskItem) => {
             try {
                 const changeData = item?.data as ChangeData;
@@ -240,7 +240,7 @@ function initializeExtension(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(archiveChangeCommand);
 
-    console.log('OpenSpec Tasks extension initialized successfully');
+    console.log('OpenSpec extension initialized successfully');
 }
 
 /**
@@ -396,5 +396,5 @@ export function deactivate() {
     if (treeView) {
         treeView.dispose();
     }
-    console.log('OpenSpec Tasks extension deactivated');
+    console.log('OpenSpec extension deactivated');
 }
