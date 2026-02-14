@@ -17,6 +17,16 @@ export interface Section {
 }
 
 /**
+ * Artifact presence status inferred from file existence
+ */
+export interface ArtifactStatus {
+    proposal: boolean;
+    specs: string[]; // capability names with spec.md files
+    design: boolean;
+    tasks: boolean;
+}
+
+/**
  * Represents all task data for a single change
  */
 export interface ChangeData {
@@ -25,6 +35,7 @@ export interface ChangeData {
     sections: Section[];
     totalTasks: number;
     completedTasks: number;
+    artifacts: ArtifactStatus;
     /** The workspace folder this change belongs to */
     workspaceFolder: WorkspaceFolderRef;
 }

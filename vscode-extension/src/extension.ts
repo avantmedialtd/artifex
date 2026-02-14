@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { OpenSpecTaskProvider, OpenSpecTaskItem } from './taskProvider';
+import { OpenSpecTaskProvider } from './taskProvider';
 import { ChangeData } from './types';
 import { getWorkspaceFoldersWithOpenSpec } from './taskParser';
 
@@ -13,6 +13,8 @@ const workspaceFolderWatchers: Map<
     {
         fileWatcher: vscode.FileSystemWatcher;
         proposalWatcher: vscode.FileSystemWatcher;
+        designWatcher: vscode.FileSystemWatcher;
+        specsWatcher: vscode.FileSystemWatcher;
         directoryWatcher: vscode.FileSystemWatcher;
     }
 > = new Map();
@@ -131,11 +133,27 @@ function initializeExtension(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(openTaskLocationCommand);
 
-    // Register command to open proposal.md file for a change
+    // Register command to open proposal.md file for a change.
+    // Accepts ChangeData directly or a tree item with ChangeData in its data field.
     const openProposalCommand = vscode.commands.registerCommand(
         'openspec.openProposal',
-        async (changeData: ChangeData) => {
+        async (arg: any) => {
             try {
+                // Resolve ChangeData from argument (could be ChangeData or a tree item)
+                const changeData: ChangeData | undefined =
+                    arg?.changeId && arg?.workspaceFolder
+                        ? arg
+                        : arg?.data?.changeId && arg?.data?.workspaceFolder
+                          ? arg.data
+                          : arg?.data?.changeData;
+
+                if (!changeData) {
+                    vscode.window.showErrorMessage(
+                        'Could not determine change for opening proposal',
+                    );
+                    return;
+                }
+
                 const proposalPath = path.join(
                     changeData.workspaceFolder.uri,
                     'openspec',
@@ -148,7 +166,7 @@ function initializeExtension(context: vscode.ExtensionContext) {
                 await vscode.window.showTextDocument(document);
             } catch (error) {
                 vscode.window.showErrorMessage(
-                    `Failed to open proposal.md: The proposal file was not found for change "${changeData?.changeId}"`,
+                    `Failed to open proposal.md: The proposal file was not found`,
                 );
             }
         },
@@ -198,48 +216,6 @@ function initializeExtension(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(copyChangeIdCommand);
 
-    // Register command to apply a change
-    const applyChangeCommand = vscode.commands.registerCommand(
-        'openspec.applyChange',
-        async (item: OpenSpecTaskItem) => {
-            try {
-                const changeData = item?.data as ChangeData;
-                const changeId = changeData?.changeId;
-                const workspaceFolderUri = changeData?.workspaceFolder?.uri;
-                if (!changeId || !workspaceFolderUri) {
-                    vscode.window.showErrorMessage('Could not determine change ID or workspace');
-                    return;
-                }
-                await executeZapCommand('apply', changeId, workspaceFolderUri);
-            } catch (error) {
-                vscode.window.showErrorMessage(`Failed to apply change: ${error}`);
-            }
-        },
-    );
-
-    context.subscriptions.push(applyChangeCommand);
-
-    // Register command to archive a change
-    const archiveChangeCommand = vscode.commands.registerCommand(
-        'openspec.archiveChange',
-        async (item: OpenSpecTaskItem) => {
-            try {
-                const changeData = item?.data as ChangeData;
-                const changeId = changeData?.changeId;
-                const workspaceFolderUri = changeData?.workspaceFolder?.uri;
-                if (!changeId || !workspaceFolderUri) {
-                    vscode.window.showErrorMessage('Could not determine change ID or workspace');
-                    return;
-                }
-                await executeZapCommand('archive', changeId, workspaceFolderUri);
-            } catch (error) {
-                vscode.window.showErrorMessage(`Failed to archive change: ${error}`);
-            }
-        },
-    );
-
-    context.subscriptions.push(archiveChangeCommand);
-
     console.log('OpenSpec extension initialized successfully');
 }
 
@@ -288,6 +264,28 @@ function setupWatchersForFolder(context: vscode.ExtensionContext, workspaceFolde
     proposalWatcher.onDidDelete(debouncedRefresh);
     context.subscriptions.push(proposalWatcher);
 
+    // Set up file watcher for design.md files
+    const designPattern = new vscode.RelativePattern(
+        workspaceFolderUri,
+        'openspec/changes/**/design.md',
+    );
+    const designWatcher = vscode.workspace.createFileSystemWatcher(designPattern);
+    designWatcher.onDidChange(debouncedRefresh);
+    designWatcher.onDidCreate(debouncedRefresh);
+    designWatcher.onDidDelete(debouncedRefresh);
+    context.subscriptions.push(designWatcher);
+
+    // Set up file watcher for spec files
+    const specsPattern = new vscode.RelativePattern(
+        workspaceFolderUri,
+        'openspec/changes/**/specs/**/*.md',
+    );
+    const specsWatcher = vscode.workspace.createFileSystemWatcher(specsPattern);
+    specsWatcher.onDidChange(debouncedRefresh);
+    specsWatcher.onDidCreate(debouncedRefresh);
+    specsWatcher.onDidDelete(debouncedRefresh);
+    context.subscriptions.push(specsWatcher);
+
     // Set up directory watcher for openspec/changes
     const directoryPattern = new vscode.RelativePattern(workspaceFolderUri, 'openspec/changes/*');
     const directoryWatcher = vscode.workspace.createFileSystemWatcher(directoryPattern);
@@ -299,6 +297,8 @@ function setupWatchersForFolder(context: vscode.ExtensionContext, workspaceFolde
     workspaceFolderWatchers.set(workspaceFolderUri, {
         fileWatcher,
         proposalWatcher,
+        designWatcher,
+        specsWatcher,
         directoryWatcher,
     });
 }
@@ -311,73 +311,33 @@ function disposeWatchersForFolder(workspaceFolderUri: string) {
     if (watchers) {
         watchers.fileWatcher.dispose();
         watchers.proposalWatcher.dispose();
+        watchers.designWatcher.dispose();
+        watchers.specsWatcher.dispose();
         watchers.directoryWatcher.dispose();
         workspaceFolderWatchers.delete(workspaceFolderUri);
     }
 }
 
 /**
- * Execute an af command (apply or archive) in the integrated terminal using the Task API.
- * The terminal auto-closes on success but stays open on failure to show error messages.
- */
-async function executeZapCommand(
-    subcommand: 'apply' | 'archive',
-    changeId: string,
-    workspaceFolderUri: string,
-): Promise<void> {
-    const taskDefinition: vscode.TaskDefinition = {
-        type: 'shell',
-    };
-
-    // Find the workspace folder by URI to use as the scope
-    const workspaceFolder = vscode.workspace.workspaceFolders?.find(
-        folder => folder.uri.fsPath === workspaceFolderUri,
-    );
-
-    const execution = new vscode.ShellExecution(`af spec ${subcommand} ${changeId}`, {
-        cwd: workspaceFolderUri,
-    });
-
-    const task = new vscode.Task(
-        taskDefinition,
-        workspaceFolder || vscode.TaskScope.Workspace,
-        `af spec ${subcommand} ${changeId}`,
-        'af',
-        execution,
-    );
-
-    // Auto-close terminal on success, keep open on failure
-    task.presentationOptions = {
-        reveal: vscode.TaskRevealKind.Always,
-        panel: vscode.TaskPanelKind.Dedicated,
-        close: true, // Auto-close on success (exit code 0)
-    };
-
-    await vscode.tasks.executeTask(task);
-}
-
-/**
- * Update the badge with count of changes with unchecked tasks.
- * Shows the number of active changes that have at least one unchecked task.
- * Badge is hidden when all changes are complete or there are no active changes.
+ * Update the badge with count of unfinished changes.
+ * A change is unfinished if tasks.md is absent, empty, or has unchecked tasks.
+ * Badge is hidden when all changes are finished or there are no active changes.
  */
 function updateBadge() {
     if (!treeView || !taskProvider) {
         return;
     }
 
-    const changesWithUncheckedTasks = taskProvider.getActiveChangesWithUncheckedTasks();
+    const unfinishedChanges = taskProvider.getActiveChangesWithUncheckedTasks();
 
-    // Hide badge if no changes with unchecked tasks (all complete or no changes)
-    if (changesWithUncheckedTasks === 0) {
+    if (unfinishedChanges === 0) {
         treeView.badge = undefined;
         return;
     }
 
-    // Show count of changes with unchecked tasks as badge with detailed tooltip
     treeView.badge = {
-        value: changesWithUncheckedTasks,
-        tooltip: `${changesWithUncheckedTasks} active change${changesWithUncheckedTasks !== 1 ? 's' : ''} with unchecked tasks`,
+        value: unfinishedChanges,
+        tooltip: `${unfinishedChanges} unfinished change${unfinishedChanges !== 1 ? 's' : ''}`,
     };
 }
 
@@ -389,6 +349,8 @@ export function deactivate() {
     for (const [, watchers] of workspaceFolderWatchers) {
         watchers.fileWatcher.dispose();
         watchers.proposalWatcher.dispose();
+        watchers.designWatcher.dispose();
+        watchers.specsWatcher.dispose();
         watchers.directoryWatcher.dispose();
     }
     workspaceFolderWatchers.clear();

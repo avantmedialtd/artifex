@@ -1,12 +1,18 @@
 {
-    "name": "openspec",
-    "displayName": "OpenSpec",
+    "name": "avantmedia-openspec",
+    "displayName": "OpenSpec for VSCode",
     "description": "Monitor OpenSpec changes in a dedicated panel",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "publisher": "avantmedia",
     "engines": {
         "vscode": "^1.85.0"
     },
+    "keywords": [
+        "openspec",
+        "tasks",
+        "specifications",
+        "project management"
+    ],
     "categories": [
         "Other"
     ],
@@ -45,16 +51,6 @@
         "menus": {
             "view/item/context": [
                 {
-                    "command": "openspec.applyChange",
-                    "when": "view == openspecChanges && viewItem =~ /^change-incomplete/",
-                    "group": "1_actions"
-                },
-                {
-                    "command": "openspec.archiveChange",
-                    "when": "view == openspecChanges && viewItem =~ /^change-complete/",
-                    "group": "1_actions"
-                },
-                {
                     "command": "openspec.copyTitle",
                     "when": "view == openspecChanges && viewItem =~ /with-title$/",
                     "group": "2_copy"
@@ -67,16 +63,6 @@
             ]
         },
         "commands": [
-            {
-                "command": "openspec.applyChange",
-                "title": "Apply Change",
-                "icon": "$(play)"
-            },
-            {
-                "command": "openspec.archiveChange",
-                "title": "Archive Change",
-                "icon": "$(archive)"
-            },
             {
                 "command": "openspec.copyChangeId",
                 "title": "Copy Change ID",
@@ -95,11 +81,12 @@
         "watch": "tsc -watch -p ./",
         "lint": "eslint src --ext ts",
         "package": "vsce package",
-        "install-extension": "code --install-extension openspec-0.1.0.vsix"
+        "publish": "vsce publish"
     },
     "devDependencies": {
         "@types/node": "^20.0.0",
         "@types/vscode": "^1.85.0",
+        "@vscode/vsce": "^3.2.0",
         "typescript": "^5.3.0"
     }
 }

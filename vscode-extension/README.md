@@ -19,46 +19,6 @@ Monitor OpenSpec changes in a dedicated panel within Visual Studio Code.
 - VSCode version 1.85.0 or higher
 - Workspace must contain an `openspec/changes/` directory structure
 
-## Installation
-
-### Local Development Installation
-
-1. Navigate to the extension directory:
-
-    ```bash
-    cd vscode-extension
-    ```
-
-2. Install dependencies:
-
-    ```bash
-    npm install
-    ```
-
-3. Compile the extension:
-
-    ```bash
-    npm run compile
-    ```
-
-4. Press `F5` in VSCode to open a new Extension Development Host window with the extension loaded
-
-### Manual Installation
-
-1. Package the extension:
-
-    ```bash
-    cd vscode-extension
-    npm install -g @vscode/vsce
-    vsce package
-    ```
-
-2. Install the `.vsix` file:
-    - Open VSCode
-    - Go to Extensions view (Ctrl+Shift+X / Cmd+Shift+X)
-    - Click the "..." menu → "Install from VSIX..."
-    - Select the generated `.vsix` file
-
 ## Usage
 
 1. Open a workspace that contains an `openspec/changes/` directory
@@ -73,13 +33,6 @@ There are two ways to copy change information:
 
 - **Copy Title**: Click directly on a change item (with a title) to copy the title to clipboard
 - **Copy Change ID**: Right-click on a change item and select "Copy Change ID" from the context menu
-
-The change ID is useful for CLI commands like:
-
-```bash
-af spec archive <change-id>
-af spec apply <change-id>
-```
 
 **Example**: For a change displayed as "VSCode Extension Copy Change ID Button (vscode-copy-change-id-button) - 0/8 tasks completed":
 
@@ -132,35 +85,6 @@ The extension activates automatically when:
 
 If the directory doesn't exist, the extension remains inactive to avoid performance impact.
 
-## Development
-
-### Project Structure
-
-```
-vscode-extension/
-├── src/
-│   ├── extension.ts          # Extension entry point
-│   ├── taskProvider.ts       # TreeDataProvider implementation
-│   ├── taskParser.ts         # Parse tasks.md files
-│   └── types.ts              # TypeScript interfaces
-├── package.json              # Extension manifest
-├── tsconfig.json             # TypeScript config
-└── README.md                 # This file
-```
-
-### Building
-
-```bash
-npm run compile         # Compile TypeScript
-npm run watch          # Watch mode for development
-```
-
-### Testing
-
-```bash
-npm test               # Run unit tests
-```
-
 ## Troubleshooting
 
 ### Extension doesn't activate
@@ -183,7 +107,6 @@ npm test               # Run unit tests
 ## Known Limitations
 
 - Read-only display (cannot edit tasks from the extension)
-- Single workspace support only
 
 ## Future Enhancements
 
@@ -193,7 +116,6 @@ Potential features for future versions:
 - Filter/search tasks
 - Sort by completion status
 - Additional configuration options
-- Multi-workspace support
 
 ## License
 

@@ -6,17 +6,26 @@ import { ChangeData, Section, Task } from './types';
 /**
  * Tree item types for the OpenSpec Tasks view
  */
-export type TreeItemType = 'change' | 'section' | 'task';
+export type TreeItemType = 'change' | 'artifact' | 'section' | 'task';
 
 /**
- * Tree item data that can represent a change, section, or task
+ * Data attached to an artifact tree item
+ */
+export interface ArtifactItemData {
+    artifactId: 'proposal' | 'specs' | 'design' | 'tasks';
+    present: boolean;
+    changeData: ChangeData;
+}
+
+/**
+ * Tree item data that can represent a change, artifact, section, or task
  */
 export class OpenSpecTaskItem extends vscode.TreeItem {
     constructor(
         public readonly type: TreeItemType,
         public readonly label: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-        public readonly data?: ChangeData | Section | Task,
+        public readonly data?: ChangeData | ArtifactItemData | Section | Task,
         public readonly parent?: OpenSpecTaskItem,
     ) {
         super(label, collapsibleState);
@@ -24,6 +33,11 @@ export class OpenSpecTaskItem extends vscode.TreeItem {
         // Set icon based on type
         if (type === 'change') {
             this.iconPath = new vscode.ThemeIcon('folder');
+        } else if (type === 'artifact') {
+            const artifact = data as ArtifactItemData;
+            this.iconPath = artifact.present
+                ? new vscode.ThemeIcon('check')
+                : new vscode.ThemeIcon('circle-outline');
         } else if (type === 'section') {
             this.iconPath = new vscode.ThemeIcon('list-flat');
         } else if (type === 'task') {
@@ -82,20 +96,35 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
     }
 
     /**
+     * Resolve the ChangeData for an element by walking up the parent chain.
+     */
+    private getChangeDataFromElement(element: OpenSpecTaskItem): ChangeData | undefined {
+        let current: OpenSpecTaskItem | undefined = element;
+        while (current) {
+            if (current.type === 'change') {
+                return current.data as ChangeData;
+            }
+            if (current.type === 'artifact') {
+                return (current.data as ArtifactItemData).changeData;
+            }
+            current = current.parent;
+        }
+        return undefined;
+    }
+
+    /**
      * Get the children of an element
      */
     async getChildren(element?: OpenSpecTaskItem): Promise<OpenSpecTaskItem[]> {
-        // Root level: show changes (expanded by default for immediate visibility)
+        // Root level: show changes
         if (!element) {
             try {
                 this.changeDataCache = await getAllChangeDataFromAllWorkspaces();
 
-                // Determine if we're in a multi-root workspace with changes from multiple folders
                 const uniqueFolders = new Set(this.changeDataCache.map(c => c.workspaceFolder.uri));
                 this.isMultiRoot = uniqueFolders.size > 1;
 
                 if (this.changeDataCache.length === 0) {
-                    // No changes found
                     return [
                         new OpenSpecTaskItem(
                             'change',
@@ -106,16 +135,14 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
                 }
 
                 return this.changeDataCache.map(changeData => {
-                    // Format: "Title (change-id) - X/Y tasks completed" or "change-id (X/Y tasks completed)"
-                    // In multi-root workspaces, prepend workspace folder name
+                    // Format: "Title (change-id)" or just "change-id"
                     let label: string;
                     if (changeData.title) {
-                        label = `${changeData.title} (${changeData.changeId}) - ${changeData.completedTasks}/${changeData.totalTasks} tasks completed`;
+                        label = `${changeData.title} (${changeData.changeId})`;
                     } else {
-                        label = `${changeData.changeId} (${changeData.completedTasks}/${changeData.totalTasks} tasks completed)`;
+                        label = changeData.changeId;
                     }
 
-                    // Add workspace folder name in multi-root workspaces
                     if (this.isMultiRoot) {
                         label = `[${changeData.workspaceFolder.name}] ${label}`;
                     }
@@ -127,16 +154,11 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
                         changeData,
                     );
 
-                    // Click on change item opens the proposal.md file
-                    item.command = {
-                        command: 'openspecTasks.openProposal',
-                        title: 'Open Proposal',
-                        arguments: [changeData],
-                    };
-
                     // Set context value to encode completion status and title presence
-                    // Format: change-{incomplete|complete}[-with-title]
-                    const isComplete = changeData.completedTasks === changeData.totalTasks;
+                    const isComplete =
+                        changeData.artifacts.tasks &&
+                        changeData.totalTasks > 0 &&
+                        changeData.completedTasks === changeData.totalTasks;
                     const hasTitle = Boolean(changeData.title);
                     const completionPart = isComplete ? 'complete' : 'incomplete';
                     const titlePart = hasTitle ? '-with-title' : '';
@@ -156,40 +178,156 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
             }
         }
 
-        // Change level: show sections (expanded by default for immediate visibility)
+        // Change level: show four artifact nodes in fixed order
         if (element.type === 'change') {
             const changeData = element.data as ChangeData;
-            // Read the auto-collapse setting
-            const config = vscode.workspace.getConfiguration('openspec');
-            const autoCollapseCompletedSections = config.get<boolean>(
-                'autoCollapseCompletedSections',
-                false,
+            const changeDir = path.join(
+                changeData.workspaceFolder.uri,
+                'openspec',
+                'changes',
+                changeData.changeId,
             );
 
-            return changeData.sections.map(section => {
-                // Determine collapsible state based on setting and section completion
-                let collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+            const artifactDefs: {
+                id: ArtifactItemData['artifactId'];
+                label: string;
+                present: boolean;
+                expandable: boolean;
+            }[] = [
+                {
+                    id: 'proposal',
+                    label: 'Proposal',
+                    present: changeData.artifacts.proposal,
+                    expandable: false,
+                },
+                {
+                    id: 'specs',
+                    label: 'Specs',
+                    present: changeData.artifacts.specs.length > 0,
+                    expandable: changeData.artifacts.specs.length > 0,
+                },
+                {
+                    id: 'design',
+                    label: 'Design',
+                    present: changeData.artifacts.design,
+                    expandable: false,
+                },
+                {
+                    id: 'tasks',
+                    label: changeData.artifacts.tasks
+                        ? `Tasks (${changeData.completedTasks}/${changeData.totalTasks})`
+                        : 'Tasks',
+                    present: changeData.artifacts.tasks,
+                    expandable: changeData.artifacts.tasks && changeData.sections.length > 0,
+                },
+            ];
 
-                if (autoCollapseCompletedSections && this.isSectionFullyCompleted(section)) {
-                    collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
-                }
+            return artifactDefs.map(def => {
+                const collapsibleState = def.expandable
+                    ? vscode.TreeItemCollapsibleState.Expanded
+                    : vscode.TreeItemCollapsibleState.None;
 
-                return new OpenSpecTaskItem(
-                    'section',
-                    section.title,
+                const artifactData: ArtifactItemData = {
+                    artifactId: def.id,
+                    present: def.present,
+                    changeData,
+                };
+
+                const item = new OpenSpecTaskItem(
+                    'artifact',
+                    def.label,
                     collapsibleState,
-                    section,
+                    artifactData,
                     element,
                 );
+
+                item.contextValue = `artifact-${def.id}`;
+
+                // Set click command for present artifacts (leaf nodes only)
+                if (def.present && !def.expandable) {
+                    const filePath =
+                        def.id === 'proposal'
+                            ? path.join(changeDir, 'proposal.md')
+                            : path.join(changeDir, 'design.md');
+                    item.command = {
+                        command: 'openspec.openTaskLocation',
+                        title: 'Open File',
+                        arguments: [filePath, 1],
+                    };
+                }
+
+                return item;
             });
+        }
+
+        // Artifact level: show children based on artifact type
+        if (element.type === 'artifact') {
+            const artifactData = element.data as ArtifactItemData;
+            const changeData = artifactData.changeData;
+            const changeDir = path.join(
+                changeData.workspaceFolder.uri,
+                'openspec',
+                'changes',
+                changeData.changeId,
+            );
+
+            // Specs artifact: show capability children
+            if (artifactData.artifactId === 'specs') {
+                return changeData.artifacts.specs.map(capName => {
+                    const specPath = path.join(changeDir, 'specs', capName, 'spec.md');
+                    const item = new OpenSpecTaskItem(
+                        'section',
+                        capName,
+                        vscode.TreeItemCollapsibleState.None,
+                        undefined,
+                        element,
+                    );
+                    item.iconPath = new vscode.ThemeIcon('file');
+                    item.command = {
+                        command: 'openspec.openTaskLocation',
+                        title: 'Open Spec',
+                        arguments: [specPath, 1],
+                    };
+                    item.contextValue = 'spec-file';
+                    return item;
+                });
+            }
+
+            // Tasks artifact: show sections → tasks (preserve existing drill-down)
+            if (artifactData.artifactId === 'tasks') {
+                const config = vscode.workspace.getConfiguration('openspec');
+                const autoCollapseCompletedSections = config.get<boolean>(
+                    'autoCollapseCompletedSections',
+                    false,
+                );
+
+                return changeData.sections.map(section => {
+                    let collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+                    if (autoCollapseCompletedSections && this.isSectionFullyCompleted(section)) {
+                        collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+                    }
+
+                    return new OpenSpecTaskItem(
+                        'section',
+                        section.title,
+                        collapsibleState,
+                        section,
+                        element,
+                    );
+                });
+            }
+
+            return [];
         }
 
         // Section level: show tasks
         if (element.type === 'section') {
             const section = element.data as Section;
-            // Get the change ID from the parent element
-            const changeElement = element.parent;
-            const changeData = changeElement?.data as ChangeData;
+            if (!section || !section.tasks) {
+                return [];
+            }
+
+            const changeData = this.getChangeDataFromElement(element);
             const changeId = changeData?.changeId;
 
             return section.tasks.map(task => {
@@ -203,7 +341,6 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
                     element,
                 );
 
-                // Add command to open task location if line number is available
                 if (task.lineNumber && changeId && changeData?.workspaceFolder) {
                     const tasksFilePath = path.join(
                         changeData.workspaceFolder.uri,
@@ -213,7 +350,7 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
                         'tasks.md',
                     );
                     taskItem.command = {
-                        command: 'openspecTasks.openTaskLocation',
+                        command: 'openspec.openTaskLocation',
                         title: 'Open Task Location',
                         arguments: [tasksFilePath, task.lineNumber],
                     };
@@ -289,12 +426,18 @@ export class OpenSpecTaskProvider implements vscode.TreeDataProvider<OpenSpecTas
     }
 
     /**
-     * Get the count of active changes that have at least one unchecked task
+     * Get the count of active changes that are unfinished.
+     * A change is unfinished if tasks.md is absent, has no tasks, or has unchecked tasks.
      */
     getActiveChangesWithUncheckedTasks(): number {
         return this.changeDataCache.filter(changeData => {
-            const hasUncheckedTasks = changeData.completedTasks < changeData.totalTasks;
-            return hasUncheckedTasks;
+            if (!changeData.artifacts.tasks) {
+                return true; // No tasks.md = unfinished
+            }
+            if (changeData.totalTasks === 0) {
+                return true; // Empty tasks.md = unfinished
+            }
+            return changeData.completedTasks < changeData.totalTasks;
         }).length;
     }
 }

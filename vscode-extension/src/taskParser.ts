@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { ChangeData, Section, Task, WorkspaceFolderRef } from './types';
+import { ArtifactStatus, ChangeData, Section, Task, WorkspaceFolderRef } from './types';
 import { extractProposalTitle } from './titleExtractor';
 
 /**
@@ -102,6 +102,49 @@ export async function getActiveChanges(workspaceRoot: string): Promise<string[]>
 }
 
 /**
+ * Check if a file exists using the VS Code filesystem API.
+ */
+async function fileExists(filePath: string): Promise<boolean> {
+    try {
+        await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Detect which artifacts are present in a change directory by checking file existence.
+ *
+ * @param changeDir - Path to the change directory
+ * @returns ArtifactStatus with presence info for each artifact
+ */
+export async function detectArtifacts(changeDir: string): Promise<ArtifactStatus> {
+    const proposalExists = await fileExists(path.join(changeDir, 'proposal.md'));
+    const designExists = await fileExists(path.join(changeDir, 'design.md'));
+    const tasksExists = await fileExists(path.join(changeDir, 'tasks.md'));
+
+    // Scan specs/ for subdirectories containing spec.md
+    let specs: string[] = [];
+    try {
+        const specsDir = path.join(changeDir, 'specs');
+        const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(specsDir));
+        for (const [name, type] of entries) {
+            if (type === vscode.FileType.Directory) {
+                const specFile = path.join(specsDir, name, 'spec.md');
+                if (await fileExists(specFile)) {
+                    specs.push(name);
+                }
+            }
+        }
+    } catch {
+        // specs/ directory doesn't exist
+    }
+
+    return { proposal: proposalExists, specs, design: designExists, tasks: tasksExists };
+}
+
+/**
  * Get task data for a specific change
  *
  * @param workspaceRoot - The workspace root path
@@ -114,19 +157,37 @@ export async function getChangeData(
     changeId: string,
     workspaceFolder: WorkspaceFolderRef,
 ): Promise<ChangeData> {
-    const tasksFilePath = path.join(workspaceRoot, 'openspec', 'changes', changeId, 'tasks.md');
-    const { sections, totalTasks, completedTasks } = await parseTasksFile(tasksFilePath);
+    const changeDir = path.join(workspaceRoot, 'openspec', 'changes', changeId);
 
-    // Extract title from proposal.md
-    const proposalPath = path.join(workspaceRoot, 'openspec', 'changes', changeId, 'proposal.md');
-    const title = extractProposalTitle(proposalPath);
+    // Detect artifact presence
+    const artifacts = await detectArtifacts(changeDir);
+
+    // Parse tasks only if tasks.md exists
+    let sections: Section[] = [];
+    let totalTasks = 0;
+    let completedTasks = 0;
+    if (artifacts.tasks) {
+        const tasksFilePath = path.join(changeDir, 'tasks.md');
+        const parsed = await parseTasksFile(tasksFilePath);
+        sections = parsed.sections;
+        totalTasks = parsed.totalTasks;
+        completedTasks = parsed.completedTasks;
+    }
+
+    // Extract title from proposal.md (only if it exists)
+    let title: string | undefined;
+    if (artifacts.proposal) {
+        const proposalPath = path.join(changeDir, 'proposal.md');
+        title = extractProposalTitle(proposalPath) || undefined;
+    }
 
     return {
         changeId,
-        title: title || undefined,
+        title,
         sections,
         totalTasks,
         completedTasks,
+        artifacts,
         workspaceFolder,
     };
 }
