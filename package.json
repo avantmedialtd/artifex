@@ -1,6 +1,6 @@
 {
-    "name": "af",
-    "version": "1.0.0",
+    "name": "@avantmedia/af",
+    "version": "0.0.4",
     "description": "Development utility.",
     "homepage": "https://github.com/avantmedialtd/artifex#readme",
     "bugs": {
@@ -10,16 +10,38 @@
         "type": "git",
         "url": "git+https://github.com/avantmedialtd/artifex.git"
     },
-    "license": "UNLICENSED",
+    "license": "MIT",
     "author": "István Antal <istvan@antal.xyz>",
+    "keywords": [
+        "cli",
+        "developer-tools",
+        "bun",
+        "openspec",
+        "dependency-upgrade"
+    ],
     "bin": {
-        "af": "./af",
-        "zap": "./zap"
+        "af": "./af"
     },
     "engines": {
         "node": ">=22.6.0"
     },
     "type": "module",
+    "files": [
+        "af",
+        "main.ts",
+        "router.ts",
+        "bun-upgrade.ts",
+        "npm-upgrade.ts",
+        "git-worktree.ts",
+        "commands/",
+        "components/",
+        "utils/",
+        "generated/",
+        "setup/",
+        "resources/",
+        "scripts/e2e_tests.ts",
+        "!**/*.test.ts"
+    ],
     "main": "main.ts",
     "scripts": {
         "format": "prettier --write .",
@@ -52,11 +74,11 @@
         "oxlint": "^1.36.0",
         "prettier": "^3.7.4",
         "typescript": "^5.9.3",
+        "react-devtools-core": "^7.0.1",
         "vitest": "^4.0.16"
     },
     "dependencies": {
         "ink": "^6.6.0",
-        "react": "^19.2.3",
-        "react-devtools-core": "^7.0.1"
+        "react": "^19.2.3"
     }
 }

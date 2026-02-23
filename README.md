@@ -3,8 +3,6 @@
 A lightweight CLI development utility that helps you automate common development tasks.
 
 > **Note:** Artifex is in early-stage development. Features and APIs may change as the project evolves.
->
-> **Backwards Compatibility:** The `zap` command is available as an alias for existing scripts and workflows.
 
 ## What is Artifex?
 
@@ -21,25 +19,24 @@ Artifex is a command-line tool designed to streamline your development workflow 
 
 ### Prerequisites
 
-- Node.js 22.6.0 or higher
+- [Bun](https://bun.sh) runtime
 
-### Install Locally
-
-Since Artifex is not yet published to npm, you can install it locally using npm link:
+### Install from NPM
 
 ```bash
-# Clone the repository
-git clone https://github.com/avantmedialtd/artifex.git
-cd artifex
-
-# Install dependencies
-bun install
-
-# Link the package globally
-bun link
+npm install -g @avantmedia/af
 ```
 
-After linking, both `af` and `zap` commands will be available globally in your terminal.
+After installation, the `af` command will be available globally.
+
+### Install from Source
+
+```bash
+git clone https://github.com/avantmedialtd/artifex.git
+cd artifex
+bun install
+bun link
+```
 
 ### Platform Support
 
@@ -473,17 +470,32 @@ This ensures code is linted and properly formatted before it gets pushed to the 
 2. Format your code: `bun run format`
 3. Run tests to ensure everything works: `bun test`
 4. Run the linter: `bun run lint`
-5. Test your changes locally using the linked `af` command (or `zap` alias)
+5. Test your changes locally using the linked `af` command
 6. Commit your changes and submit a pull request
+
+### Publishing to NPM
+
+The package is published as `@avantmedia/af` on the public NPM registry. It ships TypeScript source directly — Bun executes it natively without a build step.
+
+```bash
+# Verify what will be published
+npm pack --dry-run
+
+# Publish (requires npm login and @avantmedia org access)
+npm publish --access public
+```
+
+The `files` field in `package.json` controls what gets included. Test files, OpenSpec artifacts, the VSCode extension, and build outputs are excluded.
 
 ### Project Structure
 
 - `main.ts` - Entry point for the CLI
-- `npm-upgrade.ts` - Implementation of the npm upgrade command
-- `bun-upgrade.ts` - Implementation of the bun upgrade command
+- `router.ts` - Command routing logic
+- `commands/` - Command handler modules
+- `components/` - Ink React UI components
+- `utils/` - Shared utility modules
 - `af` - Primary executable file that invokes the CLI
-- `zap` - Alias executable for backwards compatibility
-- Tests are colocated with source files (e.g., `npm-upgrade.test.ts`, `bun-upgrade.test.ts`)
+- Tests are colocated with source files (e.g., `*.test.ts`)
 
 For more detailed contributor guidelines, see [CLAUDE.md](CLAUDE.md).
 
@@ -515,9 +527,7 @@ Contributions are welcome! Whether you're fixing bugs, adding features, or impro
 
 ## License
 
-Copyright (c) Avant Media LTD. All rights reserved.
-
-This is proprietary software. See [LICENSE](LICENSE) for terms.
+MIT License. See [LICENSE](LICENSE) for details.
 
 ## Author
 

@@ -29,12 +29,7 @@ Examples:
 
 2. **Archive the OpenSpec change (if not already archived):**
    - Check if `openspec/changes/<id>/` directory exists
-   - If it exists, perform the OPSX archive workflow:
-     1. Check artifact completion: `openspec status --change "<id>" --json`
-     2. Check task completion: read `openspec/changes/<id>/tasks.md`, count `- [ ]` vs `- [x]`
-     3. Check for delta specs at `openspec/changes/<id>/specs/` — if they exist, perform agent-driven sync to main specs (same as `/opsx:sync`)
-     4. Archive: `mkdir -p openspec/changes/archive && mv openspec/changes/<id> openspec/changes/archive/YYYY-MM-DD-<id>`
-     5. Ensure everything meets the project's formatting rules (run `bun run format` if needed)
+   - If it exists, invoke `/opsx:archive <id>`
    - If the directory does not exist (already archived), skip this step
 
 3. Run the following command to stage all changes and create a commit:

@@ -2,8 +2,10 @@
 
 ## Purpose
 
-Defines the primary CLI executable (`af`) and backwards-compatible alias (`zap`) for the development utility.
+Defines the primary CLI executable (`af`) for the development utility.
+
 ## Requirements
+
 ### Requirement: Primary af executable file exists
 
 The project MUST provide an executable file named `af` that serves as the primary entry point for the CLI.
@@ -14,17 +16,6 @@ The project MUST provide an executable file named `af` that serves as the primar
 - **WHEN** they execute `af` in their terminal
 - **THEN** the executable file is invoked by the system
 - **AND** it runs with Node.js as the interpreter
-
-### Requirement: Backwards-compatible zap alias exists
-
-The project MUST provide an executable file named `zap` that works identically to `af` for backwards compatibility.
-
-#### Scenario: Developer runs zap command (legacy alias)
-
-- **GIVEN** the developer has run `npm link` in the project directory
-- **WHEN** they execute `zap` in their terminal
-- **THEN** the executable file is invoked by the system
-- **AND** it produces identical output to running `af`
 
 ### Requirement: Execute TypeScript without build step
 
@@ -40,21 +31,19 @@ The executable MUST run TypeScript code (main.ts) directly without requiring a c
 
 ### Requirement: Package.json bin configuration
 
-The package.json MUST declare both `af` and `zap` executables in the `bin` field to enable npm linking and installation.
+The `package.json` MUST declare only the `af` executable in the `bin` field.
+
+#### Scenario: Package is installed globally via NPM
+
+- **WHEN** a user runs `npm install -g @avantmedia/af`
+- **THEN** npm creates a symlink for `af` in the global bin directory
+- **AND** no `zap` command is created
 
 #### Scenario: Developer links package locally
 
-- **GIVEN** the package.json has a `bin` field pointing to both executables
-- **WHEN** the developer runs `npm link`
-- **THEN** npm creates symlinks to both executables in the global bin directory
-- **AND** both `af` and `zap` commands become available in the terminal
-
-#### Scenario: Package is installed globally
-
-- **GIVEN** the package.json has proper bin configuration
-- **WHEN** a user runs `npm install -g af`
-- **THEN** both `af` and `zap` commands are installed to their global bin directory
-- **AND** they can be executed from anywhere with identical behavior
+- **WHEN** a developer runs `bun link` in the project directory
+- **THEN** the `af` command becomes available in the terminal
+- **AND** no `zap` command is created
 
 ### Requirement: Executable works on POSIX systems
 
@@ -80,10 +69,10 @@ The executable MUST work on Windows systems when installed via npm, which automa
 
 #### Scenario: Running on Windows
 
-- **GIVEN** a developer is using Windows with Node.js installed
-- **WHEN** they install the package via npm (link or global install)
-- **THEN** npm creates `af.cmd` and `zap.cmd` wrappers automatically
-- **AND** both commands execute successfully in cmd.exe or PowerShell
+- **GIVEN** a developer is using Windows with Bun installed
+- **WHEN** they install the package via npm (global install)
+- **THEN** npm creates an `af.cmd` wrapper automatically
+- **AND** the command executes successfully in cmd.exe or PowerShell
 
 ### Requirement: Executable has correct permissions
 
@@ -113,4 +102,3 @@ The executable file MUST include a shebang line that invokes Bun to run the scri
 - **WHEN** the file is executed
 - **THEN** the shebang instructs the system to use the `bun` interpreter
 - **AND** the interpreter can locate bun via the environment PATH
-
