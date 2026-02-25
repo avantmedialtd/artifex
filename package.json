@@ -1,6 +1,6 @@
 {
     "name": "@avantmedia/af",
-    "version": "0.0.7",
+    "version": "0.0.8",
     "description": "Development utility.",
     "homepage": "https://github.com/avantmedialtd/artifex#readme",
     "bugs": {
@@ -23,7 +23,7 @@
         "af": "./af"
     },
     "engines": {
-        "node": ">=22.6.0"
+        "node": ">=16"
     },
     "type": "module",
     "files": [
@@ -80,6 +80,7 @@
         "vitest": "^4.0.16"
     },
     "dependencies": {
+        "bun": ">=1.1.0",
         "ink": "^6.6.0",
         "react": "^19.2.3"
     }
