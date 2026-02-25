@@ -1,6 +1,6 @@
 {
     "name": "@avantmedia/af",
-    "version": "0.0.4",
+    "version": "0.0.7",
     "description": "Development utility.",
     "homepage": "https://github.com/avantmedialtd/artifex#readme",
     "bugs": {
@@ -40,6 +40,8 @@
         "setup/",
         "resources/",
         "scripts/e2e_tests.ts",
+        "jira/*.ts",
+        "jira/lib/*.ts",
         "!**/*.test.ts"
     ],
     "main": "main.ts",
