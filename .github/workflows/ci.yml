@@ -12,22 +12,11 @@ concurrency:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    container:
-      image: istvan32/builder:latest
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
 
-      - name: Set build name from tag
-        run: |
-          TAG=$(git tag --contains HEAD)
-          if [ -n "$TAG" ]; then
-            echo "Tagged version: $TAG"
-            echo "TAGGED_VERSION=$TAG" >> "$GITHUB_ENV"
-          fi
+      - uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
         run: bun install

@@ -1,32 +1,32 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
-import { dirname, join } from "node:path";
-import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let bunDir;
 try {
-    bunDir = dirname(require.resolve("bun/package.json"));
+    bunDir = dirname(require.resolve('bun/package.json'));
 } catch {
     console.error(
-        "Error: Could not find the bun package.\n" +
-            "Try reinstalling: npm install -g @avantmedia/af",
+        'Error: Could not find the bun package.\n' +
+            'Try reinstalling: npm install -g @avantmedia/af',
     );
     process.exit(1);
 }
 
-const bunBin = join(bunDir, "bin", "bun.exe");
-const mainTs = join(__dirname, "main.ts");
+const bunBin = join(bunDir, 'bin', 'bun.exe');
+const mainTs = join(__dirname, 'main.ts');
 
 const child = spawn(bunBin, [mainTs, ...process.argv.slice(2)], {
-    stdio: "inherit",
+    stdio: 'inherit',
 });
 
-for (const sig of ["SIGINT", "SIGTERM"]) {
+for (const sig of ['SIGINT', 'SIGTERM']) {
     process.on(sig, () => child.kill(sig));
 }
 
-child.on("close", (code) => process.exit(code ?? 1));
+child.on('close', code => process.exit(code ?? 1));
