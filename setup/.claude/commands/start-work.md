@@ -30,12 +30,11 @@ Examples:
 1. Fetch the issue details using `af jira get <issue-key>`.
 2. Assign the issue to yourself using `af jira assign <issue-key> --to $(af jira get <issue-key> --json | jq -r '.reporter.emailAddress')` — but first check who the current user is by looking at the Jira config or asking.
 3. Transition the issue to "In Progress" using `af jira transition <issue-key> --to "In Progress"`. If this fails, run `af jira transitions <issue-key>` to find the correct status name.
-4. Create an OpenSpec change using the artifact workflow:
+4. Create an OpenSpec change using the OPSX workflow:
    - Derive a `change-id` from the issue key and summary (kebab-case, verb-led)
-   - Create the change: `openspec new change "<change-id>"`
-   - Get the artifact status: `openspec status --change "<change-id>" --json`
-   - Get proposal artifact instructions: `openspec instructions proposal --change "<change-id>" --json`
-   - Create the proposal artifact using the template from instructions, enriching it with:
+   - Invoke the `openspec-new-change` skill (Skill tool) with the `change-id`
+     - This scaffolds the change directory, shows artifact status, and provides the first artifact template
+   - Then invoke the `openspec-continue-change` skill (Skill tool) to create the proposal artifact, enriching with Jira context:
      - Jira issue link: `**Jira**: [ISSUE-KEY](jira-url)`
      - Why section derived from Jira issue description
      - What Changes derived from issue details
