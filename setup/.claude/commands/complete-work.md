@@ -22,7 +22,8 @@ Example: `/complete-work MUSH-123`
    - If it exists, invoke `/opsx:archive <id>`
    - If the directory does not exist (already archived), skip this step
 4. Run the following command: `./scripts/create-commit.sh "<issue-summary>" "<issue-key>"` where `<issue-summary>` is derived from the Jira issue. This adds the issue key as a commit trailer.
-6. Transition the issue to "Done" using `af jira transition <issue-key> --to "Done"`. If this fails, run `af jira transitions <issue-key>` to find the correct completion status name.
+5. Transition the issue to "Done" using `af jira transition <issue-key> --to "Done"`. If this fails, run `af jira transitions <issue-key>` to find the correct completion status name.
+6. Push to remote: `git push`
 
 **Reference**
 
