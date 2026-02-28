@@ -40,8 +40,12 @@
         "setup/",
         "resources/",
         "scripts/e2e_tests.ts",
+        "atlassian/*.ts",
+        "atlassian/lib/*.ts",
         "jira/*.ts",
         "jira/lib/*.ts",
+        "confluence/*.ts",
+        "confluence/lib/*.ts",
         "!**/*.test.ts"
     ],
     "main": "main.ts",

@@ -108,6 +108,17 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af jira projects                  # List all projects',
         ],
     },
+    confluence: {
+        description: 'Manage Confluence pages from the command line',
+        usage: 'af confluence <subcommand> [args] [options]',
+        examples: [
+            'af confluence get 12345                        # Get page content',
+            'af confluence list MYSPACE --limit 20         # List pages in space',
+            'af confluence search "title = \'My Page\'"      # Search with CQL',
+            'af confluence create --space MYSPACE --title "New Page" --body "Content"',
+            'af confluence spaces                           # List all spaces',
+        ],
+    },
     licenses: {
         description: 'Show license and copyright information',
         usage: 'af licenses',
@@ -177,6 +188,7 @@ function showGeneralHelp(): void {
     listItem('versions reset         Reset version worktrees to HEAD');
     listItem('versions push          Force push version worktrees');
     listItem('jira <subcommand>      Manage Jira issues (get, list, create, etc.)');
+    listItem('confluence <sub>      Manage Confluence pages (get, list, create, etc.)');
     listItem('licenses               Show license and copyright information');
     listItem('scaffold <subcommand>  Generate project files from templates');
     listItem('setup                  Copy Claude + OpenCode config files');

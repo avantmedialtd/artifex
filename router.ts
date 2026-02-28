@@ -1,5 +1,6 @@
 import { handleBunUpgrade } from './commands/bun.ts';
 import { handleChanges } from './commands/changes.ts';
+import { handleConfluence } from './commands/confluence.ts';
 import { handleE2e } from './commands/e2e.ts';
 import { handleHelp } from './commands/help.ts';
 import { handleInstallExtension } from './commands/install-extension.ts';
@@ -164,6 +165,11 @@ export async function route(args: string[]): Promise<number> {
     // Route jira commands
     if (command === 'jira') {
         return await handleJira(args.slice(1));
+    }
+
+    // Route confluence commands
+    if (command === 'confluence') {
+        return await handleConfluence(args.slice(1));
     }
 
     // Route versions commands

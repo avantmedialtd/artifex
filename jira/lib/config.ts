@@ -1,41 +1,18 @@
 /**
  * Jira configuration module.
  *
- * Uses environment variables loaded by the global utils/env.ts loader.
- * Validation is lazy - errors are only thrown when getConfig() is called.
+ * Delegates to shared Atlassian config which supports both ATLASSIAN_*
+ * and legacy JIRA_* environment variables.
  */
 
-export interface Config {
-    baseUrl: string;
-    email: string;
-    apiToken: string;
-}
+import { getAtlassianConfig, type AtlassianConfig } from '../../atlassian/lib/config.ts';
 
-/**
- * Get an environment variable, throwing a descriptive error if not set.
- */
-function getEnvVar(name: string): string {
-    const value = process.env[name];
-    if (!value) {
-        throw new Error(
-            `${name} is not set. ` +
-                'Create a .env file in your project directory with:\n' +
-                '  JIRA_BASE_URL=https://your-domain.atlassian.net\n' +
-                '  JIRA_EMAIL=your-email@example.com\n' +
-                '  JIRA_API_TOKEN=your-api-token',
-        );
-    }
-    return value;
-}
+export type Config = AtlassianConfig;
 
 /**
  * Get Jira configuration from environment variables.
- * Throws descriptive error if any required variable is missing.
+ * Prefers ATLASSIAN_* variables, falls back to JIRA_* for backward compatibility.
  */
 export function getConfig(): Config {
-    return {
-        baseUrl: getEnvVar('JIRA_BASE_URL').replace(/\/$/, ''),
-        email: getEnvVar('JIRA_EMAIL'),
-        apiToken: getEnvVar('JIRA_API_TOKEN'),
-    };
+    return getAtlassianConfig();
 }

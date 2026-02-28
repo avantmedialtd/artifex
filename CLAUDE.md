@@ -25,7 +25,16 @@ commands/            - Command handler modules
 ├── bun.ts           - bun upgrade command
 ├── spec.ts          - spec archive/propose commands
 ├── versions.ts      - versions push/reset commands
+├── jira.ts          - Jira issue management
+├── confluence.ts    - Confluence page management
 └── help.ts          - help command
+atlassian/lib/       - Shared Atlassian infrastructure
+├── config.ts        - Shared config (ATLASSIAN_* / JIRA_* env vars)
+├── adf.ts           - ADF markdown converters (shared by Jira + Confluence)
+├── adf-types.ts     - ADF type definitions
+└── request.ts       - Shared HTTP request helper with auth
+jira/lib/            - Jira API client and formatters
+confluence/lib/      - Confluence API client and formatters
 utils/               - Utility modules
 ├── output.ts        - Terminal output formatting with ANSI colors
 └── claude.ts        - Claude Code CLI availability check
@@ -385,6 +394,45 @@ To add new setup files:
 #### Standalone Binary Compatibility
 
 The setup command works identically whether running from source (`./af setup`) or from the compiled binary. In compiled mode, files are read from the embedded bundle. In development mode, files are read from the `setup/` directory.
+
+### Atlassian Configuration
+
+Both the Jira and Confluence commands share authentication via environment variables. The preferred variable names are `ATLASSIAN_*`, with `JIRA_*` supported as legacy fallback:
+
+```
+ATLASSIAN_BASE_URL=https://your-domain.atlassian.net
+ATLASSIAN_EMAIL=your-email@example.com
+ATLASSIAN_API_TOKEN=your-api-token
+```
+
+Legacy variables (`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`) are also supported. When both are set, `ATLASSIAN_*` takes precedence.
+
+The shared infrastructure lives in `atlassian/lib/`:
+
+- `config.ts` - Reads env vars with fallback logic
+- `adf.ts` - Markdown ↔ ADF converters used by both Jira and Confluence
+- `request.ts` - Authenticated HTTP request helper
+
+### Confluence Command
+
+The `af confluence` command manages Confluence pages. It mirrors the `af jira` pattern with full CRUD operations:
+
+```bash
+af confluence get <page-id>              # Get page content
+af confluence list <space-key>           # List pages in a space
+af confluence search "<cql>"             # Search with CQL
+af confluence create --space KEY --title "Title" --body "Content"
+af confluence create --space KEY --title "Title" --body-file ./doc.md
+af confluence update <page-id> --body-file ./updated.md
+af confluence delete <page-id>
+af confluence tree <page-id>             # Show page hierarchy
+af confluence comment <page-id> --add "Comment text"
+af confluence label <page-id> --add "label-name"
+af confluence attach <page-id> ./file.pdf
+af confluence spaces                     # List all spaces
+```
+
+The Confluence client uses the v2 API (`/wiki/api/v2/`) for most operations and falls back to v1 (`/wiki/rest/api/`) for search (CQL), label management, and attachment uploads. Page content is stored as ADF (Atlassian Document Format), with automatic markdown conversion.
 
 ### Configurable Agent Command
 

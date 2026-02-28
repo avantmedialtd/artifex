@@ -55,7 +55,7 @@ The CLI SHALL load environment variables before command routing.
 
 #### Scenario: Environment is available to all commands
 
-- **GIVEN** a `.env` file sets `JIRA_BASE_URL=https://example.atlassian.net`
-- **WHEN** the user runs `af jira projects`
-- **THEN** the jira command has access to `process.env.JIRA_BASE_URL`
+- **GIVEN** a `.env` file sets `ATLASSIAN_BASE_URL=https://example.atlassian.net` (or legacy `JIRA_BASE_URL`)
+- **WHEN** the user runs `af jira projects` or `af confluence spaces`
+- **THEN** the command has access to the Atlassian configuration
 

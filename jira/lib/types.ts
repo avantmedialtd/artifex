@@ -1,5 +1,10 @@
 // Jira API Types
 
+// Re-export shared ADF types under Jira-prefixed names for backward compatibility
+import type { AdfDocument, AdfNode } from '../../atlassian/lib/adf-types.ts';
+export type JiraAdfDocument = AdfDocument;
+export type JiraAdfNode = AdfNode;
+
 export interface JiraUser {
     accountId: string;
     emailAddress?: string;
@@ -69,21 +74,6 @@ export interface JiraTransition {
     id: string;
     name: string;
     to: JiraStatus;
-}
-
-// Atlassian Document Format (ADF) types
-export interface JiraAdfDocument {
-    type: 'doc';
-    version: 1;
-    content: JiraAdfNode[];
-}
-
-export interface JiraAdfNode {
-    type: string;
-    content?: JiraAdfNode[];
-    text?: string;
-    attrs?: Record<string, unknown>;
-    marks?: Array<{ type: string; attrs?: Record<string, unknown> }>;
 }
 
 export interface JiraIssueFields {

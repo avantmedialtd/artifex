@@ -11,9 +11,9 @@ import type { JiraAttachment } from './client.ts';
 import { adfToText } from './client.ts';
 import { link } from '../../utils/output.ts';
 
-// Jira URL helpers - requires JIRA_BASE_URL environment variable
+// Jira URL helpers - supports ATLASSIAN_BASE_URL with JIRA_BASE_URL fallback
 function getBaseUrl(): string {
-    return process.env.JIRA_BASE_URL?.replace(/\/$/, '') ?? '';
+    return (process.env.ATLASSIAN_BASE_URL || process.env.JIRA_BASE_URL)?.replace(/\/$/, '') ?? '';
 }
 
 export function issueLink(issueKey: string): string {

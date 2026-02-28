@@ -23,5 +23,6 @@ The jira skill documentation SHALL provide correct environment variable setup in
 - **GIVEN** a user wants to configure Jira credentials
 - **WHEN** they follow the setup instructions
 - **THEN** they are instructed to set environment variables in their project's `.env` file
-- **AND** the required variables are `JIRA_BASE_URL`, `JIRA_EMAIL`, and `JIRA_API_TOKEN`
+- **AND** the preferred variables are `ATLASSIAN_BASE_URL`, `ATLASSIAN_EMAIL`, and `ATLASSIAN_API_TOKEN`
+- **AND** legacy variables `JIRA_BASE_URL`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` are also supported
 
