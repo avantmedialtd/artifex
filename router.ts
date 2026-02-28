@@ -4,6 +4,7 @@ import { handleConfluence } from './commands/confluence.ts';
 import { handleE2e } from './commands/e2e.ts';
 import { handleHelp } from './commands/help.ts';
 import { handleInstallExtension } from './commands/install-extension.ts';
+import { handleJenkins } from './commands/jenkins.ts';
 import { handleJira } from './commands/jira.ts';
 import { handleLicenses } from './commands/licenses.ts';
 import { handleNpmUpgrade } from './commands/npm.ts';
@@ -160,6 +161,11 @@ export async function route(args: string[]): Promise<number> {
         // Pass true if any additional arguments were provided
         const hasArgs = args.length > 1;
         return await handleWatch(hasArgs);
+    }
+
+    // Route jenkins commands
+    if (command === 'jenkins') {
+        return await handleJenkins(args.slice(1));
     }
 
     // Route jira commands

@@ -97,6 +97,19 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af versions push   # Force push all version worktrees',
         ],
     },
+    jenkins: {
+        description: 'Read-only Jenkins build visibility',
+        usage: 'af jenkins <subcommand> [args] [options]',
+        examples: [
+            'af jenkins jobs                              # List all jobs',
+            'af jenkins branches my-pipeline              # List branch build statuses',
+            'af jenkins build my-app/main                 # Latest build info',
+            'af jenkins log my-app/main                   # Latest build console output',
+            'af jenkins stages my-app/main                # Pipeline stage breakdown',
+            'af jenkins stage-log my-app/main "Test"      # Log for a specific stage',
+            'af jenkins queue                             # Show build queue',
+        ],
+    },
     jira: {
         description: 'Manage Jira issues from the command line',
         usage: 'af jira <subcommand> [args] [options]',
@@ -191,6 +204,7 @@ function showGeneralHelp(): void {
     listItem('watch                  Continuously show updated TODO items (with idle indicator)');
     listItem('versions reset         Reset version worktrees to HEAD');
     listItem('versions push          Force push version worktrees');
+    listItem('jenkins <subcommand>   Jenkins build visibility (jobs, builds, logs, etc.)');
     listItem('jira <subcommand>      Manage Jira issues (get, list, create, etc.)');
     listItem('confluence <sub>      Manage Confluence pages (get, list, create, etc.)');
     listItem('licenses               Show license and copyright information');
