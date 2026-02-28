@@ -6,6 +6,7 @@ import type {
     JiraComment,
     JiraSearchResult,
     JiraVersion,
+    JiraRemoteLink,
 } from './types.ts';
 import type { JiraAttachment } from './client.ts';
 import { adfToText } from './client.ts';
@@ -49,7 +50,7 @@ function formatDate(dateStr: string): string {
 }
 
 // Single issue to markdown
-export function formatIssue(issue: JiraIssue): string {
+export function formatIssue(issue: JiraIssue, remoteLinks?: JiraRemoteLink[]): string {
     const f = issue.fields;
     const lines: string[] = [];
 
@@ -118,6 +119,37 @@ export function formatIssue(issue: JiraIssue): string {
             lines.push(
                 `- ${checkbox} **${issueLink(subtask.key)}**: ${subtask.fields.summary} (${status})`,
             );
+        }
+    }
+
+    // Linked Issues
+    if (f.issuelinks?.length) {
+        lines.push('');
+        lines.push('## Linked Issues');
+        lines.push('');
+        for (const il of f.issuelinks) {
+            if (il.outwardIssue) {
+                const oi = il.outwardIssue;
+                lines.push(
+                    `- **${il.type.outward}** ${issueLink(oi.key)}: ${oi.fields.summary} (${oi.fields.status.name})`,
+                );
+            }
+            if (il.inwardIssue) {
+                const ii = il.inwardIssue;
+                lines.push(
+                    `- **${il.type.inward}** ${issueLink(ii.key)}: ${ii.fields.summary} (${ii.fields.status.name})`,
+                );
+            }
+        }
+    }
+
+    // Remote Links
+    if (remoteLinks?.length) {
+        lines.push('');
+        lines.push('## Remote Links');
+        lines.push('');
+        for (const rl of remoteLinks) {
+            lines.push(`- ${rl.object.title} — ${rl.object.url}`);
         }
     }
 
@@ -276,6 +308,28 @@ export function formatAttachments(issueKey: string, attachments: JiraAttachment[
                   ? `${(att.size / 1024).toFixed(1)} KB`
                   : `${(att.size / 1024 / 1024).toFixed(1)} MB`;
         lines.push(`| ${att.filename} | ${size} | ${att.mimeType} |`);
+    }
+
+    return lines.join('\n');
+}
+
+// Remote links list to markdown
+export function formatRemoteLinks(issueKey: string, links: JiraRemoteLink[]): string {
+    const lines: string[] = [];
+
+    lines.push(`# Remote Links on ${issueLink(issueKey)} (${links.length})`);
+    lines.push('');
+
+    if (links.length === 0) {
+        lines.push('No remote links.');
+        return lines.join('\n');
+    }
+
+    lines.push(`| ID | Title | URL |`);
+    lines.push(`|----|-------|-----|`);
+
+    for (const rl of links) {
+        lines.push(`| ${rl.id} | ${rl.object.title} | ${rl.object.url} |`);
     }
 
     return lines.join('\n');

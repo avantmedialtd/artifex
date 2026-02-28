@@ -18,6 +18,7 @@ import type {
     JiraVersion,
     JiraCreateVersionRequest,
     JiraUpdateVersionRequest,
+    JiraRemoteLink,
 } from './types.ts';
 
 // Re-export ADF converters for backward compatibility
@@ -335,6 +336,48 @@ export async function addAttachment(issueKey: string, filePath: string): Promise
     }
 
     return response.json() as Promise<JiraAttachment[]>;
+}
+
+// Issue Links
+export async function linkIssue(
+    outwardIssueKey: string,
+    linkType: string,
+    inwardIssueKey: string,
+): Promise<void> {
+    await request('/issueLink', {
+        method: 'POST',
+        body: JSON.stringify({
+            type: { name: linkType },
+            outwardIssue: { key: outwardIssueKey },
+            inwardIssue: { key: inwardIssueKey },
+        }),
+    });
+}
+
+export async function unlinkIssue(linkId: string): Promise<void> {
+    await request(`/issueLink/${linkId}`, {
+        method: 'DELETE',
+    });
+}
+
+// Remote Links
+export async function getRemoteLinks(issueKey: string): Promise<JiraRemoteLink[]> {
+    return request<JiraRemoteLink[]>(`/issue/${issueKey}/remotelink`);
+}
+
+export async function addRemoteLink(issueKey: string, url: string, title: string): Promise<void> {
+    await request(`/issue/${issueKey}/remotelink`, {
+        method: 'POST',
+        body: JSON.stringify({
+            object: { url, title },
+        }),
+    });
+}
+
+export async function removeRemoteLink(issueKey: string, linkId: string): Promise<void> {
+    await request(`/issue/${issueKey}/remotelink/${linkId}`, {
+        method: 'DELETE',
+    });
 }
 
 // Projects

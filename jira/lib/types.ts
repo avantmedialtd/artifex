@@ -76,6 +76,40 @@ export interface JiraTransition {
     to: JiraStatus;
 }
 
+export interface JiraIssueLinkType {
+    id: string;
+    name: string;
+    inward: string;
+    outward: string;
+}
+
+export interface JiraIssueLink {
+    id: string;
+    type: JiraIssueLinkType;
+    inwardIssue?: {
+        key: string;
+        fields: {
+            summary: string;
+            status: JiraStatus;
+        };
+    };
+    outwardIssue?: {
+        key: string;
+        fields: {
+            summary: string;
+            status: JiraStatus;
+        };
+    };
+}
+
+export interface JiraRemoteLink {
+    id: number;
+    object: {
+        url: string;
+        title: string;
+    };
+}
+
 export interface JiraIssueFields {
     summary: string;
     description?: string | JiraAdfDocument | null;
@@ -105,6 +139,7 @@ export interface JiraIssueFields {
             status: JiraStatus;
         };
     }>;
+    issuelinks?: JiraIssueLink[];
     timetracking?: JiraTimeTracking;
     fixVersions?: JiraVersion[];
     versions?: JiraVersion[]; // affectedVersions in API response

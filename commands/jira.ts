@@ -26,6 +26,10 @@ interface JiraOptions {
     'affected-version'?: string;
     'move-fix-issues-to'?: string;
     'move-affected-issues-to'?: string;
+    from?: string;
+    url?: string;
+    title?: string;
+    remove?: string;
 }
 
 /**
@@ -95,6 +99,11 @@ COMMANDS:
   projects                  List all projects
   types <project>           List issue types for a project
 
+LINK COMMANDS:
+  link <issue-key>          Link two issues
+  unlink <issue-key>        Remove a link between two issues
+  remote-link <issue-key>   List, add, or remove remote links
+
 VERSION COMMANDS:
   versions <project>        List all versions in a project
   version <version-id>      Get version details
@@ -148,6 +157,18 @@ VERSION-DELETE OPTIONS:
   --move-fix-issues-to <id>      Move fix version issues to this version
   --move-affected-issues-to <id> Move affected version issues to this version
 
+LINK OPTIONS:
+  --to <issue-key>          Target issue key (required)
+  --type <name>             Link type name (default: "Blocks")
+
+UNLINK OPTIONS:
+  --from <issue-key>        Target issue key to unlink (required)
+
+REMOTE-LINK OPTIONS:
+  --url "<url>"             Add a remote link (requires --title)
+  --title "<text>"          Title for the remote link
+  --remove <link-id>        Remove a remote link by ID
+
 COMMENT OPTIONS:
   --add "<text>"            Add a comment (omit to list comments)
 
@@ -170,6 +191,12 @@ EXAMPLES:
   af jira comment PROJ-123 --add "Working on this"
   af jira transition PROJ-123 --to "In Progress"
   af jira assign PROJ-123 --to user@example.com
+  af jira link PROJ-123 --to PROJ-456
+  af jira link PROJ-123 --to PROJ-456 --type "Relates"
+  af jira unlink PROJ-123 --from PROJ-456
+  af jira remote-link PROJ-123
+  af jira remote-link PROJ-123 --url "https://example.com/doc" --title "Design Doc"
+  af jira remote-link PROJ-123 --remove 10042
   af jira versions PROJ
   af jira version-create --project PROJ --name "v1.0.0" --release-date 2024-06-01
   af jira version-update 12345 --released
@@ -220,8 +247,15 @@ export async function handleJira(args: string[]): Promise<number> {
                     error('Error: Issue key required. Usage: af jira get <issue-key>');
                     return 1;
                 }
-                const issue = await client.getIssue(issueKey);
-                fmt.output(json ? issue : fmt.formatIssue(issue), json);
+                const [issue, remoteLinks] = await Promise.all([
+                    client.getIssue(issueKey),
+                    client.getRemoteLinks(issueKey),
+                ]);
+                if (json) {
+                    fmt.output({ ...issue, remoteLinks }, true);
+                } else {
+                    fmt.output(fmt.formatIssue(issue, remoteLinks), false);
+                }
                 break;
             }
 
@@ -555,6 +589,111 @@ export async function handleJira(args: string[]): Promise<number> {
                         : fmt.formatSuccess(`Deleted version ${versionId}`),
                     json,
                 );
+                break;
+            }
+
+            case 'link': {
+                const issueKey = subArgs[0];
+                if (!issueKey) {
+                    error(
+                        'Error: Issue key required. Usage: af jira link <issue-key> --to <target-key>',
+                    );
+                    return 1;
+                }
+                if (!options.to) {
+                    error(
+                        'Error: --to is required. Usage: af jira link <issue-key> --to <target-key>',
+                    );
+                    return 1;
+                }
+                const linkType = options.type ?? 'Blocks';
+                await client.linkIssue(issueKey, linkType, options.to);
+                fmt.output(
+                    json
+                        ? { success: true, from: issueKey, to: options.to, type: linkType }
+                        : fmt.formatSuccess(
+                              `Linked ${fmt.issueLink(issueKey)} → ${fmt.issueLink(options.to)} (${linkType})`,
+                          ),
+                    json,
+                );
+                break;
+            }
+
+            case 'unlink': {
+                const issueKey = subArgs[0];
+                if (!issueKey) {
+                    error(
+                        'Error: Issue key required. Usage: af jira unlink <issue-key> --from <target-key>',
+                    );
+                    return 1;
+                }
+                if (!options.from) {
+                    error(
+                        'Error: --from is required. Usage: af jira unlink <issue-key> --from <target-key>',
+                    );
+                    return 1;
+                }
+                const issue = await client.getIssue(issueKey);
+                const targetKey = options.from;
+                const matchingLink = issue.fields.issuelinks?.find(
+                    il => il.outwardIssue?.key === targetKey || il.inwardIssue?.key === targetKey,
+                );
+                if (!matchingLink) {
+                    throw new Error(`No link found between ${issueKey} and ${targetKey}`);
+                }
+                await client.unlinkIssue(matchingLink.id);
+                fmt.output(
+                    json
+                        ? { success: true, from: issueKey, target: targetKey }
+                        : fmt.formatSuccess(
+                              `Unlinked ${fmt.issueLink(issueKey)} from ${fmt.issueLink(targetKey)}`,
+                          ),
+                    json,
+                );
+                break;
+            }
+
+            case 'remote-link': {
+                const issueKey = subArgs[0];
+                if (!issueKey) {
+                    error(
+                        'Error: Issue key required. Usage: af jira remote-link <issue-key> [--url "..." --title "..."] [--remove <id>]',
+                    );
+                    return 1;
+                }
+                if (options.url) {
+                    if (!options.title) {
+                        error('Error: --title is required when adding a remote link');
+                        return 1;
+                    }
+                    await client.addRemoteLink(issueKey, options.url, options.title);
+                    fmt.output(
+                        json
+                            ? {
+                                  success: true,
+                                  key: issueKey,
+                                  url: options.url,
+                                  title: options.title,
+                              }
+                            : fmt.formatSuccess(
+                                  `Added remote link to ${fmt.issueLink(issueKey)}: ${options.title}`,
+                              ),
+                        json,
+                    );
+                } else if (options.remove) {
+                    await client.removeRemoteLink(issueKey, options.remove);
+                    fmt.output(
+                        json
+                            ? { success: true, key: issueKey, removedId: options.remove }
+                            : fmt.formatSuccess(
+                                  `Removed remote link ${options.remove} from ${fmt.issueLink(issueKey)}`,
+                              ),
+                        json,
+                    );
+                } else {
+                    const links = await client.getRemoteLinks(issueKey);
+                    fmt.output(json ? links : fmt.formatRemoteLinks(issueKey, links), json);
+                }
                 break;
             }
 

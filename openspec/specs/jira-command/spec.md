@@ -180,6 +180,10 @@ The CLI SHALL include jira commands in help output.
 - **AND** the `--estimate` and `--remaining` options are documented for create and update commands
 - **AND** the version management commands are documented (versions, version, version-create, version-update, version-delete)
 - **AND** the `--fix-version` and `--affected-version` options are documented for create and update commands
+- **AND** the `link`, `unlink`, and `remote-link` subcommands are documented
+- **AND** the `--type` option is documented for the link command
+- **AND** the `--from` option is documented for the unlink command
+- **AND** the `--url`, `--title`, and `--remove` options are documented for the remote-link command
 
 ### Requirement: Jira time tracking display
 

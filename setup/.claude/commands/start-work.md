@@ -12,21 +12,21 @@ tags: [jira, openspec, workflow]
 ```
 
 Examples:
-- `/start-work` — Takes the topmost issue from the backlog
-- `/start-work MUSH-123` — Uses the specified issue
+- `/start-work` — Takes the topmost issue from the board
+- `/start-work PROJ-123` — Uses the specified issue
 
 **Steps**
 
-0. **If no issue-key is provided**, fetch the topmost issue from the backlog:
+0. **If no issue-key is provided**, fetch the topmost issue from the board:
    1. Detect project key by running `af jira projects --json`
       - If single project: use it
       - If multiple projects: ask the user to choose
    2. Fetch the topmost backlog issue using:
       ```bash
-      af jira search "project = <PROJECT> AND status = Backlog ORDER BY priority DESC, created ASC" --limit 1 --json
+      af jira search "project = <PROJECT> AND status = 'Selected for Development' ORDER BY Rank ASC" --limit 1 --json
       ```
    3. Display the issue summary and ask the user for confirmation before proceeding
-   4. If no backlog issues found: inform the user the backlog is empty and stop
+   4. If no backlog issues found: inform the user the Selected for Development column is empty and stop
 1. Fetch the issue details using `af jira get <issue-key>`.
 2. Assign the issue to yourself using `af jira assign <issue-key> --to $(af jira get <issue-key> --json | jq -r '.reporter.emailAddress')` — but first check who the current user is by looking at the Jira config or asking.
 3. Transition the issue to "In Progress" using `af jira transition <issue-key> --to "In Progress"`. If this fails, run `af jira transitions <issue-key>` to find the correct status name.
@@ -42,6 +42,10 @@ Examples:
 5. **STOP and hand off to OPSX workflow**
 
    Suggest: "Proposal created. Run `/opsx:continue` to create the next artifact, or `/opsx:ff` to generate all remaining artifacts."
+
+## Project Defaults
+
+If the project instructions specify a default Jira project key (e.g., `Jira project: PROJ`), use it as the default for `--project`, `list`, `types`, and JQL queries. Explicit user input always overrides the default.
 
 **Reference**
 
