@@ -203,7 +203,7 @@ export async function handleJenkins(args: string[]): Promise<number> {
                 if (json) {
                     console.log(JSON.stringify(data, null, 2));
                 } else {
-                    process.stdout.write(data.text);
+                    process.stdout.write(data.text ?? '');
                 }
                 break;
             }
