@@ -42,7 +42,9 @@ function composeArgs(args: string[]): string[] {
         out.push('-p', projectName.trim());
     }
     out.push('-f', 'docker-compose.yml');
-    out.push('-f', 'docker-compose.test.yml');
+    if (fs.existsSync(path.join(repoRoot, 'docker-compose.test.yml'))) {
+        out.push('-f', 'docker-compose.test.yml');
+    }
     out.push('--profile', 'testing');
 
     out.push(...args);
