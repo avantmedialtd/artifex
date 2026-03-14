@@ -18,7 +18,7 @@ tags: [jira, openspec, workflow]
 3. **If an issue key was found:** Fetch the issue details using `af jira get <issue-key>` to verify it exists and get the summary. **If no issue key was found:** Skip all Jira operations (steps 3, 6) and omit the `Issue=` trailer in step 5.
 4. **Archive the OpenSpec change (if not already archived):**
    - Check if `openspec/changes/<id>/` directory exists
-   - If it exists, invoke the `openspec-archive-change` skill (Skill tool) with the `<change-id>`
+   - If it exists, invoke `/opsx:archive` (Skill tool) with the `<change-id>`
    - If the directory does not exist (already archived), skip this step
 5. Commit with trailers:
    ```bash

@@ -42,7 +42,7 @@ This command runs the FULL development cycle autonomously: pick up issue, plan, 
 
 ## Phase 2: Fast-Forward Artifacts
 
-5. Invoke the `openspec-ff-change` skill (Skill tool) with the `<change-id>`.
+5. Invoke `/opsx:ff` (Skill tool) with the `<change-id>`.
 
    Enrich the proposal artifact with Jira context:
    - Jira issue link: `**Jira**: [ISSUE-KEY](jira-url)`
@@ -55,7 +55,7 @@ This command runs the FULL development cycle autonomously: pick up issue, plan, 
 
 ## Phase 3: Implement
 
-6. Invoke the `openspec-apply-change` skill (Skill tool) with the `<change-id>`.
+6. Invoke `/opsx:apply` (Skill tool) with the `<change-id>`.
 
    This implements all tasks from the generated tasks.md. Let the skill run through all tasks without interruption.
 
@@ -83,7 +83,7 @@ This command runs the FULL development cycle autonomously: pick up issue, plan, 
 
 ## Phase 5: Verify
 
-9. Invoke the `openspec-verify-change` skill (Skill tool) with the `<change-id>`.
+9. Invoke `/opsx:verify` (Skill tool) with the `<change-id>`.
 
 10. Handle verification results autonomously:
     - **CRITICAL issues**: Attempt to fix them (complete tasks, implement missing requirements). After fixing, re-run verification once. If critical issues persist, **STOP** and report.
@@ -93,7 +93,7 @@ This command runs the FULL development cycle autonomously: pick up issue, plan, 
 ## Phase 6: Complete
 
 11. **Archive the OpenSpec change:**
-    Invoke the `openspec-archive-change` skill (Skill tool) with the `<change-id>`.
+    Invoke `/opsx:archive` (Skill tool) with the `<change-id>`.
 
     In auto mode, when the archive skill encounters prompts:
     - Incomplete artifacts/tasks warnings: proceed
