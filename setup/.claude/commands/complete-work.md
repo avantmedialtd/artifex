@@ -30,19 +30,19 @@ tags: [jira, openspec, workflow]
 
 ## CI Verification
 
-8. Read the Jenkins job path from the project's CLAUDE.md (e.g., `Jenkins job: folder/job-name`). If not configured, skip this phase and warn the user.
+8. Read the Jenkins job path from the project's CLAUDE.md (e.g., `Jenkins job: folder/pipeline-name`). If not configured, skip this phase. The full job path includes the current branch: `<job-path>/<branch>`.
 
 9. Wait ~30 seconds for Jenkins to pick up the push, then poll build status:
    ```bash
-   af jenkins build <job-path> latest --json
+   af jenkins build <job-path>/<branch> --json
    ```
    Repeat every 30 seconds until the build is no longer in progress (check the `building` field or `result` field in JSON output).
 
 10. **If build succeeds**: Done.
 
 11. **If build fails**:
-    - Run `af jenkins stages <job-path> latest` to identify the failing stage
-    - Run `af jenkins stage-log <job-path> <failing-stage> latest` to read the error output
+    - Run `af jenkins stages <job-path>/<branch>` to identify the failing stage
+    - Run `af jenkins stage-log <job-path>/<branch> <failing-stage>` to read the error output
     - Fix the code based on the failure
     - Commit using `af commit save`, push, and poll again
 
