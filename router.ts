@@ -6,7 +6,6 @@ import { handleHelp } from './commands/help.ts';
 import { handleInstallExtension } from './commands/install-extension.ts';
 import { handleJenkins } from './commands/jenkins.ts';
 import { handleJira } from './commands/jira.ts';
-import { handleLicenses } from './commands/licenses.ts';
 import { handleNpmUpgrade } from './commands/npm.ts';
 import { handleScaffold } from './commands/scaffold.ts';
 import { handleSetup } from './commands/setup.tsx';
@@ -198,11 +197,6 @@ export async function route(args: string[]): Promise<number> {
     // Route help command
     if (command === 'help') {
         return await handleHelp(subcommand);
-    }
-
-    // Route licenses command
-    if (command === 'licenses') {
-        return await handleLicenses();
     }
 
     // Route scaffold command

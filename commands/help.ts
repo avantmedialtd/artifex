@@ -136,11 +136,6 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af confluence spaces                           # List all spaces',
         ],
     },
-    licenses: {
-        description: 'Show license and copyright information',
-        usage: 'af licenses',
-        examples: ['af licenses  # Display copyright and license details'],
-    },
     scaffold: {
         description: 'Generate project files from templates',
         usage: 'af scaffold <subcommand>',
@@ -207,7 +202,6 @@ function showGeneralHelp(): void {
     listItem('jenkins <subcommand>   Jenkins build visibility (jobs, builds, logs, etc.)');
     listItem('jira <subcommand>      Manage Jira issues (get, list, create, etc.)');
     listItem('confluence <sub>      Manage Confluence pages (get, list, create, etc.)');
-    listItem('licenses               Show license and copyright information');
     listItem('scaffold <subcommand>  Generate project files from templates');
     listItem('setup                  Copy Claude + OpenCode config files');
     listItem('install-extension      Install VSCode extension');

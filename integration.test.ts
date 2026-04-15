@@ -82,6 +82,13 @@ describe('Integration Tests', () => {
         expect(result.stderr).toContain('Unknown command');
     });
 
+    it('should show error for removed licenses command', async () => {
+        const result = await runCommand('bun', ['main.ts', 'licenses'], process.cwd());
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Unknown command: licenses');
+    });
+
     it('should show error for npm without subcommand', async () => {
         const result = await runCommand('bun', ['main.ts', 'npm'], process.cwd());
 
