@@ -107,11 +107,6 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af setup --force      # Overwrite existing files',
         ],
     },
-    'install-extension': {
-        description: 'Install the OpenSpec Tasks VSCode extension',
-        usage: 'af install-extension',
-        examples: ['af install-extension  # Install the bundled VSCode extension'],
-    },
     worktree: {
         description: 'Manage git worktrees',
         usage: 'af worktree <subcommand> [args]',
@@ -153,7 +148,6 @@ function showGeneralHelp(): void {
     listItem('confluence <sub>      Manage Confluence pages (get, list, create, etc.)');
     listItem('scaffold <subcommand>  Generate project files from templates');
     listItem('setup                  Copy Claude + OpenCode config files');
-    listItem('install-extension      Install VSCode extension');
     listItem('worktree new <name>    Create new worktree with env files');
     listItem('worktree reset [name]  Reset worktree to HEAD');
     listItem('help [command]         Show help for a command');
