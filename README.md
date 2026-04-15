@@ -19,7 +19,9 @@ Artifex is a command-line tool designed to streamline your development workflow 
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) runtime
+- [Node.js](https://nodejs.org) 16 or higher
+
+That's it for running Artifex from npm. The [Bun](https://bun.sh) runtime ships as a bundled dependency and is installed automatically when you `npm install` the package — you do not need to install Bun separately.
 
 ### Install from NPM
 
@@ -30,6 +32,8 @@ npm install -g @avantmedia/af
 After installation, the `af` command will be available globally.
 
 ### Install from Source
+
+This path is intended for contributors working on Artifex itself. Unlike the npm install, building from source requires [Bun](https://bun.sh) installed locally — it is used to run tests, format code, and compile standalone binaries.
 
 ```bash
 git clone https://github.com/avantmedialtd/artifex.git
