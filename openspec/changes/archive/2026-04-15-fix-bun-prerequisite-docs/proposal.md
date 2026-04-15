@@ -2,7 +2,7 @@
 
 ## Why
 
-The README lists Bun as a user-facing prerequisite for installing Artifex from npm, but the `af` wrapper now ships a bundled Bun binary as a runtime dependency and is launched by a `#!/usr/bin/env node` shebang. End users installing via `npm install -g @avantmedia/af` only need Node.js ≥16 — Bun is resolved from the package's own `node_modules`. The `user-documentation` spec still mandates the old Bun-prereq wording, so the README cannot be corrected without also fixing the spec it derives from.
+The README lists Bun as a user-facing prerequisite for installing Artifex from npm, but the `af` wrapper now ships a bundled Bun binary as a runtime dependency and is launched by a `#!/usr/bin/env node` shebang. End users installing via `npm install -g @avantmedia/af` only need Node.js ≥16 — Bun is resolved from the package's own `node_modules`. The `user-documentation` spec still mandates the old Bun-prerequisite wording, so the README cannot be corrected without also fixing the spec it derives from.
 
 ## What Changes
 

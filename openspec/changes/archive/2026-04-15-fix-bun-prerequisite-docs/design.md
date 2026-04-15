@@ -7,7 +7,7 @@ This is a documentation-only change correcting a mismatch between the README and
 **Goals:**
 
 - README prerequisites accurately describe the runtime requirements for npm install (Node.js ≥16) and for contributor workflows (Bun).
-- The `user-documentation` spec's "Installation instructions" requirement no longer mandates stale Bun-prereq wording.
+- The `user-documentation` spec's "Installation instructions" requirement no longer mandates stale Bun-prerequisite wording.
 - Spec and README stay in sync after the change.
 
 **Non-Goals:**
