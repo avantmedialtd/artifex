@@ -9,7 +9,6 @@ import { handleJira } from './commands/jira.ts';
 import { handleNpmUpgrade } from './commands/npm.ts';
 import { handleScaffold } from './commands/scaffold.ts';
 import { handleSetup } from './commands/setup.tsx';
-import { handleSpecApply, handleSpecArchive, handleSpecPropose } from './commands/spec.ts';
 import { handleStopHook } from './commands/stop-hook.ts';
 import { handleTodo } from './commands/todo.ts';
 import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts';
@@ -70,44 +69,6 @@ export async function route(args: string[]): Promise<number> {
             console.error("Run 'af help bun' for available subcommands.");
             return 1;
         }
-    }
-
-    // Route spec commands
-    if (command === 'spec') {
-        if (subcommand === 'apply') {
-            const changeId = args[2];
-            return await handleSpecApply(changeId);
-        } else if (subcommand === 'archive') {
-            const specId = args[2];
-            return await handleSpecArchive(specId);
-        } else if (subcommand === 'propose') {
-            const proposalText = args.slice(2).join(' ');
-            return await handleSpecPropose(proposalText);
-        } else if (!subcommand) {
-            error('Error: spec command requires a subcommand');
-            console.error("Run 'af help spec' for more information.");
-            return 1;
-        } else {
-            error(`Error: Unknown spec subcommand: ${subcommand}`);
-            console.error("Run 'af help spec' for available subcommands.");
-            return 1;
-        }
-    }
-
-    // Route shorthand commands
-    if (command === 'apply') {
-        const changeId = args[1];
-        return await handleSpecApply(changeId);
-    }
-
-    if (command === 'propose') {
-        const proposalText = args.slice(1).join(' ');
-        return await handleSpecPropose(proposalText);
-    }
-
-    if (command === 'archive') {
-        const specId = args[1];
-        return await handleSpecArchive(specId);
     }
 
     if (command === 'changes') {

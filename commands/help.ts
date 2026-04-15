@@ -14,38 +14,6 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
         usage: 'af bun upgrade',
         examples: ['af bun upgrade  # Upgrade all outdated Bun packages'],
     },
-    spec: {
-        description: 'Manage OpenSpec changes',
-        usage: 'af spec <subcommand> [args]',
-        examples: [
-            'af spec propose "Add new feature"  # Create a new proposal',
-            'af spec apply my-change-id         # Apply a change',
-            'af spec apply                      # Interactively select a change',
-            'af spec archive my-change-id       # Archive a change',
-            'af spec archive                    # Interactively select a spec',
-        ],
-    },
-    propose: {
-        description: 'Create a new OpenSpec proposal (shorthand for "spec propose")',
-        usage: 'af propose <proposal-text>',
-        examples: ['af propose "Add dark mode support"'],
-    },
-    apply: {
-        description: 'Apply an approved OpenSpec change (shorthand for "spec apply")',
-        usage: 'af apply [change-id]',
-        examples: [
-            'af apply my-change-id  # Apply a specific change',
-            'af apply               # Interactively select a change',
-        ],
-    },
-    archive: {
-        description: 'Archive an OpenSpec change (shorthand for "spec archive")',
-        usage: 'af archive [spec-id]',
-        examples: [
-            'af archive my-change-id  # Archive a specific spec',
-            'af archive               # Interactively select a spec',
-        ],
-    },
     changes: {
         description: 'List all OpenSpec changes',
         usage: 'af changes',
@@ -173,12 +141,6 @@ function showGeneralHelp(): void {
     section('COMMANDS');
     listItem('npm upgrade            Upgrade all outdated npm packages');
     listItem('bun upgrade            Upgrade all outdated Bun packages');
-    listItem('spec propose <text>    Create a new OpenSpec proposal');
-    listItem('spec apply [id]        Apply an approved OpenSpec change');
-    listItem('spec archive [id]      Archive an OpenSpec change');
-    listItem('propose <text>         Shorthand for "spec propose"');
-    listItem('apply [id]             Shorthand for "spec apply"');
-    listItem('archive [id]           Shorthand for "spec archive"');
     listItem('changes                List all OpenSpec changes');
     listItem('e2e [args...]          Run E2E tests in Docker');
     listItem('stop-hook              Run e2e only if relevant files changed');

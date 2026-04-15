@@ -220,116 +220,39 @@ describe('Command Argument Parsing', () => {
     });
 });
 
-describe('Spec Archive Command', () => {
-    it('should show error for spec without subcommand', async () => {
+describe('Removed Spec Commands', () => {
+    it('should show error for spec command (removed)', async () => {
         const result = await runCommand('bun', ['main.ts', 'spec'], process.cwd());
         expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain('spec command requires a subcommand');
+        expect(result.stderr).toContain('Unknown command: spec');
     });
 
-    it('should show error for invalid spec subcommand', async () => {
-        const result = await runCommand('bun', ['main.ts', 'spec', 'invalid'], process.cwd());
+    it('should show error for spec propose (removed)', async () => {
+        const result = await runCommand(
+            'bun',
+            ['main.ts', 'spec', 'propose', 'test'],
+            process.cwd(),
+        );
         expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain('Unknown spec subcommand');
+        expect(result.stderr).toContain('Unknown command: spec');
     });
 
-    it.skip('should allow spec archive without spec-id for interactive selection', async () => {
-        // Skip this test because if Claude Code is installed, it will run interactively
-        // and hang the test. The behavior is: when no spec-id is provided, Claude prompts
-        // interactively for spec selection. This is tested manually.
-        expect(true).toBe(true);
-    });
-
-    it.skip('should attempt to run spec archive with valid spec-id', async () => {
-        // Skip this test because if Claude Code is installed, it will run interactively
-        // and hang the test. Manual testing confirms this works correctly:
-        // - When Claude is not installed: shows appropriate error message
-        // - When Claude is installed: successfully invokes the archive workflow
-        expect(true).toBe(true);
-    });
-});
-
-describe('Spec Propose Command', () => {
-    it('should show error when spec propose has no proposal text', async () => {
-        const result = await runCommand('bun', ['main.ts', 'spec', 'propose'], process.cwd());
+    it('should show error for propose shorthand (removed)', async () => {
+        const result = await runCommand('bun', ['main.ts', 'propose', 'test'], process.cwd());
         expect(result.exitCode).toBe(1);
-        expect(result.stderr).toContain('spec propose requires proposal text');
-        expect(result.stderr).toContain('Usage: af spec propose <proposal-text>');
+        expect(result.stderr).toContain('Unknown command: propose');
     });
 
-    it.skip('should handle multi-word proposal text', async () => {
-        // Skip this test because if Claude Code is installed, it will run interactively
-        // and hang the test. Manual testing confirms multi-word text is properly joined.
-        expect(true).toBe(true);
+    it('should show error for apply shorthand (removed)', async () => {
+        const result = await runCommand('bun', ['main.ts', 'apply'], process.cwd());
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Unknown command: apply');
     });
 
-    it.skip('should invoke Claude Code with correct flags for single-word proposal', async () => {
-        // Skip this test because if Claude Code is installed, it will run interactively
-        // and hang the test. Manual testing confirms this works correctly:
-        // - When Claude is not installed: shows appropriate error message
-        // - When Claude is installed: successfully invokes with "claude --permission-mode acceptEdits /openspec:proposal <text>"
-        expect(true).toBe(true);
-    });
-
-    it.skip('should invoke Claude Code with correct flags for multi-word proposal', async () => {
-        // Skip this test because if Claude Code is installed, it will run interactively
-        // and hang the test. Manual testing confirms this works correctly:
-        // - Command: zap spec propose Add authentication with OAuth2
-        // - Invokes: claude --permission-mode acceptEdits "/openspec:proposal Add authentication with OAuth2"
-        expect(true).toBe(true);
-    });
-});
-
-describe('Spec Apply Command', () => {
-    it.skip('should accept spec apply with change-id', async () => {
-        // Skip this test because if Claude Code is installed, it will run interactively
-        // and hang the test. Manual testing confirms this works correctly:
-        // - Command: ./zap spec apply test-change
-        // - Invokes: claude --permission-mode acceptEdits "/openspec:apply test-change"
-        expect(true).toBe(true);
-    });
-
-    it.skip('should accept spec apply without change-id for interactive selection', async () => {
-        // Skip this test because if Claude Code is installed, it will run interactively
-        // and hang the test. Manual testing confirms this works correctly:
-        // - Command: ./zap spec apply
-        // - Invokes: claude --permission-mode acceptEdits "/openspec:apply"
-        // - Claude Code prompts for change selection
-        expect(true).toBe(true);
-    });
-});
-
-describe('Command Shortcuts', () => {
-    it.skip('should allow archive shorthand without spec-id for interactive selection', async () => {
-        // Skip this test because if Claude Code is installed, it will run interactively
-        // and hang the test. The behavior is: when no spec-id is provided, Claude prompts
-        // interactively for spec selection. This is tested manually.
-        expect(true).toBe(true);
-    });
-
-    it.skip('should invoke Claude Code with archive shorthand when spec-id is provided', async () => {
-        // Skip this test because if Claude Code is installed, it will run interactively
-        // and hang the test. Manual testing confirms this works correctly:
-        // - Command: ./zap archive test-spec
-        // - Invokes: claude --permission-mode acceptEdits "/openspec:archive test-spec"
-        expect(true).toBe(true);
-    });
-
-    it.skip('should invoke Claude Code with apply shorthand when change-id is provided', async () => {
-        // Skip this test because if Claude Code is installed, it will run interactively
-        // and hang the test. Manual testing confirms this works correctly:
-        // - Command: ./zap apply test-change
-        // - Invokes: claude --permission-mode acceptEdits "/openspec:apply test-change"
-        expect(true).toBe(true);
-    });
-
-    it.skip('should invoke Claude Code with apply shorthand without change-id', async () => {
-        // Skip this test because if Claude Code is installed, it will run interactively
-        // and hang the test. Manual testing confirms this works correctly:
-        // - Command: ./zap apply
-        // - Invokes: claude --permission-mode acceptEdits "/openspec:apply"
-        // - Claude Code prompts for change selection
-        expect(true).toBe(true);
+    it('should show error for archive shorthand (removed)', async () => {
+        const result = await runCommand('bun', ['main.ts', 'archive'], process.cwd());
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Unknown command: archive');
     });
 });
 

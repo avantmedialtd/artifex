@@ -270,34 +270,6 @@ Status Tracking
 4. **Test in real terminals** - Interactive components should be tested in actual terminal emulators
 5. **Add detailed comments** - Explain Ink-specific patterns for future contributors
 
-### OpenSpec Commands with Auto-Commit
-
-The spec commands integrate with OpenSpec for managing specification changes. Two commands automatically commit their changes after successful completion:
-
-#### `af spec propose <text>`
-
-Creates a new OpenSpec proposal and automatically commits it with the message format:
-
-```
-Propose: <Title>
-```
-
-Where `<Title>` is extracted from the first line of the proposal.md file (stripping `#` and optional "Proposal: " prefix).
-
-#### `af spec archive <spec-id>`
-
-Archives a spec to the specs directory and automatically commits it with the message format:
-
-```
-Archive: <Title>
-```
-
-Where `<Title>` is extracted from the archived proposal.md file.
-
-#### `af spec apply [change-id]`
-
-Applies an approved OpenSpec change (does not auto-commit, as changes are applied during implementation).
-
 ### Stop Hook Command
 
 The `af stop-hook` command conditionally runs E2E tests based on whether relevant source files have changed. It's designed to be used as a Claude Code Stop hook to avoid running slow E2E tests when only non-code files (like OpenSpec proposals) were modified.
@@ -433,39 +405,6 @@ af confluence spaces                     # List all spaces
 ```
 
 The Confluence client uses the v2 API (`/wiki/api/v2/`) for most operations and falls back to v1 (`/wiki/rest/api/`) for search (CQL), label management, and attachment uploads. Page content is stored as ADF (Atlassian Document Format), with automatic markdown conversion.
-
-### Configurable Agent Command
-
-The spec commands use the `ARTIFEX_AGENT` environment variable to determine which AI agent command to invoke. This provides flexibility for:
-
-- Development and testing with alternative agent implementations
-- Custom CLI wrappers or agent tools
-- Non-standard installation paths
-
-**Implementation:**
-
-- `utils/claude.ts` exports `getAgentCommand()` which returns `process.env.ARTIFEX_AGENT || 'claude'`
-- All `spawn()` calls use `getAgentCommand()` instead of hardcoded `'claude'`
-- Availability checks use the configured agent command
-- Error messages reference "Claude Code CLI" for backward compatibility
-
-**Example usage:**
-
-```bash
-# Use default claude command
-af spec propose "add feature"
-
-# Use custom agent
-ARTIFEX_AGENT=my-agent af spec propose "add feature"
-```
-
-**Auto-Commit Behavior:**
-
-- Only commits files in the affected directory (changes or specs)
-- Shows warning messages if commit fails, but command still succeeds (exit code 0)
-- Uses the `stageAndCommit` utility from `utils/git.ts`
-- Title extraction uses `extractProposalTitle` from `utils/proposal.ts`
-- Provides consistent developer experience across spec workflow
 
 ### Adding New Commands
 

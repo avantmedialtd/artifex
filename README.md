@@ -127,91 +127,6 @@ Successfully upgraded: 2 package(s)
 All packages upgraded successfully!
 ```
 
-### Propose OpenSpec Changes
-
-Create a new OpenSpec change proposal using Claude Code:
-
-```bash
-af spec propose <proposal-text>
-```
-
-This command provides a convenient wrapper for initiating an OpenSpec proposal workflow. It automatically executes `claude --permission-mode acceptEdits "/openspec:proposal <proposal-text>"` for you.
-
-**Prerequisites:**
-
-- [Claude Code CLI](https://claude.com/claude-code) must be installed and available in your PATH
-- Your project must have OpenSpec configured
-
-**Examples:**
-
-```bash
-# Create a proposal with single-word text
-af spec propose "Add user authentication"
-
-# Create a proposal with multi-word text (quotes optional)
-af spec propose Add new API endpoints for user management
-```
-
-This will:
-
-1. Check if Claude Code CLI is available
-2. Invoke the OpenSpec proposal workflow
-3. Create a new change proposal with AI assistance
-4. Automatically commit the proposal files with message format: "Propose: <Title>"
-
-### Archive OpenSpec Changes
-
-Archive a deployed OpenSpec change using Claude Code:
-
-```bash
-af spec archive <spec-id>
-```
-
-This command provides a convenient wrapper for invoking Claude Code's OpenSpec archive workflow. It automatically executes `claude --permission-mode acceptEdits "/openspec:archive <spec-id>"` for you.
-
-**Prerequisites:**
-
-- [Claude Code CLI](https://claude.com/claude-code) must be installed and available in your PATH
-- The OpenSpec change must exist in your project's `openspec/changes` directory
-
-**Example:**
-
-```bash
-# Archive a completed OpenSpec change
-af spec archive add-user-authentication
-```
-
-This will:
-
-1. Check if Claude Code CLI is available
-2. Invoke the OpenSpec archive workflow
-3. Archive the change and update related specifications
-
-### Apply OpenSpec Changes
-
-Apply an approved OpenSpec change using Claude Code:
-
-```bash
-af spec apply [change-id]
-```
-
-This command provides a convenient wrapper for invoking Claude Code's OpenSpec apply workflow. It automatically executes `claude --permission-mode acceptEdits "/openspec:apply [change-id]"` for you.
-
-**Prerequisites:**
-
-- [Claude Code CLI](https://claude.com/claude-code) must be installed and available in your PATH
-- The OpenSpec change must exist in your project's `openspec/changes` directory
-
-**Example:**
-
-```bash
-# Apply a specific change
-af spec apply add-user-authentication
-
-# Let Claude prompt for which change to apply
-af spec apply
-```
-
 ### View TODO Items
 
 Display all TODO items from active OpenSpec changes:
@@ -308,42 +223,6 @@ Once installed, the "OpenSpec Tasks" panel appears automatically when you open a
 For detailed documentation, see [vscode-extension/README.md](vscode-extension/README.md).
 
 ## Configuration
-
-### ARTIFEX_AGENT Environment Variable
-
-By default, Artifex uses the `claude` command when invoking AI agents for OpenSpec operations. You can customize this behavior by setting the `ARTIFEX_AGENT` environment variable.
-
-**Use cases:**
-
-- Testing with alternative agent implementations
-- Using custom CLI wrappers
-- Running with agent commands installed at non-standard paths
-
-**Examples:**
-
-```bash
-# Use default claude command
-af spec propose "add feature X"
-
-# Use a custom agent command
-ARTIFEX_AGENT=my-agent af spec propose "add feature X"
-
-# Use an absolute path to the agent
-ARTIFEX_AGENT=/usr/local/bin/custom-claude af spec apply
-
-# Set for your entire session
-export ARTIFEX_AGENT=my-custom-agent
-af spec propose "add feature Y"
-```
-
-When `ARTIFEX_AGENT` is set, Artifex will use that command name for:
-
-- Checking agent availability
-- Executing `spec propose` commands
-- Executing `spec archive` commands
-- Executing `spec apply` commands
-
-**Note:** The custom agent command must support the same CLI interface as Claude Code (e.g., `--permission-mode acceptEdits` and slash command syntax).
 
 ### Version Worktree Management
 
