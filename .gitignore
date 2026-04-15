@@ -2,6 +2,7 @@
 /dist
 /generated
 
+.env
 .DS_Store
 # VSCode Extension build output
 /vscode-extension/out
