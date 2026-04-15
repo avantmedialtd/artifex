@@ -101,7 +101,10 @@ This command runs the FULL development cycle autonomously: pick up issue, plan, 
 
 12. **Commit with trailers:**
     ```bash
-    af commit save "<issue-summary>" Issue=<issue-key> OpenSpec-Id=<change-id>
+    git add -A
+    git commit -m "<issue-summary>" \
+      --trailer "Issue=<issue-key>" \
+      --trailer "OpenSpec-Id=<change-id>"
     ```
 
 13. **Transition Jira to Done:**
@@ -131,7 +134,7 @@ This command runs the FULL development cycle autonomously: pick up issue, plan, 
     - Run `af jenkins stages <job-path> latest` to identify the failing stage
     - Run `af jenkins stage-log <job-path> <failing-stage> latest` to read the error output
     - Fix the code based on the failure
-    - Commit using `af commit save`, push, and poll again
+    - Commit the fix using the same `git add -A && git commit -m "<issue-summary>" --trailer ...` pattern from Phase 6 step 12, push, and poll again
 
     **Escape valve**: If the build still fails after **3 CI attempts**, **STOP** and report the failing stage, error output, and what fixes were attempted.
 

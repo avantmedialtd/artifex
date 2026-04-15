@@ -32,11 +32,12 @@ Examples:
    - If it exists, invoke `/opsx:archive <id>`
    - If the directory does not exist (already archived), skip this step
 
-3. Run the following command to stage all changes and create a commit:
+3. Run the following commands to stage all changes and create a commit with the OpenSpec ID as a git trailer:
    ```bash
-   af commit save "<title>" OpenSpec-Id=<openspec-id>
+   git add -A
+   git commit -m "<title>" --trailer "OpenSpec-Id=<openspec-id>"
    ```
 
 **Reference**
 
-- Run `af help commit` for commit subcommand options
+- Run `git commit --help` for commit options (see especially `--trailer`)

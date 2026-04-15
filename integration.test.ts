@@ -89,6 +89,31 @@ describe('Integration Tests', () => {
         expect(result.stderr).toContain('Unknown command: licenses');
     });
 
+    it('should show error for removed commit command', async () => {
+        const result = await runCommand('bun', ['main.ts', 'commit'], process.cwd());
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Unknown command: commit');
+    });
+
+    it('should show error for removed commit save subcommand', async () => {
+        const result = await runCommand(
+            'bun',
+            ['main.ts', 'commit', 'save', 'test message'],
+            process.cwd(),
+        );
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('Unknown command: commit');
+    });
+
+    it('should not list commit in general help output', async () => {
+        const result = await runCommand('bun', ['main.ts', 'help'], process.cwd());
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).not.toMatch(/\baf commit\b/);
+    });
+
     it('should show error for npm without subcommand', async () => {
         const result = await runCommand('bun', ['main.ts', 'npm'], process.cwd());
 

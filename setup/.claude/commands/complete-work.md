@@ -22,9 +22,12 @@ tags: [jira, openspec, workflow]
    - If the directory does not exist (already archived), skip this step
 5. Commit with trailers:
    ```bash
-   af commit save "<summary>" [Issue=<issue-key>] OpenSpec-Id=<change-id>
+   git add -A
+   git commit -m "<summary>" \
+     [--trailer "Issue=<issue-key>"] \
+     --trailer "OpenSpec-Id=<change-id>"
    ```
-   Where `<summary>` is derived from the Jira issue (if available) or from the OpenSpec proposal title. Only include the `Issue=` trailer when an issue key is present.
+   Where `<summary>` is derived from the Jira issue (if available) or from the OpenSpec proposal title. Only include the `--trailer "Issue=<issue-key>"` flag when an issue key is present.
 6. **If an issue key was found:** Transition the issue to "Done" using `af jira transition <issue-key> --to "Done"`. If this fails, run `af jira transitions <issue-key>` to find the correct completion status name. **If no issue key:** Skip this step.
 7. Push to remote: `git push`
 
@@ -44,7 +47,7 @@ tags: [jira, openspec, workflow]
     - Run `af jenkins stages <job-path>/<branch>` to identify the failing stage
     - Run `af jenkins stage-log <job-path>/<branch> <failing-stage>` to read the error output
     - Fix the code based on the failure
-    - Commit using `af commit save`, push, and poll again
+    - Commit the fix using the same `git add -A && git commit -m "<summary>" --trailer ...` pattern from step 5, push, and poll again
 
     **Escape valve**: If the build still fails after **3 CI attempts**, **STOP** and report the failing stage, error output, and what fixes were attempted.
 

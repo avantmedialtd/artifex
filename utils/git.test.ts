@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { stageDirectory, createCommit, stageAndCommit, stageAllAndCommit } from './git.ts';
+import { stageDirectory, createCommit, stageAndCommit } from './git.ts';
 
 describe('git utilities', () => {
     // Store original cwd at describe level to ensure proper restoration
@@ -134,50 +134,6 @@ describe('git utilities', () => {
 
             // Now try to commit with no changes
             const result = stageAndCommit('empty-dir', 'Test commit');
-            expect(result.success).toBe(false);
-            expect(result.error).toBe('Failed to create commit');
-
-            process.chdir(originalCwd);
-        });
-    });
-
-    describe('stageAllAndCommit', () => {
-        it('should stage all files and create commit successfully', () => {
-            // Create files in multiple locations
-            mkdirSync(`${testRepo}/src`, { recursive: true });
-            writeFileSync(`${testRepo}/src/file1.ts`, 'const x = 1;');
-            writeFileSync(`${testRepo}/readme.md`, '# Test');
-
-            const originalCwd = process.cwd();
-            process.chdir(testRepo);
-
-            const result = stageAllAndCommit('Apply: Add Test Feature');
-            expect(result.success).toBe(true);
-            expect(result.error).toBeUndefined();
-
-            // Verify commit was created
-            const log = execSync('git log --oneline', { encoding: 'utf-8' });
-            expect(log).toContain('Apply: Add Test Feature');
-
-            // Verify all files were committed
-            const files = execSync('git ls-files', { encoding: 'utf-8' });
-            expect(files).toContain('src/file1.ts');
-            expect(files).toContain('readme.md');
-
-            process.chdir(originalCwd);
-        });
-
-        it('should return error when there are no changes to commit', () => {
-            const originalCwd = process.cwd();
-            process.chdir(testRepo);
-
-            // Create initial commit so repo is clean
-            writeFileSync('initial.txt', 'initial');
-            execSync('git add .', { stdio: 'pipe' });
-            execSync('git commit -m "Initial"', { stdio: 'pipe' });
-
-            // Now try to commit with no changes
-            const result = stageAllAndCommit('Test commit');
             expect(result.success).toBe(false);
             expect(result.error).toBe('Failed to create commit');
 

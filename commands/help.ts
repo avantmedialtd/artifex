@@ -46,17 +46,6 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af archive               # Interactively select a spec',
         ],
     },
-    commit: {
-        description: 'Commit changes with message and optional trailers',
-        usage: 'af commit <subcommand> [args]',
-        examples: [
-            'af commit save "Fix bug"                    # Commit with message',
-            'af commit save "Fix bug" Issue=PROJ-123     # Commit with Issue trailer',
-            'af commit save "Add feature" Issue=PROJ-456 Reviewed-by=alice',
-            'af commit my-change-id                      # Commit with "Apply: <title>"',
-            'af commit apply my-change-id                # Same as above',
-        ],
-    },
     changes: {
         description: 'List all OpenSpec changes',
         usage: 'af changes',
@@ -190,8 +179,6 @@ function showGeneralHelp(): void {
     listItem('propose <text>         Shorthand for "spec propose"');
     listItem('apply [id]             Shorthand for "spec apply"');
     listItem('archive [id]           Shorthand for "spec archive"');
-    listItem('commit save <msg>      Commit all changes with message and trailers');
-    listItem('commit [apply] [id]    Commit all changes with "Apply: <title>"');
     listItem('changes                List all OpenSpec changes');
     listItem('e2e [args...]          Run E2E tests in Docker');
     listItem('stop-hook              Run e2e only if relevant files changed');

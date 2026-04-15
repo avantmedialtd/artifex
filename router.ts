@@ -9,13 +9,7 @@ import { handleJira } from './commands/jira.ts';
 import { handleNpmUpgrade } from './commands/npm.ts';
 import { handleScaffold } from './commands/scaffold.ts';
 import { handleSetup } from './commands/setup.tsx';
-import {
-    handleCommitApply,
-    handleCommitSave,
-    handleSpecApply,
-    handleSpecArchive,
-    handleSpecPropose,
-} from './commands/spec.ts';
+import { handleSpecApply, handleSpecArchive, handleSpecPropose } from './commands/spec.ts';
 import { handleStopHook } from './commands/stop-hook.ts';
 import { handleTodo } from './commands/todo.ts';
 import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts';
@@ -96,24 +90,6 @@ export async function route(args: string[]): Promise<number> {
         } else {
             error(`Error: Unknown spec subcommand: ${subcommand}`);
             console.error("Run 'af help spec' for available subcommands.");
-            return 1;
-        }
-    }
-
-    // Route commit commands
-    if (command === 'commit') {
-        if (subcommand === 'save') {
-            // commit save "<message>" [Key=Value...]
-            const message = args[2];
-            const trailerArgs = args.slice(3);
-            return handleCommitSave(message, trailerArgs);
-        } else if (subcommand === 'apply' || !subcommand) {
-            // Both 'commit apply' and 'commit' (shorthand) do the same thing
-            const changeId = subcommand === 'apply' ? args[2] : args[1];
-            return await handleCommitApply(changeId);
-        } else {
-            error(`Error: Unknown commit subcommand: ${subcommand}`);
-            console.error("Run 'af help commit' for available subcommands.");
             return 1;
         }
     }

@@ -1,8 +1,5 @@
-# commit-work-command Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change update-commit-work-archive. Update Purpose after archive.
-## Requirements
 ### Requirement: Auto-Archive Before Commit
 
 The `/commit-work` command SHALL archive the OpenSpec change if it has not already been archived before creating the commit, following the full archive workflow. The commit step SHALL invoke `git commit --trailer` directly rather than a wrapper command.
@@ -36,4 +33,3 @@ The `/commit-work` command SHALL archive the OpenSpec change if it has not alrea
 - **THEN** the command SHALL stage all changes with `git add -A`
 - **AND** invoke `git commit -m "<title>" --trailer "OpenSpec-Id=<id>"` to create the commit
 - **AND** NOT invoke any `af commit` wrapper (which no longer exists)
-
