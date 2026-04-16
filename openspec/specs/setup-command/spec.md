@@ -69,8 +69,8 @@ The CLI SHALL preserve the directory structure when copying files.
 
 #### Scenario: Nested directory copying
 
-- **WHEN** setup contains `setup/.claude/skills/pm/SKILL.md`
-- **THEN** file is copied to `~/.claude/skills/pm/SKILL.md`
+- **WHEN** the setup bundle contains a file at a nested path such as `<subdirectory>/<file>.md`
+- **THEN** the file is copied to the matching nested path under `~/.claude/`
 - **AND** intermediate directories are created as needed
 
 ### Requirement: Results Summary
