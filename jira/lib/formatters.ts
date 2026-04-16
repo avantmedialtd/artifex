@@ -11,6 +11,8 @@ import type {
 import type { JiraAttachment } from './client.ts';
 import { adfToText } from './client.ts';
 import { link } from '../../utils/output.ts';
+import type { CustomFieldDef } from './fields/codec-types.ts';
+import { decode } from './fields/decoder.ts';
 
 // Jira URL helpers - supports ATLASSIAN_BASE_URL with JIRA_BASE_URL fallback
 function getBaseUrl(): string {
@@ -50,7 +52,11 @@ function formatDate(dateStr: string): string {
 }
 
 // Single issue to markdown
-export function formatIssue(issue: JiraIssue, remoteLinks?: JiraRemoteLink[]): string {
+export function formatIssue(
+    issue: JiraIssue,
+    remoteLinks?: JiraRemoteLink[],
+    customFields?: CustomFieldDef[],
+): string {
     const f = issue.fields;
     const lines: string[] = [];
 
@@ -153,6 +159,28 @@ export function formatIssue(issue: JiraIssue, remoteLinks?: JiraRemoteLink[]): s
         }
     }
 
+    // Custom Fields
+    if (customFields?.length) {
+        const rows: Array<[string, string]> = [];
+        for (const def of customFields) {
+            const value = (f as Record<string, unknown>)[def.id];
+            if (value === null || value === undefined) continue;
+            if (Array.isArray(value) && value.length === 0) continue;
+            const label = def.alias ?? def.name;
+            rows.push([label, decode(def, value)]);
+        }
+        if (rows.length > 0) {
+            lines.push('');
+            lines.push('## Custom Fields');
+            lines.push('');
+            lines.push(`| Field | Value |`);
+            lines.push(`|-------|-------|`);
+            for (const [label, value] of rows) {
+                lines.push(`| ${label} | ${value} |`);
+            }
+        }
+    }
+
     // Comments
     if (f.comment?.comments.length) {
         lines.push('');
@@ -169,7 +197,7 @@ export function formatIssue(issue: JiraIssue, remoteLinks?: JiraRemoteLink[]): s
 }
 
 // Issue list to markdown table
-export function formatIssueList(result: JiraSearchResult): string {
+export function formatIssueList(result: JiraSearchResult, extraFields?: CustomFieldDef[]): string {
     const lines: string[] = [];
 
     // Handle both old (total) and new (isLast) API response formats
@@ -181,8 +209,16 @@ export function formatIssueList(result: JiraSearchResult): string {
         return lines.join('\n');
     }
 
-    lines.push(`| Key | Type | Status | Summary | Assignee | Estimate |`);
-    lines.push(`|-----|------|--------|---------|----------|----------|`);
+    const extraHeaders = (extraFields ?? []).map(d => d.alias ?? d.name);
+    const baseHeader = `| Key | Type | Status | Summary | Assignee | Estimate |`;
+    const baseSep = `|-----|------|--------|---------|----------|----------|`;
+    if (extraHeaders.length > 0) {
+        lines.push(baseHeader + ' ' + extraHeaders.map(h => `${h} |`).join(' '));
+        lines.push(baseSep + ' ' + extraHeaders.map(() => '-----|').join(' '));
+    } else {
+        lines.push(baseHeader);
+        lines.push(baseSep);
+    }
 
     for (const issue of result.issues) {
         const f = issue.fields;
@@ -191,9 +227,20 @@ export function formatIssueList(result: JiraSearchResult): string {
         const summary = f.summary.length > 50 ? f.summary.slice(0, 47) + '...' : f.summary;
         const estimate =
             f.timetracking?.remainingEstimate ?? f.timetracking?.originalEstimate ?? '-';
-        lines.push(
-            `| ${issueLink(issue.key)} | ${f.issuetype.name} | ${f.status.name} | ${summary} | ${assignee} | ${estimate} |`,
-        );
+        const base = `| ${issueLink(issue.key)} | ${f.issuetype.name} | ${f.status.name} | ${summary} | ${assignee} | ${estimate} |`;
+        if (extraFields && extraFields.length > 0) {
+            const extras = extraFields
+                .map(def => {
+                    const v = (f as Record<string, unknown>)[def.id];
+                    if (v === null || v === undefined) return '-';
+                    return decode(def, v) || '-';
+                })
+                .map(s => ` ${s} |`)
+                .join('');
+            lines.push(base + extras);
+        } else {
+            lines.push(base);
+        }
     }
 
     // Show pagination info if there are more results
@@ -203,6 +250,48 @@ export function formatIssueList(result: JiraSearchResult): string {
     } else if (result.isLast === false) {
         lines.push('');
         lines.push(`*More results available*`);
+    }
+
+    return lines.join('\n');
+}
+
+// Custom fields table (for `af jira fields`)
+export function formatFields(
+    fields: CustomFieldDef[],
+    options: { verbose?: boolean; scoped?: boolean } = {},
+): string {
+    const lines: string[] = [];
+    const count = fields.length;
+    lines.push(`Found ${count} custom field(s)`);
+    lines.push('');
+
+    if (count === 0) return lines.join('\n');
+
+    const header = options.scoped
+        ? `| Alias | ID | Name | Type | Required | Allowed Values |`
+        : `| Alias | ID | Name | Type |`;
+    const sep = options.scoped
+        ? `|-------|----|------|------|----------|----------------|`
+        : `|-------|----|------|------|`;
+    lines.push(header);
+    lines.push(sep);
+
+    const sorted = [...fields].sort((a, b) => a.name.localeCompare(b.name));
+    for (const f of sorted) {
+        const alias = f.alias ?? '';
+        const row = options.scoped
+            ? `| ${alias} | ${f.id} | ${f.name} | ${f.schemaType} | ${f.required ? '✓' : ''} | ${f.allowedValues?.join(', ') ?? ''} |`
+            : `| ${alias} | ${f.id} | ${f.name} | ${f.schemaType} |`;
+        lines.push(row);
+    }
+
+    if (options.verbose) {
+        lines.push('');
+        lines.push('## Raw entries');
+        lines.push('');
+        lines.push('```json');
+        lines.push(JSON.stringify(sorted, null, 2));
+        lines.push('```');
     }
 
     return lines.join('\n');

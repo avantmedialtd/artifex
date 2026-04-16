@@ -20,6 +20,7 @@ import type {
     JiraUpdateVersionRequest,
     JiraRemoteLink,
 } from './types.ts';
+import type { JiraFieldCatalogEntry, JiraCreateMetaResponse } from './fields/codec-types.ts';
 
 // Re-export ADF converters for backward compatibility
 export { textToAdf, adfToText };
@@ -111,6 +112,7 @@ export async function createIssue(
     originalEstimate?: string,
     fixVersions?: string[],
     affectedVersions?: string[],
+    customFields?: Record<string, unknown>,
 ): Promise<JiraIssue> {
     const body: JiraCreateIssueRequest = {
         fields: {
@@ -141,6 +143,11 @@ export async function createIssue(
     if (affectedVersions?.length) {
         body.fields.versions = affectedVersions.map(name => ({ name }));
     }
+    if (customFields) {
+        for (const [key, value] of Object.entries(customFields)) {
+            body.fields[key] = value;
+        }
+    }
 
     return request<JiraIssue>('/issue', {
         method: 'POST',
@@ -159,6 +166,7 @@ export async function updateIssue(
         remainingEstimate?: string;
         fixVersions?: string[];
         affectedVersions?: string[];
+        customFields?: Record<string, unknown>;
     },
 ): Promise<void> {
     const body: JiraUpdateIssueRequest = { fields: {} };
@@ -189,6 +197,11 @@ export async function updateIssue(
     }
     if (updates.affectedVersions !== undefined) {
         body.fields.versions = updates.affectedVersions.map(name => ({ name }));
+    }
+    if (updates.customFields) {
+        for (const [key, value] of Object.entries(updates.customFields)) {
+            body.fields[key] = value;
+        }
     }
 
     await request(`/issue/${issueKey}`, {
@@ -389,6 +402,29 @@ export async function getProjects(): Promise<JiraProject[]> {
 export async function getIssueTypes(projectKey: string): Promise<JiraIssueType[]> {
     const project = await request<{ issueTypes: JiraIssueType[] }>(`/project/${projectKey}`);
     return project.issueTypes;
+}
+
+// Field catalog (instance-wide)
+export async function getFields(): Promise<JiraFieldCatalogEntry[]> {
+    return request<JiraFieldCatalogEntry[]>('/field');
+}
+
+// createmeta for a project + issue type (resolves type name → id first)
+export async function getCreateMeta(
+    projectKey: string,
+    issueTypeName: string,
+): Promise<JiraCreateMetaResponse> {
+    const types = await getIssueTypes(projectKey);
+    const match = types.find(t => t.name.toLowerCase() === issueTypeName.toLowerCase());
+    if (!match) {
+        const available = types.map(t => t.name).join(', ');
+        throw new Error(
+            `Issue type "${issueTypeName}" not found in project ${projectKey}. Available: ${available}`,
+        );
+    }
+    return request<JiraCreateMetaResponse>(
+        `/issue/createmeta/${projectKey}/issuetypes/${match.id}`,
+    );
 }
 
 // Versions

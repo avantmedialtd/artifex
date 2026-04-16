@@ -184,6 +184,9 @@ The CLI SHALL include jira commands in help output.
 - **AND** the `--type` option is documented for the link command
 - **AND** the `--from` option is documented for the unlink command
 - **AND** the `--url`, `--title`, and `--remove` options are documented for the remote-link command
+- **AND** the `fields` subcommand is documented with `--project`, `--type`, `--refresh`, `--verbose`, and `--json` options
+- **AND** the `--field` and `--field-json` options are documented for create and update commands, including that an empty value clears the field
+- **AND** the `--show-field` option is documented for list and search commands
 
 ### Requirement: Jira time tracking display
 

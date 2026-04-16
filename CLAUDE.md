@@ -385,6 +385,34 @@ The shared infrastructure lives in `atlassian/lib/`:
 - `adf.ts` - Markdown ↔ ADF converters used by both Jira and Confluence
 - `request.ts` - Authenticated HTTP request helper
 
+### Jira Custom Fields
+
+The `af jira` command supports custom fields end-to-end:
+
+- `af jira fields` — list instance-wide custom fields
+- `af jira fields --project PROJ --type Story` — show required + allowed values for create
+- `af jira create ... --field storyPoints=5 --field severity=High`
+- `af jira update PROJ-1 --field storyPoints=8` (empty value clears)
+- `af jira get PROJ-1` — renders a "Custom Fields" section when values are present
+- `af jira list PROJ --show-field storyPoints,severity` — extra columns on demand
+
+References resolve in order: alias configured in `af.json` → display name (case-insensitive, errors on ambiguity) → raw `customfield_<digits>` id.
+
+Optional aliases go in `af.json`:
+
+```json
+{
+    "jira": {
+        "customFields": {
+            "storyPoints": { "id": "customfield_10016" },
+            "sprint": { "id": "customfield_10020", "type": "sprint" }
+        }
+    }
+}
+```
+
+Field metadata is cached under `~/.cache/artifex/jira/<instance-slug>/`. Use `--refresh` on `af jira fields` to bust the cache.
+
 ### Confluence Command
 
 The `af confluence` command manages Confluence pages. It mirrors the `af jira` pattern with full CRUD operations:

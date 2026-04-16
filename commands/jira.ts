@@ -1,4 +1,21 @@
 import { error } from '../utils/output.ts';
+import type { CustomFieldDef } from '../jira/lib/fields/codec-types.ts';
+
+/**
+ * Resolve a comma-separated `--show-field` argument into CustomFieldDef entries.
+ * Returns undefined when the flag is absent. Resolution errors propagate.
+ */
+async function resolveShowFields(flag: string | undefined): Promise<CustomFieldDef[] | undefined> {
+    if (!flag) return undefined;
+    const names = flag
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+    if (names.length === 0) return undefined;
+    const { buildRegistry } = await import('../jira/lib/fields/registry.ts');
+    const registry = await buildRegistry();
+    return names.map(n => registry.resolve(n));
+}
 
 /**
  * Command options for Jira CLI
@@ -30,6 +47,11 @@ interface JiraOptions {
     url?: string;
     title?: string;
     remove?: string;
+    field?: string[];
+    'field-json'?: string;
+    'show-field'?: string;
+    refresh?: boolean;
+    verbose?: boolean;
 }
 
 /**
@@ -53,6 +75,16 @@ function parseArgs(argv: string[]): {
             options.released = true;
         } else if (arg === '--unreleased') {
             options.unreleased = true;
+        } else if (arg === '--refresh') {
+            options.refresh = true;
+        } else if (arg === '--verbose') {
+            options.verbose = true;
+        } else if (arg === '--field') {
+            const value = argv[++i];
+            if (value === undefined) {
+                throw new Error(`Option ${arg} requires a value`);
+            }
+            (options.field ??= []).push(value);
         } else if (arg.startsWith('--')) {
             const key = arg.slice(2) as keyof JiraOptions;
             const value = argv[++i];
@@ -98,6 +130,7 @@ COMMANDS:
   assign <issue-key>        Assign issue to a user
   projects                  List all projects
   types <project>           List issue types for a project
+  fields                    List custom fields (discovery for --field flags)
 
 LINK COMMANDS:
   link <issue-key>          Link two issues
@@ -115,6 +148,17 @@ OPTIONS:
   --json                    Output as JSON instead of markdown
   --limit <n>               Limit results (default: 50)
 
+LIST / SEARCH OPTIONS:
+  --show-field <a,b,c>      Include named custom fields as extra columns
+                            (names resolve like --field: alias / display name / id)
+
+FIELDS OPTIONS:
+  --project <key>           Restrict to fields available for a project
+  --type <name>             Restrict to fields available for a project+issue-type
+  --refresh                 Bust cache before fetching
+  --verbose                 Include raw schema entries in output
+  --json                    Output as JSON instead of markdown
+
 CREATE OPTIONS:
   --project <key>           Project key (required)
   --type <name>             Issue type (required)
@@ -126,6 +170,10 @@ CREATE OPTIONS:
   --estimate <time>         Original estimate (e.g., "2h", "1d", "30m")
   --fix-version <v1,v2>     Fix version(s), comma-separated
   --affected-version <v>    Affected version(s), comma-separated
+  --field <name>=<value>    Set a custom field (repeatable). Empty value clears.
+                            Name resolves to alias, display name, or customfield_<id>.
+  --field-json '<json>'     Merge a JSON object of custom fields into the request
+                            (escape hatch for complex field types)
 
 UPDATE OPTIONS:
   --summary "<text>"        New summary
@@ -136,6 +184,8 @@ UPDATE OPTIONS:
   --remaining <time>        Remaining estimate (e.g., "1h", "4h")
   --fix-version <v1,v2>     Fix version(s), comma-separated (empty to clear)
   --affected-version <v>    Affected version(s), comma-separated (empty to clear)
+  --field <name>=<value>    Set a custom field (repeatable). Empty value clears it.
+  --field-json '<json>'     Merge a JSON object of custom fields into the update
 
 VERSION-CREATE OPTIONS:
   --project <key>           Project key (required)
@@ -181,10 +231,16 @@ ASSIGN OPTIONS:
 EXAMPLES:
   af jira get PROJ-123
   af jira list PROJ --limit 20
+  af jira list PROJ --show-field storyPoints,severity
   af jira search "assignee = currentUser() AND status != Done"
+  af jira fields
+  af jira fields --project PROJ --type Story
   af jira create --project PROJ --type Bug --summary "Login broken"
+  af jira create --project PROJ --type Story --summary "X" --field storyPoints=5 --field severity=High
   af jira create --project PROJ --type Task --summary "Feature" --estimate "4h"
   af jira create --project PROJ --type Bug --summary "Bug" --fix-version "v1.0.0"
+  af jira update PROJ-123 --field storyPoints=8
+  af jira update PROJ-123 --field severity=
   af jira update PROJ-123 --summary "Updated title" --priority High
   af jira update PROJ-123 --estimate "8h" --remaining "2h"
   af jira update PROJ-123 --fix-version "v2.0.0" --affected-version "v1.0.0"
@@ -254,7 +310,28 @@ export async function handleJira(args: string[]): Promise<number> {
                 if (json) {
                     fmt.output({ ...issue, remoteLinks }, true);
                 } else {
-                    fmt.output(fmt.formatIssue(issue, remoteLinks), false);
+                    // Build registry so custom-field names/types are known for display.
+                    // Only the ids present on the issue need entries.
+                    const customFieldKeys = Object.keys(issue.fields).filter(k =>
+                        k.startsWith('customfield_'),
+                    );
+                    let customFieldDefs: CustomFieldDef[] = [];
+                    if (customFieldKeys.length > 0) {
+                        try {
+                            const { buildRegistry } =
+                                await import('../jira/lib/fields/registry.ts');
+                            const registry = await buildRegistry();
+                            customFieldDefs = customFieldKeys.map(id => registry.resolve(id));
+                        } catch {
+                            // If registry build fails (e.g., offline), render without custom names.
+                            customFieldDefs = customFieldKeys.map(id => ({
+                                id,
+                                name: id,
+                                schemaType: 'unknown' as const,
+                            }));
+                        }
+                    }
+                    fmt.output(fmt.formatIssue(issue, remoteLinks, customFieldDefs), false);
                 }
                 break;
             }
@@ -265,8 +342,9 @@ export async function handleJira(args: string[]): Promise<number> {
                     error('Error: Project key required. Usage: af jira list <project>');
                     return 1;
                 }
+                const extras = await resolveShowFields(options['show-field']);
                 const result = await client.listProjectIssues(projectKey, options.limit ?? 50);
-                fmt.output(json ? result : fmt.formatIssueList(result), json);
+                fmt.output(json ? result : fmt.formatIssueList(result, extras), json);
                 break;
             }
 
@@ -276,8 +354,9 @@ export async function handleJira(args: string[]): Promise<number> {
                     error('Error: JQL query required. Usage: af jira search "<jql>"');
                     return 1;
                 }
+                const extras = await resolveShowFields(options['show-field']);
                 const result = await client.searchIssues(jql, options.limit ?? 50);
-                fmt.output(json ? result : fmt.formatIssueList(result), json);
+                fmt.output(json ? result : fmt.formatIssueList(result, extras), json);
                 break;
             }
 
@@ -300,6 +379,11 @@ export async function handleJira(args: string[]): Promise<number> {
                     ?.split(',')
                     .map(v => v.trim())
                     .filter(v => v);
+                const { resolveFieldFlags } = await import('../jira/lib/fields/resolve-flags.ts');
+                const resolved = await resolveFieldFlags({
+                    fieldPairs: options.field,
+                    fieldJson: options['field-json'],
+                });
                 const issue = await client.createIssue(
                     project,
                     type,
@@ -311,6 +395,7 @@ export async function handleJira(args: string[]): Promise<number> {
                     estimate,
                     fixVersionList,
                     affectedVersionList,
+                    resolved?.customFields,
                 );
                 fmt.output(
                     json ? issue : fmt.formatSuccess(`Created issue ${fmt.issueLink(issue.key)}`),
@@ -345,10 +430,20 @@ export async function handleJira(args: string[]): Promise<number> {
                         : [];
                 }
 
+                const { resolveFieldFlags: resolveUpdateFlags } =
+                    await import('../jira/lib/fields/resolve-flags.ts');
+                const resolvedUpdate = await resolveUpdateFlags({
+                    fieldPairs: options.field,
+                    fieldJson: options['field-json'],
+                });
+                if (resolvedUpdate) {
+                    updates.customFields = resolvedUpdate.customFields;
+                }
+
                 if (Object.keys(updates).length === 0) {
                     error('Error: No update options provided');
                     console.error(
-                        'Use --summary, --description, --priority, --labels, --estimate, --remaining, --fix-version, or --affected-version',
+                        'Use --summary, --description, --priority, --labels, --estimate, --remaining, --fix-version, --affected-version, --field, or --field-json',
                     );
                     return 1;
                 }
@@ -693,6 +788,29 @@ export async function handleJira(args: string[]): Promise<number> {
                 } else {
                     const links = await client.getRemoteLinks(issueKey);
                     fmt.output(json ? links : fmt.formatRemoteLinks(issueKey, links), json);
+                }
+                break;
+            }
+
+            case 'fields': {
+                const { buildRegistry, fetchCreateMeta } =
+                    await import('../jira/lib/fields/registry.ts');
+                const registry = await buildRegistry({ refresh: options.refresh });
+                const scoped = Boolean(options.project && options.type);
+                if (scoped) {
+                    const meta = await fetchCreateMeta(options.project!, options.type!, {
+                        refresh: options.refresh,
+                    });
+                    registry.enrichWithCreateMeta(meta);
+                }
+                const entries = registry.all();
+                if (json) {
+                    fmt.output(entries, true);
+                } else {
+                    fmt.output(
+                        fmt.formatFields(entries, { scoped, verbose: options.verbose }),
+                        false,
+                    );
                 }
                 break;
             }

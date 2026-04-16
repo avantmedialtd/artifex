@@ -143,6 +143,8 @@ export interface JiraIssueFields {
     timetracking?: JiraTimeTracking;
     fixVersions?: JiraVersion[];
     versions?: JiraVersion[]; // affectedVersions in API response
+    // Custom fields arrive as customfield_<digits>; their value shape depends on schema type.
+    [key: string]: unknown;
 }
 
 export interface JiraIssue {
@@ -180,6 +182,8 @@ export interface JiraCreateIssueRequest {
         };
         fixVersions?: Array<{ name: string }>;
         versions?: Array<{ name: string }>; // affectedVersions
+        // Custom fields: customfield_<digits> → value whose shape depends on schema type.
+        [key: string]: unknown;
     };
 }
 
@@ -196,7 +200,9 @@ export interface JiraUpdateIssueRequest {
         };
         fixVersions: Array<{ name: string }>;
         versions: Array<{ name: string }>; // affectedVersions
-    }>;
+    }> & {
+        [key: string]: unknown;
+    };
 }
 
 export interface JiraCreateVersionRequest {
