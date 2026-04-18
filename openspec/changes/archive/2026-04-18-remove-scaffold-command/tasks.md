@@ -3,7 +3,7 @@
 - [x] 1.1 Delete `commands/scaffold.ts`
 - [x] 1.2 Delete `commands/scaffold.test.ts`
 
-## 2. Unwire from router and help
+## 2. Detach from router and help
 
 - [x] 2.1 Remove the `handleScaffold` import and route from `router.ts`
 - [x] 2.2 Remove the `scaffold` entry from the help registry in `commands/help.ts`
