@@ -93,11 +93,6 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af confluence spaces                           # List all spaces',
         ],
     },
-    scaffold: {
-        description: 'Generate project files from templates',
-        usage: 'af scaffold <subcommand>',
-        examples: ['af scaffold test-compose  # Generate docker-compose.test.yml for E2E testing'],
-    },
     setup: {
         description: 'Copy configuration files to Claude and OpenCode directories',
         usage: 'af setup [--list] [--force]',
@@ -146,7 +141,6 @@ function showGeneralHelp(): void {
     listItem('jenkins <subcommand>   Jenkins build visibility (jobs, builds, logs, etc.)');
     listItem('jira <subcommand>      Manage Jira issues (get, list, create, etc.)');
     listItem('confluence <sub>      Manage Confluence pages (get, list, create, etc.)');
-    listItem('scaffold <subcommand>  Generate project files from templates');
     listItem('setup                  Copy Claude + OpenCode config files');
     listItem('worktree new <name>    Create new worktree with env files');
     listItem('worktree reset [name]  Reset worktree to HEAD');

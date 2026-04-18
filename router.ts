@@ -6,7 +6,6 @@ import { handleHelp } from './commands/help.ts';
 import { handleJenkins } from './commands/jenkins.ts';
 import { handleJira } from './commands/jira.ts';
 import { handleNpmUpgrade } from './commands/npm.ts';
-import { handleScaffold } from './commands/scaffold.ts';
 import { handleSetup } from './commands/setup.tsx';
 import { handleStopHook } from './commands/stop-hook.ts';
 import { handleTodo } from './commands/todo.ts';
@@ -133,11 +132,6 @@ export async function route(args: string[]): Promise<number> {
     // Route help command
     if (command === 'help') {
         return await handleHelp(subcommand);
-    }
-
-    // Route scaffold command
-    if (command === 'scaffold') {
-        return handleScaffold(args.slice(1));
     }
 
     // Route setup command
