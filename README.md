@@ -33,7 +33,7 @@ After installation, the `af` command will be available globally.
 
 ### Install from Source
 
-This path is intended for contributors working on Artifex itself. Unlike the npm install, building from source requires [Bun](https://bun.sh) installed locally — it is used to run tests, format code, and compile standalone binaries.
+This path is intended for contributors working on Artifex itself. Unlike the npm install, building from source requires [Bun](https://bun.sh) installed locally — it is used to run tests and format code.
 
 ```bash
 git clone https://github.com/avantmedialtd/artifex.git

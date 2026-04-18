@@ -93,15 +93,6 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af confluence spaces                           # List all spaces',
         ],
     },
-    setup: {
-        description: 'Copy configuration files to Claude and OpenCode directories',
-        usage: 'af setup [--list] [--force]',
-        examples: [
-            'af setup              # Copy to ~/.claude/ and ~/.config/opencode/',
-            'af setup --list       # Preview files without copying',
-            'af setup --force      # Overwrite existing files',
-        ],
-    },
     worktree: {
         description: 'Manage git worktrees',
         usage: 'af worktree <subcommand> [args]',
@@ -141,7 +132,6 @@ function showGeneralHelp(): void {
     listItem('jenkins <subcommand>   Jenkins build visibility (jobs, builds, logs, etc.)');
     listItem('jira <subcommand>      Manage Jira issues (get, list, create, etc.)');
     listItem('confluence <sub>      Manage Confluence pages (get, list, create, etc.)');
-    listItem('setup                  Copy Claude + OpenCode config files');
     listItem('worktree new <name>    Create new worktree with env files');
     listItem('worktree reset [name]  Reset worktree to HEAD');
     listItem('help [command]         Show help for a command');

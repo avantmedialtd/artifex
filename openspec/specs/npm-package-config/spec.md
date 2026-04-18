@@ -3,9 +3,7 @@
 ## Purpose
 
 Defines the NPM package configuration for publishing Artifex to the public registry as `@avantmedia/af`.
-
 ## Requirements
-
 ### Requirement: Scoped package name
 
 The package MUST be published under the `@avantmedia/af` scoped name on the public NPM registry.
@@ -34,8 +32,8 @@ The `package.json` MUST include a `files` field that limits the published packag
 #### Scenario: Package is published
 
 - **WHEN** `npm pack` or `npm publish` is run
-- **THEN** only source directories (`commands/`, `components/`, `utils/`, `generated/`, `setup/`, `resources/`), entry points (`main.ts`, `router.ts`, `af`), and metadata (`LICENSE`, `README.md`) are included
-- **AND** tests, openspec, dist, vscode-extension, Jenkinsfile, and dev config are excluded
+- **THEN** only source directories (`commands/`, `components/`, `utils/`, `resources/`), entry points (`main.ts`, `router.ts`, `af`), and metadata (`LICENSE`, `README.md`) are included
+- **AND** tests, openspec, dist, vscode-extension, setup, generated, Jenkinsfile, and dev config are excluded
 
 ### Requirement: Keywords for discoverability
 
@@ -71,3 +69,4 @@ The `package.json` MUST specify a minimum Node.js version of 16 or higher in the
 - **WHEN** they run `npm install -g @avantmedia/af`
 - **THEN** npm does not emit engine compatibility warnings
 - **AND** the wrapper script executes successfully
+

@@ -6,7 +6,6 @@ import { handleHelp } from './commands/help.ts';
 import { handleJenkins } from './commands/jenkins.ts';
 import { handleJira } from './commands/jira.ts';
 import { handleNpmUpgrade } from './commands/npm.ts';
-import { handleSetup } from './commands/setup.tsx';
 import { handleStopHook } from './commands/stop-hook.ts';
 import { handleTodo } from './commands/todo.ts';
 import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts';
@@ -132,11 +131,6 @@ export async function route(args: string[]): Promise<number> {
     // Route help command
     if (command === 'help') {
         return await handleHelp(subcommand);
-    }
-
-    // Route setup command
-    if (command === 'setup') {
-        return await handleSetup(args.slice(1));
     }
 
     // Route worktree command

@@ -330,43 +330,6 @@ Add to your `.claude/settings.json`:
 }
 ```
 
-### Setup Command
-
-The `af setup` command copies bundled Claude configuration files (commands, skills, settings) to the user's home directory (`~/.claude/`).
-
-#### Usage
-
-```bash
-af setup              # Copy files to ~/.claude/
-af setup --list       # Preview files without copying
-af setup --force      # Overwrite existing files without prompting
-```
-
-#### Conflict Resolution
-
-When a target file already exists, the command prompts for resolution:
-
-- `y` - Overwrite this file
-- `n` - Skip this file
-- `a` - Overwrite all remaining files
-- `s` - Skip all remaining files
-
-Use `--force` to automatically overwrite all files without prompting.
-
-#### Build-Time File Discovery
-
-Setup files are discovered dynamically at build time. The `scripts/generate-setup-manifest.ts` script scans the `setup/` directory and generates `generated/setup-manifest.ts` with Bun's `{ type: "file" }` imports. This embeds all files into the compiled binary.
-
-To add new setup files:
-
-1. Add the file to `setup/.claude/` directory
-2. Run `bun run generate:manifest` (or it runs automatically during `bun run compile`)
-3. The file will be included in the next build
-
-#### Standalone Binary Compatibility
-
-The setup command works identically whether running from source (`./af setup`) or from the compiled binary. In compiled mode, files are read from the embedded bundle. In development mode, files are read from the `setup/` directory.
-
 ### Atlassian Configuration
 
 Both the Jira and Confluence commands share authentication via environment variables. The preferred variable names are `ATLASSIAN_*`, with `JIRA_*` supported as legacy fallback:
