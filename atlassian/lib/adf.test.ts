@@ -45,6 +45,77 @@ describe('adf utilities', () => {
             const result = textToAdf('');
             expect(result.content).toHaveLength(0);
         });
+
+        it('should convert a fenced code block with language', () => {
+            const result = textToAdf('```typescript\nconst x = 1;\n```');
+            expect(result.content).toHaveLength(1);
+            expect(result.content[0].type).toBe('codeBlock');
+            expect(result.content[0].attrs?.language).toBe('typescript');
+            expect(result.content[0].content?.[0].text).toBe('const x = 1;');
+        });
+
+        it('should convert a fenced code block without language', () => {
+            const result = textToAdf('```\nplain code\n```');
+            expect(result.content).toHaveLength(1);
+            expect(result.content[0].type).toBe('codeBlock');
+            expect(result.content[0].attrs?.language).toBeUndefined();
+            expect(result.content[0].content?.[0].text).toBe('plain code');
+        });
+
+        it('should preserve list/heading-like lines verbatim inside a fence', () => {
+            const input = '```\n- not a list\n# not a heading\n1. not ordered\n```';
+            const result = textToAdf(input);
+            expect(result.content).toHaveLength(1);
+            expect(result.content[0].type).toBe('codeBlock');
+            expect(result.content[0].content?.[0].text).toBe(
+                '- not a list\n# not a heading\n1. not ordered',
+            );
+        });
+
+        it('should consume to end of input on an unterminated fence', () => {
+            const result = textToAdf('```\nline one\nline two');
+            expect(result.content).toHaveLength(1);
+            expect(result.content[0].type).toBe('codeBlock');
+            expect(result.content[0].content?.[0].text).toBe('line one\nline two');
+        });
+
+        it('should produce empty content for an empty fence body', () => {
+            const result = textToAdf('```\n```');
+            expect(result.content).toHaveLength(1);
+            expect(result.content[0].type).toBe('codeBlock');
+            expect(result.content[0].content).toEqual([]);
+        });
+
+        it('should convert a single-line blockquote', () => {
+            const result = textToAdf('> quoted text');
+            expect(result.content).toHaveLength(1);
+            expect(result.content[0].type).toBe('blockquote');
+            expect(result.content[0].content?.[0].type).toBe('paragraph');
+            expect(result.content[0].content?.[0].content?.[0].text).toBe('quoted text');
+        });
+
+        it('should collapse consecutive > lines into one blockquote with hardBreaks', () => {
+            const result = textToAdf('> line 1\n> line 2');
+            expect(result.content).toHaveLength(1);
+            expect(result.content[0].type).toBe('blockquote');
+            const paragraph = result.content[0].content?.[0];
+            expect(paragraph?.type).toBe('paragraph');
+            expect(paragraph?.content?.[0].text).toBe('line 1');
+            expect(paragraph?.content?.[1].type).toBe('hardBreak');
+            expect(paragraph?.content?.[2].text).toBe('line 2');
+        });
+
+        it('should convert a horizontal rule', () => {
+            const result = textToAdf('---');
+            expect(result.content).toHaveLength(1);
+            expect(result.content[0].type).toBe('rule');
+        });
+
+        it('should also convert *** as a horizontal rule', () => {
+            const result = textToAdf('***');
+            expect(result.content).toHaveLength(1);
+            expect(result.content[0].type).toBe('rule');
+        });
     });
 
     describe('parseInlineMarkdown', () => {
@@ -118,6 +189,14 @@ describe('adf utilities', () => {
 
         it('should round-trip bold text', () => {
             const original = 'This is **bold** text';
+            const adf = textToAdf(original);
+            const text = adfToText(adf);
+            expect(text).toBe(original);
+        });
+
+        it('should round-trip a fence + blockquote + rule document', () => {
+            const original =
+                '```typescript\nconst x = 1;\n```\n\n> a quote\n\n---\n\nFollow up paragraph';
             const adf = textToAdf(original);
             const text = adfToText(adf);
             expect(text).toBe(original);

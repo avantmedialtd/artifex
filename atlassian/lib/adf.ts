@@ -18,6 +18,58 @@ export function textToAdf(text: string): AdfDocument {
             continue;
         }
 
+        // Fenced code block (```lang ... ```). Must run before list/heading
+        // checks so that body lines starting with `-`, `*`, `#`, or `1.` are
+        // preserved verbatim instead of being interpreted as other blocks.
+        const fenceOpen = line.match(/^```(\w*)\s*$/);
+        if (fenceOpen) {
+            const language = fenceOpen[1];
+            const bodyLines: string[] = [];
+            i++;
+            while (i < lines.length && !/^```\s*$/.test(lines[i])) {
+                bodyLines.push(lines[i]);
+                i++;
+            }
+            // Consume the closing fence if present; otherwise we're at EOF.
+            if (i < lines.length) i++;
+            const body = bodyLines.join('\n');
+            content.push({
+                type: 'codeBlock',
+                attrs: language ? { language } : {},
+                content: body.length > 0 ? [{ type: 'text', text: body }] : [],
+            });
+            continue;
+        }
+
+        // Blockquote (> text). Consecutive `> ` lines collapse into a single
+        // blockquote containing one paragraph; line breaks become hardBreaks.
+        if (/^>\s?/.test(line)) {
+            const quoteLines: string[] = [];
+            while (i < lines.length && /^>\s?/.test(lines[i])) {
+                quoteLines.push(lines[i].replace(/^>\s?/, ''));
+                i++;
+            }
+            const paragraphContent: AdfNode[] = [];
+            quoteLines.forEach((qLine, idx) => {
+                paragraphContent.push(...parseInlineMarkdown(qLine));
+                if (idx < quoteLines.length - 1) {
+                    paragraphContent.push({ type: 'hardBreak' });
+                }
+            });
+            content.push({
+                type: 'blockquote',
+                content: [{ type: 'paragraph', content: paragraphContent }],
+            });
+            continue;
+        }
+
+        // Horizontal rule (--- or ***)
+        if (/^(-{3,}|\*{3,})\s*$/.test(line)) {
+            content.push({ type: 'rule' });
+            i++;
+            continue;
+        }
+
         // Headings (## Heading)
         const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
         if (headingMatch) {
