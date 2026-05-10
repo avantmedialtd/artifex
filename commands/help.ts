@@ -1,4 +1,5 @@
 import { header, section, listItem, error } from '../utils/output.ts';
+import { getVersion } from '../utils/version.ts';
 
 /**
  * Help content for all commands
@@ -114,7 +115,8 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
  * Display general help showing all available commands.
  */
 function showGeneralHelp(): void {
-    header('af - Development utility CLI');
+    console.log(`af v${getVersion()}`);
+    header('Development utility CLI');
 
     section('USAGE');
     console.log('  af <command> [options]');

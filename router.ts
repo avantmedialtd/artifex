@@ -12,6 +12,7 @@ import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts'
 import { handleWatch } from './commands/watch.ts';
 import { handleWorktree } from './commands/worktree.ts';
 import { error } from './utils/output.ts';
+import { getVersion } from './utils/version.ts';
 
 /**
  * Route command-line arguments to the appropriate command handler.
@@ -27,6 +28,12 @@ export async function route(args: string[]): Promise<number> {
     }
 
     const [command, subcommand] = args;
+
+    // Handle --version and -v flags
+    if (command === '--version' || command === '-v') {
+        console.log(getVersion());
+        return 0;
+    }
 
     // Handle --help and -h flags
     if (command === '--help' || command === '-h') {

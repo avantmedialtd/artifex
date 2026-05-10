@@ -123,9 +123,13 @@ describe('Integration Tests', () => {
 
     it('should show help page with no arguments', async () => {
         const result = await runCommand('bun', ['main.ts'], process.cwd());
+        const pkg = JSON.parse(
+            await fs.readFile(path.join(process.cwd(), 'package.json'), 'utf-8'),
+        );
 
         expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain('af - Development utility CLI');
+        expect(result.stdout).toContain(`af v${pkg.version}`);
+        expect(result.stdout).toContain('Development utility CLI');
         expect(result.stdout).toContain('USAGE');
         expect(result.stdout).toContain('COMMANDS');
     });
@@ -180,7 +184,12 @@ describe('Integration Tests', () => {
 describe('Command Argument Parsing', () => {
     it('should show help with no arguments', async () => {
         const result = await runCommand('bun', ['main.ts'], process.cwd());
-        expect(result.stdout).toContain('af - Development utility CLI');
+        const pkg = JSON.parse(
+            await fs.readFile(path.join(process.cwd(), 'package.json'), 'utf-8'),
+        );
+
+        expect(result.stdout).toContain(`af v${pkg.version}`);
+        expect(result.stdout).toContain('Development utility CLI');
         expect(result.stdout).toContain('USAGE');
         expect(result.exitCode).toBe(0);
     });
@@ -217,6 +226,49 @@ describe('Command Argument Parsing', () => {
         const result = await runCommand('bun', ['main.ts', 'bun', 'invalid'], process.cwd());
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toContain('Unknown bun subcommand');
+    });
+});
+
+describe('Version in Help Banner', () => {
+    it('should display the version on the first non-empty line of the help banner', async () => {
+        const result = await runCommand('bun', ['main.ts', 'help'], process.cwd());
+        const pkg = JSON.parse(
+            await fs.readFile(path.join(process.cwd(), 'package.json'), 'utf-8'),
+        );
+
+        expect(result.exitCode).toBe(0);
+        const firstNonEmpty = result.stdout.split('\n').find(line => line.trim().length > 0);
+        expect(firstNonEmpty?.trim()).toBe(`af v${pkg.version}`);
+    });
+});
+
+describe('Version Flag', () => {
+    it('should print the version with --version', async () => {
+        const result = await runCommand('bun', ['main.ts', '--version'], process.cwd());
+        const pkg = JSON.parse(
+            await fs.readFile(path.join(process.cwd(), 'package.json'), 'utf-8'),
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe(pkg.version);
+        expect(result.stderr).toBe('');
+    });
+
+    it('should print the version with -v', async () => {
+        const result = await runCommand('bun', ['main.ts', '-v'], process.cwd());
+        const pkg = JSON.parse(
+            await fs.readFile(path.join(process.cwd(), 'package.json'), 'utf-8'),
+        );
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout.trim()).toBe(pkg.version);
+        expect(result.stderr).toBe('');
+    });
+
+    it('should not emit an unknown command error for --version', async () => {
+        const result = await runCommand('bun', ['main.ts', '--version'], process.cwd());
+
+        expect(result.stderr).not.toContain('Unknown command');
     });
 });
 
