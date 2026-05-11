@@ -507,6 +507,12 @@ if (command === 'your-command') {
 }
 ```
 
+### Publishing: `package.json` `files` allowlist
+
+The published npm tarball is an allowlist, not a denylist. Every top-level directory that ships at runtime must be listed in `package.json`'s `files` array — otherwise the code works locally but fails in the published package with `Cannot find module …`.
+
+When adding a new top-level directory (e.g. a new integration like `bitbucket/`), add a matching `<dir>/**/*.ts` entry to `files` in the same change. Verify with `npm pack --dry-run` if unsure.
+
 **Guardrails**
 
 OpenSpec proposals should always have a good title.

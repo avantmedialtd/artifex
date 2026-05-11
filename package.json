@@ -1,6 +1,6 @@
 {
     "name": "@avantmedia/af",
-    "version": "0.0.15",
+    "version": "0.0.16",
     "description": "Development utility.",
     "homepage": "https://github.com/avantmedialtd/artifex#readme",
     "bugs": {
@@ -41,6 +41,7 @@
         "atlassian/**/*.ts",
         "jira/**/*.ts",
         "confluence/**/*.ts",
+        "bitbucket/**/*.ts",
         "!**/*.test.ts"
     ],
     "main": "main.ts",
