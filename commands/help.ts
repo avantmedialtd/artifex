@@ -94,6 +94,28 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af confluence spaces                           # List all spaces',
         ],
     },
+    bitbucket: {
+        description:
+            'Manage Bitbucket Cloud pull requests, comments, tasks, and pipelines (alias: af bb)',
+        usage: 'af bitbucket <subcommand> [args] [options]',
+        examples: [
+            'af bb pr list --state OPEN',
+            'af bb pr get 42',
+            'af bb pr create --title "Fix bug" --reviewers abc123,def456',
+            'af bb pr comment add 42 --body "LGTM" --reply-to 100',
+            'af bb pr task add 42 --body "Rename" --on-comment 100',
+            'af bb pr task update 42 7 --resolved',
+            'af bb pipeline list --branch main',
+            'af bb pipeline trigger --branch main --custom nightly --var FOO=bar',
+            'af bb pipeline logs {uuid} {step-uuid} --follow',
+            'af bb members --query alice               # Look up account IDs',
+        ],
+    },
+    bb: {
+        description: 'Alias for `af bitbucket`',
+        usage: 'af bb <subcommand> [args] [options]',
+        examples: ['af bb --help                                  # See bitbucket help'],
+    },
     worktree: {
         description: 'Manage git worktrees',
         usage: 'af worktree <subcommand> [args]',
@@ -134,6 +156,7 @@ function showGeneralHelp(): void {
     listItem('jenkins <subcommand>   Jenkins build visibility (jobs, builds, logs, etc.)');
     listItem('jira <subcommand>      Manage Jira issues (get, list, create, etc.)');
     listItem('confluence <sub>      Manage Confluence pages (get, list, create, etc.)');
+    listItem('bitbucket <sub>       Manage Bitbucket PRs, comments, tasks, pipelines (alias: bb)');
     listItem('worktree new <name>    Create new worktree with env files');
     listItem('worktree reset [name]  Reset worktree to HEAD');
     listItem('help [command]         Show help for a command');

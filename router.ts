@@ -1,3 +1,4 @@
+import { handleBitbucket } from './commands/bitbucket.ts';
 import { handleBunUpgrade } from './commands/bun.ts';
 import { handleChanges } from './commands/changes.ts';
 import { handleConfluence } from './commands/confluence.ts';
@@ -116,6 +117,11 @@ export async function route(args: string[]): Promise<number> {
     // Route confluence commands
     if (command === 'confluence') {
         return await handleConfluence(args.slice(1));
+    }
+
+    // Route bitbucket commands (with `bb` alias)
+    if (command === 'bitbucket' || command === 'bb') {
+        return await handleBitbucket(args.slice(1));
     }
 
     // Route versions commands

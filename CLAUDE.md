@@ -332,7 +332,7 @@ Add to your `.claude/settings.json`:
 
 ### Atlassian Configuration
 
-Both the Jira and Confluence commands share authentication via environment variables. The preferred variable names are `ATLASSIAN_*`, with `JIRA_*` supported as legacy fallback:
+The Jira, Confluence, and Bitbucket commands share authentication via environment variables. The preferred variable names are `ATLASSIAN_*`, with `JIRA_*` supported as legacy fallback:
 
 ```
 ATLASSIAN_BASE_URL=https://your-domain.atlassian.net
@@ -346,7 +346,10 @@ The shared infrastructure lives in `atlassian/lib/`:
 
 - `config.ts` - Reads env vars with fallback logic
 - `adf.ts` - Markdown ↔ ADF converters used by both Jira and Confluence
-- `request.ts` - Authenticated HTTP request helper
+- `request.ts` - Authenticated HTTP request helpers:
+    - `request<T>(url)` for JSON endpoints
+    - `requestText(url)` for plain-text endpoints (Bitbucket pipeline logs, PR diffs)
+    - `paginate<T>(url)` async-iterable for cursor-paginated endpoints (Bitbucket Cloud)
 
 ### Jira Custom Fields
 
@@ -375,6 +378,78 @@ Optional aliases go in `af.json`:
 ```
 
 Field metadata is cached under `~/.cache/artifex/jira/<instance-slug>/`. Use `--refresh` on `af jira fields` to bust the cache.
+
+### Bitbucket Command
+
+The `af bitbucket` command (alias `af bb`) manages Bitbucket Cloud pull requests, comments, tasks, and pipelines.
+
+**Authentication is separate from Jira/Confluence.** Atlassian API tokens scoped for Jira do not authenticate against Bitbucket Cloud (verified — they return 401). Bitbucket Cloud requires its own credentials:
+
+```
+BITBUCKET_USERNAME=<bitbucket username or workspace token label>
+                   # falls back to ATLASSIAN_EMAIL / JIRA_EMAIL
+BITBUCKET_API_TOKEN=<workspace API token or app password>
+                   # BITBUCKET_APP_PASSWORD also accepted as a legacy alias
+```
+
+Generate a workspace API token at `https://bitbucket.org/<workspace>/workspace/settings/api-tokens` (recommended for automation) or an app password at `https://bitbucket.org/account/settings/app-passwords/`.
+
+```bash
+# Pull requests
+af bb pr list [--state OPEN|MERGED|DECLINED|ALL] [--mine | --author Q]
+af bb pr get <id>                           af bb pr diff <id>
+af bb pr create --title T [--from B] [--to B] [--description / --description-file F]
+                [--reviewers a,b] [--draft]
+af bb pr update <id> [--title T] [--description / --description-file F] [--reviewers a,b]
+af bb pr approve <id>                       af bb pr unapprove <id>
+af bb pr request-changes <id>
+af bb pr merge <id> [--strategy merge_commit|squash|fast_forward] [--close-source]
+af bb pr decline <id>
+
+# PR comments — body shape determined by flags on `add`
+af bb pr comment list <pr-id>               af bb pr comment get <pr-id> <cid>
+af bb pr comment add <pr-id> --body / --body-file
+                              [--file PATH --line N]   # inline anchor
+                              [--reply-to CID]         # reply
+af bb pr comment update <pr-id> <cid> --body / --body-file
+af bb pr comment delete <pr-id> <cid>
+
+# PR tasks — standalone or anchored to a comment
+af bb pr task list <pr-id>
+af bb pr task add <pr-id> --body / --body-file [--on-comment CID]
+af bb pr task update <pr-id> <tid> [--body / --body-file] [--resolved | --unresolved]
+af bb pr task delete <pr-id> <tid>
+
+# Pipelines
+af bb pipeline list [--branch B] [--status PENDING|IN_PROGRESS|SUCCESSFUL|FAILED|...]
+af bb pipeline get <uuid|build-number>
+af bb pipeline trigger [--branch B] [--commit SHA] [--custom NAME] [--var k=v]
+af bb pipeline stop <uuid>
+af bb pipeline steps <uuid>
+af bb pipeline logs <pipeline-uuid> <step-uuid> [--follow]
+
+# Account-id lookup helper
+af bb members [--query Q]
+```
+
+Reviewers must be passed as Bitbucket Cloud account IDs (not usernames). Use `af bb members --query <name>` to look them up.
+
+The target workspace and repo are resolved in this order:
+
+1. `--workspace W --repo R` flags (highest priority)
+2. `af.json`:
+    ```json
+    {
+        "bitbucket": {
+            "workspace": "myws",
+            "repo": "myrepo"
+        }
+    }
+    ```
+3. The git origin remote, if it points at `bitbucket.org`
+4. Error with help text
+
+Every subcommand supports `--json` to emit raw API responses.
 
 ### Confluence Command
 

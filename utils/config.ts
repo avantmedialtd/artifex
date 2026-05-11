@@ -19,12 +19,18 @@ export interface JiraConfig {
     customFields?: Record<string, JiraCustomFieldAlias>;
 }
 
+export interface BitbucketConfig {
+    workspace?: string;
+    repo?: string;
+}
+
 /**
  * Full af.json configuration structure.
  */
 export interface AfConfig {
     stopHook?: Partial<StopHookConfig>;
     jira?: JiraConfig;
+    bitbucket?: BitbucketConfig;
 }
 
 const CUSTOMFIELD_ID_PATTERN = /^customfield_\d+$/;
