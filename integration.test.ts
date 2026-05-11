@@ -371,3 +371,30 @@ describe('Versions Command', () => {
         await fs.rm(testDir, { recursive: true, force: true });
     });
 });
+
+describe('Sonar Command', () => {
+    it('should show sonar help with no subcommand', async () => {
+        const result = await runCommand('bun', ['main.ts', 'sonar'], process.cwd());
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('SonarQube CLI');
+        expect(result.stdout).toContain('pr [pr-id]');
+        expect(result.stdout).toContain('gate');
+        expect(result.stdout).toContain('prs');
+    });
+
+    it('should list sonar in general help output', async () => {
+        const result = await runCommand('bun', ['main.ts', 'help'], process.cwd());
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('sonar');
+    });
+
+    it('should show sonar command-specific help via `af help sonar`', async () => {
+        const result = await runCommand('bun', ['main.ts', 'help', 'sonar'], process.cwd());
+
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toContain('af sonar');
+        expect(result.stdout).toContain('SonarQube');
+    });
+});

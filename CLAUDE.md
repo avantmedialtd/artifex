@@ -451,6 +451,47 @@ The target workspace and repo are resolved in this order:
 
 Every subcommand supports `--json` to emit raw API responses.
 
+### SonarQube Command
+
+The `af sonar` command provides read-only inspection of a self-hosted SonarQube instance, focused on PR quality-gate visibility. It is intentionally companion-shaped to `af bb pr`: the same numeric PR id identifies both sides.
+
+**Authentication** uses a Sonar-specific bearer token. Atlassian / Bitbucket credentials are not interchangeable.
+
+```
+SONAR_TOKEN=<user token>           # required
+SONAR_BASE_URL=https://...          # optional, falls back to sonar.host.url
+                                    # in sonar-project.properties
+```
+
+**Project key resolution** walks the same path `sonar-scanner` does:
+
+1. `--project <key>` flag (highest priority)
+2. `sonar.projectKey` in `sonar-project.properties` (walking up from cwd)
+
+There is intentionally no `af.json` config block for Sonar — the properties file is the canonical source of truth.
+
+```bash
+# Primary use case: combined gate + top issues + measures for a Bitbucket PR
+af sonar pr 42                 # explicit PR id
+af sonar pr                    # auto-detect from current branch's open BB PR
+af sonar pr 42 --issues        # full new-issues list (not just top 4)
+
+# Main-branch gate
+af sonar gate
+
+# All PRs known to SonarQube
+af sonar prs
+
+# Raw JSON for scripting
+af sonar pr 42 --json
+```
+
+**Exit codes**: `af sonar pr` and `af sonar gate` exit non-zero when the SonarQube quality gate status is `ERROR`, making them suitable for use in scripts and CI.
+
+**PR auto-detection** (`af sonar pr` without an id) uses the existing `bitbucket/lib/` client to find the current git branch's open PR. It returns distinct errors for zero PRs, multiple PRs, missing Bitbucket credentials, and detached HEAD — each suggesting `af sonar pr <id>` as the escape hatch.
+
+**Out of scope for this command** (deferred to follow-ups): SonarCloud support, mutating operations (issue assign/transition), hotspots, scanner wrapping, and inline Sonar gate status in `af bb pr` output.
+
 ### Confluence Command
 
 The `af confluence` command manages Confluence pages. It mirrors the `af jira` pattern with full CRUD operations:

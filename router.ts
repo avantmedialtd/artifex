@@ -7,6 +7,7 @@ import { handleHelp } from './commands/help.ts';
 import { handleJenkins } from './commands/jenkins.ts';
 import { handleJira } from './commands/jira.ts';
 import { handleNpmUpgrade } from './commands/npm.ts';
+import { handleSonar } from './commands/sonar.ts';
 import { handleStopHook } from './commands/stop-hook.ts';
 import { handleTodo } from './commands/todo.ts';
 import { handleVersionsPush, handleVersionsReset } from './commands/versions.ts';
@@ -122,6 +123,11 @@ export async function route(args: string[]): Promise<number> {
     // Route bitbucket commands (with `bb` alias)
     if (command === 'bitbucket' || command === 'bb') {
         return await handleBitbucket(args.slice(1));
+    }
+
+    // Route sonar commands
+    if (command === 'sonar') {
+        return await handleSonar(args.slice(1));
     }
 
     // Route versions commands

@@ -42,6 +42,7 @@
         "jira/**/*.ts",
         "confluence/**/*.ts",
         "bitbucket/**/*.ts",
+        "sonar/**/*.ts",
         "!**/*.test.ts"
     ],
     "main": "main.ts",

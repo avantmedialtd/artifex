@@ -86,6 +86,19 @@
         "vscodeignore",
         "worktree",
         "worktrees",
-        "zaprc"
+        "zaprc",
+        "footguns",
+        "hotspots",
+        "Hotspots",
+        "myorg",
+        "myproject",
+        "qualitygates",
+        "Qube",
+        "sonarqube",
+        "Sonarqube",
+        "SONARQUBE",
+        "sqale",
+        "vulnerabilit",
+        "vulns"
     ]
 }

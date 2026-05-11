@@ -116,6 +116,19 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
         usage: 'af bb <subcommand> [args] [options]',
         examples: ['af bb --help                                  # See bitbucket help'],
     },
+    sonar: {
+        description:
+            'Read-only SonarQube inspection for pull request quality gates, issues, and measures',
+        usage: 'af sonar <subcommand> [args] [options]',
+        examples: [
+            'af sonar pr 42                  # Gate + top issues + measures for PR 42',
+            'af sonar pr                     # Auto-detect PR from current branch',
+            'af sonar pr 42 --issues         # Full new-issues list for PR 42',
+            'af sonar gate                   # Main branch quality gate',
+            'af sonar prs                    # PRs SonarQube has analyzed',
+            'af sonar pr 42 --json           # Raw JSON for scripting',
+        ],
+    },
     worktree: {
         description: 'Manage git worktrees',
         usage: 'af worktree <subcommand> [args]',
@@ -157,6 +170,7 @@ function showGeneralHelp(): void {
     listItem('jira <subcommand>      Manage Jira issues (get, list, create, etc.)');
     listItem('confluence <sub>      Manage Confluence pages (get, list, create, etc.)');
     listItem('bitbucket <sub>       Manage Bitbucket PRs, comments, tasks, pipelines (alias: bb)');
+    listItem('sonar <subcommand>     SonarQube quality gate visibility for PRs');
     listItem('worktree new <name>    Create new worktree with env files');
     listItem('worktree reset [name]  Reset worktree to HEAD');
     listItem('help [command]         Show help for a command');
