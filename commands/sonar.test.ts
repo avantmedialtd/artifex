@@ -6,6 +6,7 @@ import type {
     SonarQualityGateResponse,
 } from '../sonar/lib/types.ts';
 import type { SonarConfig } from '../sonar/lib/config.ts';
+import { SonarConfigError } from '../sonar/lib/config.ts';
 
 const stubConfig: SonarConfig = {
     baseUrl: 'https://sonar.example.com',
@@ -256,9 +257,7 @@ describe('handleSonar', () => {
 
     it('config errors are reported and exit 1', async () => {
         mockedConfig.getSonarConfig.mockImplementation(() => {
-            throw new (require('../sonar/lib/config.ts').SonarConfigError)(
-                'SONAR_TOKEN is not set',
-            );
+            throw new SonarConfigError('SONAR_TOKEN is not set');
         });
         const exit = await handleSonar(['gate']);
         expect(exit).toBe(1);
