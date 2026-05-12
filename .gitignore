@@ -8,3 +8,5 @@
 /vscode-extension/out
 /vscode-extension/node_modules
 /vscode-extension/*.vsix
+
+/.claude/scheduled_tasks.lock
