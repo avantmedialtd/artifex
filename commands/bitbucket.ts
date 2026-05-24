@@ -62,7 +62,17 @@ const NUMBER_FLAGS = new Set(['--line', '--reply-to', '--on-comment']);
 
 const REPEATABLE_FLAGS = new Set(['--var']);
 
-function parseArgs(argv: string[]): {
+// Flag aliases normalized at parse time so the rest of the handler only sees
+// canonical keys (`from`, `to`, ...). Last-write-wins between any canonical
+// and any alias falls out of the generic `--key value` branch below.
+const FLAG_ALIASES = new Map<string, string>([
+    ['--source', '--from'],
+    ['--src', '--from'],
+    ['--destination', '--to'],
+    ['--dest', '--to'],
+]);
+
+export function parseArgs(argv: string[]): {
     subcommand: string;
     args: string[];
     options: BitbucketOptions;
@@ -72,19 +82,20 @@ function parseArgs(argv: string[]): {
 
     let i = 0;
     while (i < argv.length) {
-        const arg = argv[i];
+        const rawArg = argv[i];
+        const arg = FLAG_ALIASES.get(rawArg) ?? rawArg;
         if (BOOLEAN_FLAGS.has(arg)) {
             const key = arg.slice(2) as keyof BitbucketOptions;
             (options as Record<string, boolean>)[key] = true;
         } else if (REPEATABLE_FLAGS.has(arg)) {
             const value = argv[++i];
-            if (value === undefined) throw new Error(`Option ${arg} requires a value`);
+            if (value === undefined) throw new Error(`Option ${rawArg} requires a value`);
             const key = arg.slice(2) as 'var';
             (options[key] ??= []).push(value);
         } else if (arg.startsWith('--')) {
             const key = arg.slice(2) as keyof BitbucketOptions;
             const value = argv[++i];
-            if (value === undefined) throw new Error(`Option ${arg} requires a value`);
+            if (value === undefined) throw new Error(`Option ${rawArg} requires a value`);
             if (NUMBER_FLAGS.has(arg)) {
                 (options as Record<string, number>)[key] = parseInt(value, 10);
             } else {
@@ -114,6 +125,7 @@ PULL REQUESTS:
   pr diff <id>
   pr create --title T [--from B] [--to B] [--description / --description-file F]
             [--reviewers a,b] [--draft]
+            (--from also accepts --source, --src; --to also accepts --destination, --dest)
   pr update <id> [--title T] [--description / --description-file F] [--reviewers a,b]
   pr approve <id>           pr unapprove <id>
   pr request-changes <id>
