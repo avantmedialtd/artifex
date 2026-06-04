@@ -140,6 +140,8 @@ PR COMMENTS:
                          [--reply-to COMMENT-ID]
   pr comment update <pr-id> <comment-id> --body / --body-file
   pr comment delete <pr-id> <comment-id>
+  pr comment resolve <pr-id> <comment-id>          Resolve a comment thread
+  pr comment reopen <pr-id> <comment-id>           Reopen a resolved thread
 
 PR TASKS:
   pr task list <pr-id>
@@ -527,6 +529,22 @@ async function handleComment(
             const cid = requireIdArg(args[2], 'comment id');
             await client.deleteComment(ws, repo, prId, cid);
             if (!json) console.log(`Deleted comment #${cid}`);
+            return 0;
+        }
+        case 'resolve': {
+            const prId = requireIdArg(args[1], 'pr id');
+            const cid = requireIdArg(args[2], 'comment id');
+            const result = await client.resolveComment(ws, repo, prId, cid);
+            if (json) fmt.output(result, true);
+            else console.log(`Resolved comment #${cid}`);
+            return 0;
+        }
+        case 'reopen': {
+            const prId = requireIdArg(args[1], 'pr id');
+            const cid = requireIdArg(args[2], 'comment id');
+            const result = await client.reopenComment(ws, repo, prId, cid);
+            if (json) fmt.output(result, true);
+            else console.log(`Reopened comment #${cid}`);
             return 0;
         }
         default:

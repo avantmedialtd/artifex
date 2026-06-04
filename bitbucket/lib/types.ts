@@ -61,6 +61,18 @@ export interface BitbucketCommentInline {
     from?: number | null;
 }
 
+/**
+ * Resolution state of a comment thread. Present (non-null) when the thread has
+ * been resolved; absent or null when the thread is open. Field shape confirmed
+ * against the Bitbucket Cloud REST API docs (`pullrequest_comment_resolution`);
+ * see the resolve/reopen note in `client.ts`.
+ */
+export interface BitbucketCommentResolution {
+    type?: string;
+    user?: BitbucketUser;
+    created_on?: string;
+}
+
 export interface BitbucketComment {
     id: number;
     content: { raw: string; markup?: string; html?: string };
@@ -71,6 +83,7 @@ export interface BitbucketComment {
     inline?: BitbucketCommentInline;
     parent?: { id: number };
     pullrequest?: { id: number };
+    resolution?: BitbucketCommentResolution | null;
 }
 
 export type BitbucketTaskState = 'RESOLVED' | 'UNRESOLVED';

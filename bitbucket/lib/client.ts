@@ -22,6 +22,14 @@
  *   - Link a task to a comment: include `{ comment: { id: <commentId> } }` in
  *     the POST body alongside `content`. Standalone tasks omit the field.
  *
+ *   - Resolve/reopen a comment thread: unlike tasks, comments DO use a
+ *     dedicated sub-resource. POST /pullrequests/{id}/comments/{cid}/resolve
+ *     resolves the thread; DELETE on the same path reopens it. A resolved
+ *     comment carries a `resolution` object (`pullrequest_comment_resolution`
+ *     with `user` and `created_on`). Confirmed against the Bitbucket Cloud REST
+ *     API docs; pending a live smoke-test (openspec change
+ *     bitbucket-comment-resolve, tasks 1.x / 7.2).
+ *
  * Both shapes were derived from observation; if the API behaviour changes,
  * see openspec/changes/add-bitbucket-support/tasks.md (sections 1.3 / 1.4)
  * for the verification recipe and update the field shape here.
@@ -347,6 +355,36 @@ export async function deleteComment(
     return request(`${repoUrl(workspace, repo)}/pullrequests/${prId}/comments/${commentId}`, {
         method: 'DELETE',
     });
+}
+
+/**
+ * Resolve a comment thread. POST to the `/resolve` sub-resource; the response
+ * is the updated comment carrying a populated `resolution`. See the
+ * resolve/reopen note in the file header.
+ */
+export async function resolveComment(
+    workspace: string,
+    repo: string,
+    prId: number,
+    commentId: number,
+): Promise<BitbucketComment> {
+    return request<BitbucketComment>(
+        `${repoUrl(workspace, repo)}/pullrequests/${prId}/comments/${commentId}/resolve`,
+        { method: 'POST', body: '{}' },
+    );
+}
+
+/** Reopen (unresolve) a comment thread by DELETEing the `/resolve` sub-resource. */
+export async function reopenComment(
+    workspace: string,
+    repo: string,
+    prId: number,
+    commentId: number,
+): Promise<unknown> {
+    return request(
+        `${repoUrl(workspace, repo)}/pullrequests/${prId}/comments/${commentId}/resolve`,
+        { method: 'DELETE' },
+    );
 }
 
 // --- PR tasks -----------------------------------------------------------

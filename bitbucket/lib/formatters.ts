@@ -129,10 +129,19 @@ export function formatCommentList(comments: BitbucketComment[]): string {
             ? ` _on ${comment.inline.path}:${comment.inline.to ?? comment.inline.from ?? '?'}_`
             : '';
         const deleted = comment.deleted ? ' (deleted)' : '';
+        const resolution = comment.resolution
+            ? ` ✓ resolved${
+                  comment.resolution.user ? ` by ${comment.resolution.user.display_name}` : ''
+              }${
+                  comment.resolution.created_on
+                      ? ` (${formatDate(comment.resolution.created_on)})`
+                      : ''
+              }`
+            : '';
         lines.push(
             `${indent}- **#${comment.id}** ${comment.user.display_name}${anchor}${deleted} — ${formatDate(
                 comment.updated_on,
-            )}`,
+            )}${resolution}`,
         );
         const body = comment.content.raw.split('\n');
         for (const line of body) {

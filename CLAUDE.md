@@ -413,6 +413,7 @@ af bb pr comment add <pr-id> --body / --body-file
                               [--reply-to CID]         # reply
 af bb pr comment update <pr-id> <cid> --body / --body-file
 af bb pr comment delete <pr-id> <cid>
+af bb pr comment resolve <pr-id> <cid>      af bb pr comment reopen <pr-id> <cid>
 
 # PR tasks — standalone or anchored to a comment
 af bb pr task list <pr-id>

@@ -1,5 +1,46 @@
-import { describe, it, expect } from 'vitest';
-import { buildCommentBody, buildTaskBody, buildTriggerBody } from './client.ts';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as bbRequestModule from './request.ts';
+import {
+    buildCommentBody,
+    buildTaskBody,
+    buildTriggerBody,
+    resolveComment,
+    reopenComment,
+} from './client.ts';
+
+// resolveComment / reopenComment are thin HTTP wrappers with no body-builder to
+// unit-test in isolation, so mock the request layer and assert the method + URL
+// of the `/resolve` sub-resource — the riskiest, API-shape-dependent part.
+vi.mock('./request.ts', () => ({
+    bbRequest: vi.fn(),
+    bbPaginate: vi.fn(),
+    bbRequestText: vi.fn(),
+}));
+
+const RESOLVE_URL =
+    'https://api.bitbucket.org/2.0/repositories/ws/repo/pullrequests/42/comments/5/resolve';
+
+describe('resolveComment / reopenComment', () => {
+    beforeEach(() => {
+        vi.mocked(bbRequestModule.bbRequest).mockReset();
+        vi.mocked(bbRequestModule.bbRequest).mockResolvedValue({} as never);
+    });
+
+    it('resolveComment POSTs to the /resolve sub-resource', async () => {
+        await resolveComment('ws', 'repo', 42, 5);
+        expect(bbRequestModule.bbRequest).toHaveBeenCalledWith(RESOLVE_URL, {
+            method: 'POST',
+            body: '{}',
+        });
+    });
+
+    it('reopenComment DELETEs the /resolve sub-resource', async () => {
+        await reopenComment('ws', 'repo', 42, 5);
+        expect(bbRequestModule.bbRequest).toHaveBeenCalledWith(RESOLVE_URL, {
+            method: 'DELETE',
+        });
+    });
+});
 
 describe('buildCommentBody', () => {
     it('builds general comment body', () => {

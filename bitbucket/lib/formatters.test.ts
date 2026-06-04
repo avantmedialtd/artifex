@@ -86,6 +86,35 @@ describe('formatCommentList', () => {
         };
         expect(formatCommentList([c])).toContain('on src/foo.ts:10');
     });
+
+    it('marks resolved threads with resolver', () => {
+        const c: BitbucketComment = {
+            id: 1,
+            content: { raw: 'needs work' },
+            user: fakeUser,
+            created_on: '2025-01-01T00:00:00Z',
+            updated_on: '2025-01-01T00:00:00Z',
+            resolution: {
+                type: 'pullrequest_comment_resolution',
+                user: fakeUser,
+                created_on: '2025-01-03T00:00:00Z',
+            },
+        };
+        const out = formatCommentList([c]);
+        expect(out).toContain('resolved');
+        expect(out).toContain('Alice');
+    });
+
+    it('does not mark open threads as resolved', () => {
+        const c: BitbucketComment = {
+            id: 1,
+            content: { raw: 'still open' },
+            user: fakeUser,
+            created_on: '2025-01-01T00:00:00Z',
+            updated_on: '2025-01-01T00:00:00Z',
+        };
+        expect(formatCommentList([c])).not.toContain('resolved');
+    });
 });
 
 describe('formatTaskList', () => {
