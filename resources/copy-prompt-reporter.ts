@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import type {
     FullConfig,
     FullResult,
@@ -424,6 +425,26 @@ class CopyPromptReporter implements Reporter {
             `\n🎯 Summary: ${passed.length} passed, ${failedText}, ${timedOutText}, ${skipped.length} skipped (${total} total)`,
         );
         console.log(`⏱️  Total time: ${totalElapsed}s\n`);
+
+        // Persist a machine-readable tally so the runner can cross-check the child
+        // exit code against ground truth (the code can be swallowed upstream). A
+        // write failure must not abort Playwright — the absent file is then handled
+        // by the runner's fail-closed verdict (E2E-CMD-005).
+        try {
+            fs.writeFileSync(
+                'e2e-summary.json',
+                JSON.stringify({
+                    passed: passed.length,
+                    failed: failed.length,
+                    timedOut: timedOut.length,
+                    skipped: skipped.length,
+                }),
+            );
+        } catch (err) {
+            console.log(
+                `⚠️  Could not write e2e-summary.json: ${err instanceof Error ? err.message : err}`,
+            );
+        }
     }
 
     private getRelativePath(fullPath: string): string {

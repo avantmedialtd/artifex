@@ -1,8 +1,5 @@
-# e2e-command Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change add-e2e-command. Update Purpose after archive.
-## Requirements
 ### Requirement: E2E-CMD-001 Run E2E tests
 
 The `af e2e` command SHALL execute the E2E test suite in a fresh Docker environment with full isolation, and SHALL return an exit code derived from the run verdict (E2E-CMD-005) rather than the raw child process exit code.
@@ -22,38 +19,7 @@ The `af e2e` command SHALL execute the E2E test suite in a fresh Docker environm
 - **Then** the arguments are passed through to the test script
 - **And** only matching tests are executed
 
-### Requirement: E2E-CMD-002 Help integration
-
-The `e2e` command SHALL be discoverable through the CLI help system.
-
-#### Scenario: Show command in general help
-
-- **Given** the user runs `af help`
-- **Then** the output includes `e2e` in the COMMANDS section
-- **And** shows a brief description of the command
-
-#### Scenario: Show command-specific help
-
-- **Given** the user runs `af help e2e` or `af e2e --help`
-- **Then** the output shows the command description, usage, and examples
-
-### Requirement: E2E-CMD-003 Copy Reporter to Container
-
-The E2E test script SHALL copy the `copy-prompt-reporter.ts` file from the project's `resources/` directory to the Docker container before running tests.
-
-#### Scenario: Reporter copied from filesystem
-
-- **Given** the user runs `af e2e`
-- **When** Docker services are started
-- **Then** the reporter is copied from `resources/copy-prompt-reporter.ts` to `e2e:/workspace/copy-prompt-reporter.ts`
-- **And** tests use the reporter for output formatting
-
-#### Scenario: Copy failure handling
-
-- **Given** the reporter copy operation fails
-- **When** the script attempts to run tests
-- **Then** the script exits with error code 1
-- **And** displays an error message indicating the copy failure
+## ADDED Requirements
 
 ### Requirement: E2E-CMD-004 Reporter emits a result summary
 
@@ -109,4 +75,3 @@ The E2E test script SHALL determine the run verdict from a pure function of the 
 - **When** the verdict is computed
 - **Then** the verdict is FAIL
 - **And** the output states that the result cross-check could not be performed
-

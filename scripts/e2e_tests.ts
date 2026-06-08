@@ -233,6 +233,70 @@ function runAllowFailure(
     });
 }
 
+/** The reporter's accumulated outcome counts (lengths of its result arrays). */
+export interface Summary {
+    passed: number;
+    failed: number;
+    timedOut: number;
+    skipped: number;
+}
+
+export interface Verdict {
+    failed: boolean;
+    reason: string;
+}
+
+// Pure verdict logic — no Docker, no filesystem — so it can be unit-tested without
+// a container. `af e2e` historically trusted a single signal, the child exit code,
+// which a target project's `npm run e2e` can swallow (a pipe, a trailing `|| true`,
+// a wrapper), producing a false green. The verdict cross-checks that exit code
+// against the reporter's own tally and fails closed when the tally is absent.
+// A run passes only when the exit code is 0 AND a summary is present AND it reports
+// zero failures and zero timeouts (E2E-CMD-005).
+export function computeVerdict(exitCode: number, summary: Summary | null): Verdict {
+    if (exitCode !== 0) {
+        return { failed: true, reason: `runner exited with code ${exitCode}` };
+    }
+
+    if (summary === null) {
+        return {
+            failed: true,
+            reason: 'result summary missing; could not cross-check the exit code against the reporter tally',
+        };
+    }
+
+    const nonPassing = summary.failed + summary.timedOut;
+    if (nonPassing > 0) {
+        return {
+            failed: true,
+            reason: `reporter found ${summary.failed} failed and ${summary.timedOut} timed out despite a zero exit code`,
+        };
+    }
+
+    return { failed: false, reason: 'exit code and reporter summary agree: all tests passed' };
+}
+
+// Defensively read the reporter's tally copied out of the container. A missing,
+// unreadable, or malformed file yields null, which the verdict treats as a failure
+// (fail-closed) rather than silently trusting the exit code.
+function readSummary(): Summary | null {
+    try {
+        const parsed = JSON.parse(fs.readFileSync('./e2e-summary.json', 'utf8'));
+        if (
+            parsed &&
+            typeof parsed.passed === 'number' &&
+            typeof parsed.failed === 'number' &&
+            typeof parsed.timedOut === 'number' &&
+            typeof parsed.skipped === 'number'
+        ) {
+            return parsed;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
 export async function runE2eTests(args: string[]): Promise<number> {
     passThroughArgs = args;
     // Welcome message
@@ -336,6 +400,8 @@ export async function runE2eTests(args: string[]): Promise<number> {
     try {
         fs.rmSync('./playwright-report', { recursive: true, force: true });
         fs.rmSync('./test-results', { recursive: true, force: true });
+        // Drop any stale summary so a failed copy cannot surface a previous run's tally.
+        fs.rmSync('./e2e-summary.json', { force: true });
     } catch {
         // ignore
     }
@@ -363,6 +429,15 @@ export async function runE2eTests(args: string[]): Promise<number> {
         logSuccess('Test results (screenshots/traces) saved to ./test-results');
     }
 
+    // Copy the reporter's machine-readable tally out of the container so the verdict
+    // can cross-check it against the exit code. A failed copy leaves no file, which
+    // the fail-closed verdict treats as a failure.
+    await compose(['cp', 'e2e:/workspace/e2e-summary.json', './e2e-summary.json'], {
+        allowFailure: true,
+    });
+    const summary = readSummary();
+    const verdict = computeVerdict(e2eExitCode, summary);
+
     // Step 4: Summary
     logStep('Test run complete');
     const TOTAL_DURATION = elapsedSeconds(START_TIME);
@@ -377,7 +452,7 @@ export async function runE2eTests(args: string[]): Promise<number> {
         `${GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n`,
     );
 
-    if (e2eExitCode === 0) {
+    if (!verdict.failed) {
         process.stdout.write(`  ${GREEN}✓${NC} ${BOLD}All tests passed${NC}\n`);
         process.stdout.write(`  ${GRAY}→${NC} Total time: ${formatDuration(TOTAL_DURATION)}\n`);
         process.stdout.write(`  ${GRAY}→${NC} Test time: ${formatDuration(TEST_DURATION)}\n`);
@@ -386,6 +461,7 @@ export async function runE2eTests(args: string[]): Promise<number> {
         process.stdout.write(`  ${RED}✗${NC} ${BOLD}Tests failed${NC}\n`);
         process.stdout.write(`  ${GRAY}→${NC} Total time: ${formatDuration(TOTAL_DURATION)}\n`);
         process.stdout.write(`  ${GRAY}→${NC} Test time: ${formatDuration(TEST_DURATION)}\n`);
+        process.stdout.write(`  ${GRAY}→${NC} Reason: ${verdict.reason}\n`);
         process.stdout.write(`  ${GRAY}→${NC} Exit code: ${e2eExitCode}\n`);
         if (fs.existsSync('./playwright-report/index.html')) {
             process.stdout.write(`  ${GRAY}→${NC} HTML report: ./playwright-report/index.html\n`);
@@ -394,7 +470,7 @@ export async function runE2eTests(args: string[]): Promise<number> {
     }
 
     process.stdout.write('\n');
-    return e2eExitCode;
+    return verdict.failed ? 1 : 0;
 }
 
 // Ensure we attempt to tear down on Ctrl+C
