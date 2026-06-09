@@ -1,0 +1,128 @@
+name: release
+
+# Publish to npm and cut a GitHub Release when a v* tag is pushed. The bump +
+# tag + push is driven by the `/release` command; this workflow is the CI half.
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Serialize releases so back-to-back tags queue rather than race the registry.
+# cancel-in-progress is false: never cancel an in-flight publish.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# contents: write — create the GitHub Release. id-token: write — npm provenance (OIDC).
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history for the branch-ancestry guard)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # --- Cheap guards: every one of these fails BEFORE the irreversible publish ---
+
+      - name: Assert the tag matches package.json version
+        id: meta
+        run: |
+          set -euo pipefail
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          echo "tag=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::package.json version ($PKG_VERSION) != tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Assert the tagged commit is contained in origin/master
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::Tag $GITHUB_REF_NAME ($GITHUB_SHA) is not on origin/master"
+            exit 1
+          fi
+
+      - name: Assert release notes exist and are non-empty
+        run: |
+          set -euo pipefail
+          NOTES="releases/${GITHUB_REF_NAME}.md"
+          if [ ! -s "$NOTES" ]; then
+            echo "::error::Missing or empty release notes: $NOTES"
+            exit 1
+          fi
+
+      # Runs BEFORE setup-node writes the token-bearing .npmrc, so this anonymous
+      # read can't trip the empty-NODE_AUTH_TOKEN error.
+      - name: Determine whether this version is already on npm
+        id: npm_state
+        run: |
+          set -uo pipefail
+          if npm view "@avantmedia/af@${{ steps.meta.outputs.tag }}" version >/dev/null 2>&1; then
+            echo "published=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A genuine "you tagged an already-published version" mistake on a fresh run.
+      # On a re-run (run_attempt > 1) we instead skip publishing and still create
+      # the Release, so a flaky release step can't brick recovery.
+      - name: Refuse a duplicate version on a fresh run
+        if: steps.npm_state.outputs.published == 'true' && github.run_attempt == '1'
+        run: |
+          echo "::error::@avantmedia/af@${{ steps.meta.outputs.tag }} is already on npm — bump the version."
+          exit 1
+
+      # --- Gates + publish: skipped on a resume where the version is already live ---
+
+      - name: Setup Bun
+        if: steps.npm_state.outputs.published == 'false'
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        if: steps.npm_state.outputs.published == 'false'
+        run: bun install
+
+      - name: Gates (lint / format / spell / test)
+        if: steps.npm_state.outputs.published == 'false'
+        run: |
+          bun run lint
+          bun run format:check
+          bun run spell:check
+          bun run test
+
+      - name: Setup Node + npm registry auth
+        if: steps.npm_state.outputs.published == 'false'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22 # guarantees npm >= 9.5 for provenance
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify package contents (dry run)
+        if: steps.npm_state.outputs.published == 'false'
+        run: npm publish --dry-run --access public
+
+      - name: Publish to npm (with provenance)
+        if: steps.npm_state.outputs.published == 'false'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # No `if:` => default success(), which is true even when the steps above were
+      # *skipped* on a resume (skips are not failures). action-gh-release is
+      # idempotent for an existing tag, so re-running safely creates/updates it.
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: releases/${{ github.ref_name }}.md
+          make_latest: 'true'
+          generate_release_notes: false

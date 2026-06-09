@@ -358,17 +358,25 @@ This ensures code is linted and properly formatted before it gets pushed to the 
 
 ### Publishing to NPM
 
-The package is published as `@avantmedia/af` on the public NPM registry. It ships TypeScript source directly — Bun executes it natively without a build step.
+Releases are automated and tag-driven. The package is published as `@avantmedia/af` on the public NPM registry; it ships TypeScript source directly — Bun executes it natively without a build step.
+
+**The release flow** (see `.claude/commands/release.md`):
+
+1. On `master`, run the **`/release`** command. It picks the version bump, synthesizes curated notes in `releases/<tag>.md` from the OpenSpec changes that shipped, asks for approval, then bumps `package.json`, commits, tags `v<version>`, and pushes.
+2. The `v*` tag push triggers `.github/workflows/release.yml`, which runs the CI gates and then `npm publish --provenance --access public` and creates the GitHub Release from the notes file.
+
+`package.json`'s `version` is the source of truth; the workflow refuses to publish a tag whose value disagrees with it. To bump the version by hand, use `bun run bump <patch|minor|major|x.y.z>` (add `--dry-run` to preview).
+
+**One-time setup**: the workflow authenticates with the `NPM_TOKEN` repository secret — an npm granular access token scoped to `@avantmedia/af` (read + write). Create it at npmjs.com and run `gh secret set NPM_TOKEN -R avantmedialtd/artifex`.
+
+**Emergency manual fallback** (avoid; prefer `/release`):
 
 ```bash
-# Verify what will be published
-npm pack --dry-run
-
-# Publish (requires npm login and @avantmedia org access)
-npm publish --access public
+npm pack --dry-run                  # verify what will be published
+CI=1 npm publish --access public    # requires npm login and @avantmedia org access
 ```
 
-The `files` field in `package.json` controls what gets included. Test files, OpenSpec artifacts, the VSCode extension, and build outputs are excluded.
+The `files` field in `package.json` controls what gets included. Test files, OpenSpec artifacts, the VSCode extension, the release tooling, and build outputs are excluded.
 
 ### Project Structure
 

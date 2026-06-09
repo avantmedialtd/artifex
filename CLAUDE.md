@@ -555,6 +555,17 @@ The published npm tarball is an allowlist, not a denylist. Every top-level direc
 
 When adding a new top-level directory (e.g. a new integration like `bitbucket/`), add a matching `<dir>/**/*.ts` entry to `files` in the same change. Verify with `npm pack --dry-run` if unsure.
 
+### Release Flow
+
+Releases are automated and tag-driven (see `.claude/commands/release.md` and `.github/workflows/release.yml`):
+
+- **`package.json` `version` is the npm source of truth.** The publish workflow derives the version from the pushed `v*` tag and refuses to publish if it disagrees with `package.json`.
+- **`bun run bump <patch|minor|major|x.y.z>`** (`scripts/bump-version.ts`) rewrites only the `version` line in `package.json`. It does not commit or tag (`--dry-run` previews; `--force` allows an explicit downgrade).
+- **`/release`** (run on `master`) orchestrates a full release: pick the bump, synthesize curated `releases/<tag>.md` notes from archived OpenSpec changes, approval gate, then bump → commit → annotated tag → `git push --follow-tags`.
+- **Pushing a `v*` tag** triggers `.github/workflows/release.yml`: pre-publish guards (tag↔version match, tag on `master`, notes present, not already published) → CI gates → `npm publish --provenance --access public` → GitHub Release. The publish is resumable, so a failed Release step can be recovered by re-running the workflow.
+- **Release infra is dev-only** — `scripts/bump-version.ts`, `releases/`, and the workflow are not in the published tarball (the `files` allowlist excludes them).
+- **One-time**: the `NPM_TOKEN` secret (an npm granular access token scoped to `@avantmedia/af`) must be set via `gh secret set NPM_TOKEN`. A local `npm publish` is blocked by a CI-only `prepublishOnly` guard.
+
 **Guardrails**
 
 OpenSpec proposals should always have a good title.

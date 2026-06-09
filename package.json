@@ -56,7 +56,9 @@
         "spell:check": "cspell \"**\"",
         "test": "vitest run",
         "test:watch": "vitest",
-        "test:coverage": "vitest run --coverage"
+        "test:coverage": "vitest run --coverage",
+        "bump": "bun run scripts/bump-version.ts",
+        "prepublishOnly": "node -e \"if(!process.env.CI) throw new Error('Publish via CI only — use /release')\""
     },
     "devDependencies": {
         "@types/node": "^25.0.3",
