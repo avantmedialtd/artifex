@@ -103,6 +103,7 @@
         "vulns",
         "softprops",
         "specforge",
-        "Tauri"
+        "Tauri",
+        "scriptable"
     ]
 }

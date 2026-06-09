@@ -1,19 +1,18 @@
 # Artifex
 
-A lightweight CLI development utility that helps you automate common development tasks.
+**`af`** is a command-line tool for driving the services you already use — **Jira, Confluence, Bitbucket, SonarQube, and Jenkins** — straight from the terminal, alongside the local dev chores that surround them (dependency upgrades, OpenSpec changes, git worktrees, E2E runs).
 
-> **Note:** Artifex is in early-stage development. Features and APIs may change as the project evolves.
+Every command is non-interactive, scriptable, and speaks structured JSON — which makes `af` especially effective as a tool surface for **AI coding agents** (Claude Code and friends). One consistent CLI lets an agent read and act on your real systems: triage a Jira issue, read a Bitbucket PR diff, resolve review comments, check a SonarQube gate, or tail a Jenkins build — without a browser in the loop.
 
-## What is Artifex?
+> **Note:** Artifex is in active development. Commands and flags may change as the project evolves.
 
-Artifex is a command-line tool designed to streamline your development workflow by automating repetitive tasks. Currently, it helps you keep your project dependencies up to date with a single command, and it's built to be fast and easy to use.
+## Why Artifex
 
-### Why Artifex?
-
-- **Simple**: One command to upgrade all your npm dependencies
-- **Fast**: Built with performance in mind, runs TypeScript directly without build steps
-- **Developer-friendly**: Clear output and sensible defaults
-- **Lightweight**: Minimal dependencies, maximum efficiency
+- **One CLI, many services** — Jira, Confluence, Bitbucket, SonarQube and Jenkins behind a single `af` command with consistent verbs (`get` / `list` / `search` / `create` / `update`).
+- **Agent-friendly by design** — non-interactive, deterministic, and `--json` on most commands, so an AI agent can parse output and chain calls instead of clicking through web UIs.
+- **One auth surface** — credentials come from environment variables (or a `.env` file); no per-command login dance.
+- **Fast** — runs TypeScript directly via the bundled [Bun](https://bun.sh) runtime, no build step.
+- **Workflow-aware** — first-class support for the OpenSpec change workflow plus git worktree and release automation helpers.
 
 ## Installation
 
@@ -21,19 +20,19 @@ Artifex is a command-line tool designed to streamline your development workflow 
 
 - [Node.js](https://nodejs.org) 16 or higher
 
-That's it for running Artifex from npm. The [Bun](https://bun.sh) runtime ships as a bundled dependency and is installed automatically when you `npm install` the package — you do not need to install Bun separately.
+The [Bun](https://bun.sh) runtime ships as a bundled dependency and is installed automatically — you do **not** need to install Bun separately to run `af`.
 
-### Install from NPM
+### Install from npm
 
 ```bash
 npm install -g @avantmedia/af
 ```
 
-After installation, the `af` command will be available globally.
+The `af` command is then available globally.
 
-### Install from Source
+### Install from source
 
-This path is intended for contributors working on Artifex itself. Unlike the npm install, building from source requires [Bun](https://bun.sh) installed locally — it is used to run tests and format code.
+For contributors working on Artifex itself (this path needs Bun installed locally for tests and formatting):
 
 ```bash
 git clone https://github.com/avantmedialtd/artifex.git
@@ -42,379 +41,265 @@ bun install
 bun link
 ```
 
-### Platform Support
+`af` runs on macOS, Linux, and Windows.
 
-af works on:
+## Authentication & configuration
 
-- macOS
-- Linux
-- Windows
+Service commands read their credentials from environment variables. Export them in your shell or drop them in a `.env` file in your project directory — Bun loads `.env` automatically.
 
-## Usage
-
-### Upgrade NPM Dependencies
-
-Upgrade all dependencies in your project to their latest versions:
+### Atlassian (Jira + Confluence)
 
 ```bash
-af npm upgrade
+ATLASSIAN_BASE_URL=https://your-domain.atlassian.net
+ATLASSIAN_EMAIL=you@example.com
+ATLASSIAN_API_TOKEN=your-api-token
 ```
 
-This command will:
+Legacy `JIRA_BASE_URL` / `JIRA_EMAIL` / `JIRA_API_TOKEN` are accepted as fallbacks; when both are set, `ATLASSIAN_*` wins. Generate an API token at <https://id.atlassian.com/manage-profile/security/api-tokens>.
 
-1. Read your `package.json` file
-2. Check the npm registry for the latest version of each dependency
-3. Update both `dependencies` and `devDependencies` to the latest versions
-4. Preserve your existing version range symbols (^, ~, etc.)
-5. Automatically run `npm install` to apply the changes
+### Bitbucket Cloud
 
-**Example:**
+Bitbucket uses **separate** credentials — an Atlassian token scoped for Jira does **not** authenticate against Bitbucket Cloud.
 
 ```bash
-cd my-project
-af npm upgrade
+BITBUCKET_USERNAME=your-bitbucket-username   # falls back to ATLASSIAN_EMAIL / JIRA_EMAIL
+BITBUCKET_API_TOKEN=your-workspace-api-token # BITBUCKET_APP_PASSWORD also accepted (legacy)
 ```
 
-**Output:**
+Create a workspace API token at `https://bitbucket.org/<workspace>/workspace/settings/api-tokens` (recommended for automation) or an app password at <https://bitbucket.org/account/settings/app-passwords/>.
 
-```
-Upgrading dependencies in package.json...
-  express: ^4.18.0 → ^4.19.2
-  typescript: ^5.0.0 → ^5.4.5
-Running npm install...
-Done! All dependencies upgraded.
-```
-
-### Upgrade Bun Dependencies
-
-Upgrade all dependencies in your project to their latest versions using Bun:
+### SonarQube
 
 ```bash
-af bun upgrade
+SONAR_TOKEN=your-user-token        # required
+SONAR_BASE_URL=https://sonar.example.com   # optional; falls back to sonar.host.url
+                                            # in sonar-project.properties
 ```
 
-This command will:
-
-1. Run `bun outdated` to detect outdated packages
-2. Upgrade each package using `bun add <package>@latest`
-3. Display a summary of upgraded packages
-
-**Example:**
+### Jenkins
 
 ```bash
-cd my-project
-af bun upgrade
+JENKINS_BASE_URL=https://jenkins.example.com
+JENKINS_USER=your-username
+JENKINS_API_TOKEN=your-api-token
 ```
 
-**Output:**
+### `af.json` (per-project settings)
 
+Optional project-level config lives in an `af.json` at the repo root:
+
+```json
+{
+    "bitbucket": { "workspace": "myws", "repo": "myrepo" },
+    "jira": {
+        "customFields": {
+            "storyPoints": { "id": "customfield_10016" },
+            "sprint": { "id": "customfield_10020", "type": "sprint" }
+        }
+    },
+    "stopHook": {
+        "ignoredPaths": ["openspec/", "docs/"],
+        "command": "npm run test:e2e"
+    }
+}
 ```
-Checking for outdated packages...
 
-Found 2 package(s) to upgrade:
-  • lodash
-  • typescript
+For Bitbucket, the workspace/repo are resolved from `--workspace`/`--repo` flags first, then `af.json`, then the git `origin` remote if it points at `bitbucket.org`.
 
-Upgrading lodash...
-Upgrading typescript...
+## Commands
 
-Upgrade Summary
-==================================================
-Successfully upgraded: 2 package(s)
-  ✓ lodash
-  ✓ typescript
+Run `af help` for the full list, or `af help <command>` for details on any one. Many read commands accept `--json` for structured, machine-readable output.
 
-All packages upgraded successfully!
-```
+### Jira
 
-### View TODO Items
-
-Display all TODO items from active OpenSpec changes:
+Manage issues end-to-end, including custom fields.
 
 ```bash
-af todo
+af jira get PROJ-123                       # Issue details (renders custom fields when present)
+af jira list PROJ --limit 20               # List project issues
+af jira list PROJ --show-field storyPoints # Add custom-field columns
+af jira search "status = Open AND assignee = currentUser()"
+af jira create --project PROJ --type Bug --summary "Title" --field storyPoints=5
+af jira update PROJ-123 --field storyPoints=8
+af jira transition PROJ-123 --to "Done"    # (af jira transitions PROJ-123 lists options)
+af jira link PROJ-123 --to PROJ-456 --type "Blocks"
+af jira fields --project PROJ --type Story  # Required + allowed values for create
+af jira projects                            # List visible projects
 ```
 
-This command scans all active changes in `openspec/changes/` and displays their tasks from `tasks.md` files with progress indicators.
+### Confluence
 
-**Example:**
+Full page CRUD plus search, hierarchy, comments, labels, and attachments.
 
 ```bash
-af todo
+af confluence get 12345                    # Page content
+af confluence list MYSPACE --limit 20      # Pages in a space
+af confluence search "title ~ 'Runbook'"   # CQL search
+af confluence create --space MYSPACE --title "New Page" --body-file ./doc.md
+af confluence update 12345 --body-file ./updated.md
+af confluence tree 12345                   # Page hierarchy
+af confluence comment 12345 --add "Looks good"
+af confluence attach 12345 ./diagram.png
+af confluence spaces                        # List all spaces
 ```
 
-**Output:**
+### Bitbucket (`af bb`)
 
-```
-📋 TODO Items
-
-┌─ add-user-authentication (2/5 tasks completed)
-│
-│  Implementation
-│  ☑ 1.1 Create database schema
-│  ☑ 1.2 Implement API endpoint
-│  ☐ 1.3 Add frontend component
-│  ☐ 1.4 Write tests
-│  ☐ 1.5 Update documentation
-│
-└────────────────────────────────────────
-```
-
-### Watch TODO Items
-
-Continuously monitor and display TODO items with real-time updates:
+Pull requests, review comments, tasks, and pipelines on Bitbucket Cloud. `af bb` is a shorthand alias for `af bitbucket`.
 
 ```bash
-af watch
+# Pull requests
+af bb pr list --state OPEN --mine
+af bb pr get 42                            af bb pr diff 42
+af bb pr create --title "Fix bug" --source feature/x --destination main \
+    --reviewers abc123,def456 --description-file ./pr.md
+af bb pr approve 42                        af bb pr merge 42 --strategy squash
+
+# Review comments — inline, replies, and resolution
+af bb pr comment add 42 --body "Please rename" --file src/app.ts --line 10
+af bb pr comment add 42 --body "Done" --reply-to 100
+af bb pr comment resolve 42 100            af bb pr comment reopen 42 100
+
+# Tasks — standalone or anchored to a comment
+af bb pr task add 42 --body "Add a test" --on-comment 100
+af bb pr task update 42 7 --resolved
+
+# Pipelines
+af bb pipeline list --branch main
+af bb pipeline trigger --branch main --custom nightly --var FOO=bar
+af bb pipeline logs <pipeline-uuid> <step-uuid> --follow
+
+# Reviewers must be account IDs — look them up:
+af bb members --query alice
 ```
 
-This command starts watch mode, which automatically refreshes the TODO display whenever task files are modified. Perfect for tracking progress during active development.
+### SonarQube
 
-**Example:**
+Read-only quality-gate visibility, shaped to pair with `af bb pr` (the same numeric PR id identifies both sides). The project key is read from `sonar-project.properties` (or `--project`).
 
 ```bash
-af watch
+af sonar pr 42                # Gate + top new issues + measures for PR 42
+af sonar pr                   # Auto-detect the PR from the current branch
+af sonar pr 42 --issues       # Full new-issues list
+af sonar gate                 # Main-branch quality gate
+af sonar prs                  # PRs SonarQube has analyzed
 ```
 
-**Features:**
+`af sonar pr` and `af sonar gate` exit non-zero when the gate status is `ERROR`, so they slot into CI and scripts.
 
-- Real-time display updates when `tasks.md` files change
-- Debounced refreshes (100ms) to batch rapid changes
-- Clear screen with timestamp on each update
-- Press Ctrl+C to exit gracefully
+### Jenkins
 
-**Use case:** Keep `af watch` running in a terminal window while working through implementation tasks to see your progress update automatically.
+Read-only build visibility.
+
+```bash
+af jenkins jobs                          # List all jobs
+af jenkins branches my-pipeline          # Per-branch build statuses
+af jenkins build my-app/main             # Latest build info
+af jenkins log my-app/main               # Latest build console output
+af jenkins stages my-app/main            # Pipeline stage breakdown
+af jenkins stage-log my-app/main "Test"  # Log for a specific stage
+af jenkins queue                         # Show the build queue
+```
+
+### OpenSpec workflow
+
+Helpers for the OpenSpec spec-driven change workflow.
+
+```bash
+af changes      # List all active OpenSpec changes
+af todo         # Show every TODO from active changes, with progress bars
+af watch        # Live-updating TODO dashboard (idle indicator after 60s)
+```
+
+A companion **VSCode extension** surfaces the same tasks in a dedicated panel — see [VSCode Extension](#vscode-extension).
+
+### Local dev utilities
+
+```bash
+af npm upgrade                 # Upgrade all npm dependencies to latest (preserves range symbols)
+af bun upgrade                 # Same, via Bun
+af worktree new feature-x      # Create a git worktree (copies env files); --detach for detached HEAD
+af worktree reset [name]       # Reset a worktree to HEAD
+af versions reset              # Reset all vN version worktrees to HEAD
+af versions push               # Force-push all vN version worktrees
+af e2e [args...]               # Run E2E tests in a fresh Docker environment
+af stop-hook                   # Run e2e only when relevant source files changed (Claude Code Stop hook)
+```
+
+The `af stop-hook` command is designed as a Claude Code **Stop hook**: it inspects the git diff and skips the (slow) E2E run when only ignored paths (e.g. `openspec/`) changed. Configure it via the `stopHook` block in `af.json`.
 
 ## VSCode Extension
 
-For VSCode users, Artifex includes a dedicated extension that displays OpenSpec tasks directly in a panel (similar to the Problems panel).
-
-### Features
-
-- **Native Panel Integration**: View all active OpenSpec changes and tasks in a dedicated panel
-- **Progress Tracking**: See completion counts for each change at a glance
-- **Badge Notifications**: Panel badge shows completion percentage across all active changes (e.g., "75%" with tooltip showing "3 active changes, 75% complete (15/20 tasks)")
-- **Real-time Updates**: Automatically refreshes when `tasks.md` files change
-- **Hierarchical Display**: Tasks organized by change → section → individual task
-
-### Installation
-
-1. Navigate to the extension directory:
-
-    ```bash
-    cd vscode-extension
-    ```
-
-2. Install dependencies and compile:
-
-    ```bash
-    npm install
-    npm run compile
-    ```
-
-3. Install the extension:
-    - Press `F5` in VSCode to open an Extension Development Host, or
-    - Package and install: `vsce package` then install the `.vsix` file
-
-### Usage
-
-Once installed, the "OpenSpec Tasks" panel appears automatically when you open a workspace containing an `openspec/changes/` directory. The panel shows all active changes with their task completion status.
-
-For detailed documentation, see [vscode-extension/README.md](vscode-extension/README.md).
-
-## Configuration
-
-### Version Worktree Management
-
-af provides commands to manage git worktrees for version branches (branches matching the pattern `v1`, `v2`, `v10`, etc.).
-
-#### Reset Version Worktrees
-
-Reset all version worktrees to the current branch HEAD:
+For VSCode users, Artifex includes an extension that displays OpenSpec tasks in a dedicated panel (like the Problems panel), with progress badges and live refresh on `tasks.md` changes.
 
 ```bash
-af versions reset
+cd vscode-extension
+npm install && npm run compile
+# Press F5 in VSCode for an Extension Development Host, or `vsce package` to build a .vsix
 ```
 
-This command will:
+The panel appears automatically in any workspace containing an `openspec/changes/` directory. See [vscode-extension/README.md](vscode-extension/README.md) for details.
 
-1. Find all git worktrees with branch names matching `/v\d+/` (e.g., `v1`, `v2`, `v10`)
-2. Check each worktree for uncommitted changes
-3. If all worktrees are clean, reset each to the current branch's HEAD commit
-4. Display a success summary showing all reset worktrees
+## Releasing
 
-**Example:**
+Releases are automated and tag-driven. The package publishes as `@avantmedia/af` on the public npm registry, shipping TypeScript source that Bun executes natively (no build step).
 
-```bash
-# On the master branch at commit abc123
-af versions reset
-# Output: Successfully reset 3 worktree(s): v1, v2, v3
-```
+1. On `master`, run the **`/release`** command. It picks the version bump, synthesizes curated notes in `releases/<tag>.md` from the OpenSpec changes that shipped, asks for approval, then bumps `package.json`, commits, tags `v<version>`, and pushes.
+2. The `v*` tag push triggers `.github/workflows/release.yml`, which runs the CI gates and then `npm publish --provenance --access public` and creates the GitHub Release from the notes file.
 
-**Requirements:**
+`package.json`'s `version` is the source of truth — the workflow refuses to publish a tag whose value disagrees with it. To bump by hand: `bun run bump <patch|minor|major|x.y.z>` (`--dry-run` previews).
 
-- Must be run from within a git repository
-- All matching worktrees must have no uncommitted changes
+**One-time setup:** the workflow authenticates with the `NPM_TOKEN` repository secret — an npm granular access token scoped to `@avantmedia/af` (read + write). Create it at npmjs.com and run `gh secret set NPM_TOKEN -R avantmedialtd/artifex`.
 
-#### Push Version Worktrees
-
-Force-push all version worktrees to their remote repositories:
-
-```bash
-af versions push
-```
-
-This command will:
-
-1. Find all git worktrees with branch names matching `/v\d+/` (e.g., `v1`, `v2`, `v10`)
-2. Force-push each worktree to its remote repository
-3. Stop on first failure with clear error reporting
-4. Display a success summary showing all pushed worktrees
-
-**Example:**
-
-```bash
-# After resetting version worktrees
-af versions push
-# Output: Successfully pushed 3 worktree(s): v1, v2, v3
-```
-
-**Requirements:**
-
-- Must be run from within a git repository
-- Each worktree must have an upstream branch configured
-
-**Note:** This command uses `--force` push. It's designed to work in conjunction with `versions reset` to synchronize version branches after updates.
+The `files` allowlist in `package.json` controls the published tarball; test files, OpenSpec artifacts, the VSCode extension, and release tooling are excluded.
 
 ## Development
 
-Want to contribute or work on Artifex? Here's how to get started.
-
-### Setup
-
 ```bash
-# Clone the repository
 git clone https://github.com/avantmedialtd/artifex.git
 cd artifex
-
-# Install dependencies
 bun install
-
-# Link for local testing
 bun link
-```
 
-### Running Tests
-
-```bash
-# Run tests once
-bun test
-
-# Run tests in watch mode
+# Tests (always `bun run test`, never `bun test` — this project uses Vitest)
+bun run test
 bun run test:watch
-
-# Run tests with coverage
 bun run test:coverage
-```
 
-### Code Formatting
-
-```bash
-# Format all files
-bun run format
-
-# Check formatting without making changes
+# Formatting & linting
+bun run format          # Prettier: 4-space, 100-width, single quotes
 bun run format:check
+bun run lint            # OXLint
+bun run spell:check     # CSpell
 ```
 
-### Linting
+### Git hooks
 
-```bash
-# Check for linting errors
-bun run lint
-
-# Fix linting errors automatically
-bun run lint:fix
-```
-
-### Git Hooks
-
-Set up a pre-push hook to run both linting and formatting checks before pushing:
+A pre-push hook that runs lint, spell, and format checks:
 
 ```bash
 printf '#!/bin/sh\nbun run lint && bun run spell:check && bun run format:check\n' > .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 ```
 
-This ensures code is linted and properly formatted before it gets pushed to the repository.
+### Adding a command
 
-### Making Changes
-
-1. Make your changes to the code
-2. Format your code: `bun run format`
-3. Run tests to ensure everything works: `bun test`
-4. Run the linter: `bun run lint`
-5. Test your changes locally using the linked `af` command
-6. Commit your changes and submit a pull request
-
-### Publishing to NPM
-
-Releases are automated and tag-driven. The package is published as `@avantmedia/af` on the public NPM registry; it ships TypeScript source directly — Bun executes it natively without a build step.
-
-**The release flow** (see `.claude/commands/release.md`):
-
-1. On `master`, run the **`/release`** command. It picks the version bump, synthesizes curated notes in `releases/<tag>.md` from the OpenSpec changes that shipped, asks for approval, then bumps `package.json`, commits, tags `v<version>`, and pushes.
-2. The `v*` tag push triggers `.github/workflows/release.yml`, which runs the CI gates and then `npm publish --provenance --access public` and creates the GitHub Release from the notes file.
-
-`package.json`'s `version` is the source of truth; the workflow refuses to publish a tag whose value disagrees with it. To bump the version by hand, use `bun run bump <patch|minor|major|x.y.z>` (add `--dry-run` to preview).
-
-**One-time setup**: the workflow authenticates with the `NPM_TOKEN` repository secret — an npm granular access token scoped to `@avantmedia/af` (read + write). Create it at npmjs.com and run `gh secret set NPM_TOKEN -R avantmedialtd/artifex`.
-
-**Emergency manual fallback** (avoid; prefer `/release`):
-
-```bash
-npm pack --dry-run                  # verify what will be published
-CI=1 npm publish --access public    # requires npm login and @avantmedia org access
-```
-
-The `files` field in `package.json` controls what gets included. Test files, OpenSpec artifacts, the VSCode extension, the release tooling, and build outputs are excluded.
-
-### Project Structure
-
-- `main.ts` - Entry point for the CLI
-- `router.ts` - Command routing logic
-- `commands/` - Command handler modules
-- `components/` - Ink React UI components
-- `utils/` - Shared utility modules
-- `af` - Primary executable file that invokes the CLI
-- Tests are colocated with source files (e.g., `*.test.ts`)
-
-For more detailed contributor guidelines, see [CLAUDE.md](CLAUDE.md).
+Each command is a self-contained handler in `commands/`, wired up in `router.ts`, with help text in `commands/help.ts` and colocated `*.test.ts` tests. See [CLAUDE.md](CLAUDE.md) for the architecture and contributor guidelines.
 
 ## Bug Reports and Feature Requests
 
-Found a bug or have an idea for a new feature?
+- **Report bugs / request features:** [GitHub Issues](https://github.com/avantmedialtd/artifex/issues)
 
-- **Report bugs**: [GitHub Issues](https://github.com/avantmedialtd/artifex/issues)
-- **Request features**: [GitHub Issues](https://github.com/avantmedialtd/artifex/issues)
-
-When reporting a bug, please include:
-
-- Your operating system and Node.js version
-- Steps to reproduce the issue
-- Expected vs actual behavior
-- Any error messages or logs
+When reporting a bug, please include your OS and Node.js version, steps to reproduce, expected vs. actual behavior, and any error output.
 
 ## Contributing
 
-Contributions are welcome! Whether you're fixing bugs, adding features, or improving documentation, your help is appreciated.
+Contributions are welcome — bug fixes, features, or docs.
 
-1. Check existing [issues](https://github.com/avantmedialtd/artifex/issues) or create a new one
-2. Fork the repository
-3. Create a feature branch (`git checkout -b feature/amazing-feature`)
-4. Make your changes and add tests
-5. Ensure tests and linting pass
-6. Commit your changes
-7. Push to your fork and submit a pull request
+1. Check existing [issues](https://github.com/avantmedialtd/artifex/issues) or open a new one
+2. Fork and create a feature branch
+3. Make your changes and add tests
+4. Ensure `bun run test`, `bun run lint`, `bun run spell:check`, and `bun run format:check` pass
+5. Commit and open a pull request
 
 ## License
 
