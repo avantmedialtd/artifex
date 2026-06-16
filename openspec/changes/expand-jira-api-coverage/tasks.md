@@ -1,0 +1,68 @@
+# Tasks
+
+This is a roadmap to pick slices from. Groups are ordered by leverage and dependency: the bug fix first, then cheap Tier-1 wins, then the shared async plumbing that unlocks the Tier-2 items, then standalone Tier-1 work, then the Tier-3 Agile surface, then optional fill-ins.
+
+## 1. Transition-screen support (#1, Tier 1) — fixes the corruption bug
+
+- [ ] 1.1 Extend `transitions` to request `?expand=transitions.fields` and report each transition's `hasScreen` + required fields
+- [ ] 1.2 Add `--resolution`, `--comment`, and repeatable `--field <name>=<value>` flags to `af jira transition`
+- [ ] 1.3 Build the transition POST body with `transition` + `fields` + `update`, sending the comment as ADF under `update.comment` and never placing a field in both `fields` and `update`
+- [ ] 1.4 Retry on `409` (concurrent transition) with backoff
+- [ ] 1.5 Tests: transition-with-resolution sets Resolution; comment-on-transition emits ADF; screen discovery surfaces required fields
+- [ ] 1.6 Update `commands/help.ts` and README for the new transition flags
+
+## 2. Cheap Tier-1 wins (batched)
+
+- [ ] 2.1 Reparent (#5): add `--parent <key>` to `af jira update`, sending `{ fields: { parent: { key } } }`
+- [ ] 2.2 Reparent (#5): add `--clear-parent` as provisional (attempt `parent: null`), guarded/documented as unverified
+- [ ] 2.3 Comment edit/delete (#4): add `af jira comment edit <id>` and `af jira comment delete <id>`
+- [ ] 2.4 Comment visibility (#4): add `--visibility <role-or-group>` to comment add/edit; branch to `/rest/servicedeskapi` for JSM internal notes
+- [ ] 2.5 editmeta (#7): add `af jira editmeta <key>` reporting editable fields + allowed values (parallel to existing `fields`)
+- [ ] 2.6 Tests for reparent set/clear, comment edit/delete, visibility, and editmeta rendering
+- [ ] 2.7 Update `commands/help.ts` and README for the new flags/subcommands
+
+## 3. Async task-poller, then move (#2, Tier 2)
+
+- [ ] 3.1 Build a reusable async bulk task-poller: submit → capture `taskId` → poll `GET /rest/api/3/bulk/queue/{taskId}` to a terminal state, handling unknown/non-terminal statuses defensively
+- [ ] 3.2 Add `af jira move <key> --to-project <key> [--type <name>]` calling `POST /rest/api/3/bulk/issues/move`
+- [ ] 3.3 Build `targetToSourcesMapping` with the `"PROJECT-KEY,<issueTypeId>"` descriptor key and set/auto-suggest `inferStatusDefaults` (or an explicit `targetStatus` mapping)
+- [ ] 3.4 Tests: move polls the task to completion; cross-workflow move infers status defaults
+- [ ] 3.5 Update `commands/help.ts` and README for `move`
+
+## 4. Bulk operations over JQL (#6, Tier 2) — reuses the poller
+
+- [ ] 4.1 Add `af jira bulk <edit|transition|delete> --jql "<query>"` resolving issues by JQL
+- [ ] 4.2 Chunk selections to ≤1,000 issues/request and serialize to ≤5 concurrent tasks
+- [ ] 4.3 Detect field-requiring transitions (via `transitions?expand=fields`) and refuse bulk-transition with a pointer to single-issue `transition`
+- [ ] 4.4 Tests: bulk transition polls; large selection chunks/serializes; field-requiring transition refused
+- [ ] 4.5 Update `commands/help.ts` and README for `bulk`
+
+## 5. Worklogs (#3, Tier 1) — standalone
+
+- [ ] 5.1 Add `af jira worklog add/list/update/delete`
+- [ ] 5.2 Render worklog comments as ADF via the existing `textToAdf` helper
+- [ ] 5.3 Tests for add (time + ADF comment), list, update, delete
+- [ ] 5.4 Update `commands/help.ts` and README for `worklog`
+
+## 6. Tier 3: Agile base path and verbs — coordinate with the `pm` skill
+
+- [ ] 6.1 Add a second request base for `/rest/agile/1.0` alongside the hardcoded `/rest/api/3` in `jira/lib/client.ts`
+- [ ] 6.2 Rank (#8): add `af jira rank <key> --above <key2> | --below <key2>` via `PUT /rest/agile/1.0/issue/rank` (respect the 50-issue limit)
+- [ ] 6.3 Sprint ↔ backlog (#9): add `af jira sprint add <key> --sprint <id>` and `af jira sprint remove <key>`
+- [ ] 6.4 Board/sprint listing (#9): add `af jira boards` and `af jira sprints --board <id>`
+- [ ] 6.5 Coordinate sprint ownership with the `pm` skill to avoid duplicating its planning logic
+- [ ] 6.6 Tests for rank above/below, sprint add/remove, boards, and sprints listing
+- [ ] 6.7 Update `commands/help.ts`, README, and `.cspell.json` for Agile terms
+
+## 7. Watchers/votes (#10, Tier 1) — optional fill-ins
+
+- [ ] 7.1 Add `af jira watch <key>` and `af jira unwatch <key>`
+- [ ] 7.2 Add `af jira vote <key>`
+- [ ] 7.3 Tests for watch/unwatch/vote
+- [ ] 7.4 Update `commands/help.ts` and README
+
+## 8. Cross-cutting docs and packaging
+
+- [ ] 8.1 Update the Jira section of `CLAUDE.md` with the new subcommands/flags
+- [ ] 8.2 Add any new proper nouns/terms to `.cspell.json`
+- [ ] 8.3 Run `bun run format`, `bun run lint`, `bun run spell:check`, and `bun run test`
