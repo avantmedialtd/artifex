@@ -39,10 +39,10 @@ This is a roadmap to pick slices from. Groups are ordered by leverage and depend
 
 ## 5. Worklogs (#3, Tier 1) — standalone
 
-- [ ] 5.1 Add `af jira worklog add/list/update/delete`
-- [ ] 5.2 Render worklog comments as ADF via the existing `textToAdf` helper
-- [ ] 5.3 Tests for add (time + ADF comment), list, update, delete
-- [ ] 5.4 Update `commands/help.ts` and README for `worklog`
+- [x] 5.1 Add `af jira worklog add/list/update/delete`
+- [x] 5.2 Render worklog comments as ADF via the existing `textToAdf` helper
+- [x] 5.3 Tests for add (time + ADF comment), list, update, delete
+- [x] 5.4 Update `commands/help.ts` (README covered in the final docs pass) for `worklog`
 
 ## 6. Tier 3: Agile base path and verbs — coordinate with the `pm` skill
 

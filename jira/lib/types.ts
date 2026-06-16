@@ -70,6 +70,17 @@ export interface JiraComment {
     updated: string;
 }
 
+export interface JiraWorklog {
+    id: string;
+    author?: JiraUser;
+    comment?: string | JiraAdfDocument;
+    timeSpent?: string;
+    timeSpentSeconds?: number;
+    started?: string;
+    created?: string;
+    updated?: string;
+}
+
 export interface JiraTransitionField {
     required: boolean;
     name: string;

@@ -23,6 +23,7 @@ import type {
     JiraEditMetaResponse,
     BulkTaskSubmitResponse,
     BulkTaskStatus,
+    JiraWorklog,
 } from './types.ts';
 import type { JiraFieldCatalogEntry, JiraCreateMetaResponse } from './fields/codec-types.ts';
 
@@ -462,6 +463,53 @@ export async function runBulkOverKeys(
         results.push(await pollBulkTask(taskId, options));
     }
     return results;
+}
+
+// Worklogs
+function nowJiraTimestamp(): string {
+    // Jira expects yyyy-MM-dd'T'HH:mm:ss.SSSZZ (e.g. +0000), not the ISO 'Z'.
+    return new Date().toISOString().replace('Z', '+0000');
+}
+
+export async function getWorklogs(issueKey: string): Promise<JiraWorklog[]> {
+    const res = await request<{ worklogs: JiraWorklog[] }>(`/issue/${issueKey}/worklog`);
+    return res.worklogs;
+}
+
+export async function addWorklog(
+    issueKey: string,
+    opts: { timeSpent: string; started?: string; comment?: string },
+): Promise<JiraWorklog> {
+    const body: Record<string, unknown> = {
+        timeSpent: opts.timeSpent,
+        started: opts.started ?? nowJiraTimestamp(),
+    };
+    if (opts.comment) body.comment = textToAdf(opts.comment);
+    return request<JiraWorklog>(`/issue/${issueKey}/worklog`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+    });
+}
+
+export async function updateWorklog(
+    issueKey: string,
+    worklogId: string,
+    opts: { timeSpent?: string; started?: string; comment?: string },
+): Promise<JiraWorklog> {
+    const body: Record<string, unknown> = {};
+    if (opts.timeSpent !== undefined) body.timeSpent = opts.timeSpent;
+    if (opts.started !== undefined) body.started = opts.started;
+    if (opts.comment !== undefined) body.comment = textToAdf(opts.comment);
+    return request<JiraWorklog>(`/issue/${issueKey}/worklog/${worklogId}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+    });
+}
+
+export async function deleteWorklog(issueKey: string, worklogId: string): Promise<void> {
+    await request(`/issue/${issueKey}/worklog/${worklogId}`, {
+        method: 'DELETE',
+    });
 }
 
 // Transitions

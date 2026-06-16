@@ -16,6 +16,10 @@ import {
     runBulkOverKeys,
     submitBulkDelete,
     submitBulkTransition,
+    getWorklogs,
+    addWorklog,
+    updateWorklog,
+    deleteWorklog,
 } from './client.ts';
 
 const BASE_URL = 'https://test.atlassian.net';
@@ -445,6 +449,69 @@ describe('jira client', () => {
                 selectedIssueIdsOrKeys: ['A-1'],
                 transitionId: '31',
             });
+        });
+    });
+
+    describe('worklogs', () => {
+        it('addWorklog posts timeSpent + started and an ADF comment', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '100' }, 201));
+
+            await addWorklog('PROJ-1', {
+                timeSpent: '2h',
+                started: '2026-01-01T09:00:00.000+0000',
+                comment: 'Investigated root cause',
+            });
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/worklog`);
+            const body = JSON.parse((init as RequestInit).body as string);
+            expect(body.timeSpent).toBe('2h');
+            expect(body.started).toBe('2026-01-01T09:00:00.000+0000');
+            expect(body.comment.type).toBe('doc');
+            expect(JSON.stringify(body.comment)).toContain('Investigated root cause');
+        });
+
+        it('addWorklog defaults started when omitted', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '101' }, 201));
+
+            await addWorklog('PROJ-1', { timeSpent: '1h' });
+
+            const [, init] = fetchMock.mock.calls[0]!;
+            const body = JSON.parse((init as RequestInit).body as string);
+            expect(typeof body.started).toBe('string');
+            expect(body.started).toMatch(/\+0000$/);
+        });
+
+        it('getWorklogs returns the worklogs array', async () => {
+            fetchMock.mockResolvedValueOnce(
+                mockJsonResponse({ worklogs: [{ id: '1', timeSpent: '2h' }] }),
+            );
+
+            const worklogs = await getWorklogs('PROJ-1');
+
+            expect(worklogs).toEqual([{ id: '1', timeSpent: '2h' }]);
+            const [url] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/worklog`);
+        });
+
+        it('updateWorklog PUTs to the worklog id', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '9' }));
+
+            await updateWorklog('PROJ-1', '9', { timeSpent: '3h' });
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/worklog/9`);
+            expect((init as RequestInit).method).toBe('PUT');
+        });
+
+        it('deleteWorklog DELETEs the worklog id', async () => {
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await deleteWorklog('PROJ-1', '9');
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/worklog/9`);
+            expect((init as RequestInit).method).toBe('DELETE');
         });
     });
 });

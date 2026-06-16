@@ -8,6 +8,7 @@ import type {
     JiraVersion,
     JiraRemoteLink,
     JiraEditMetaResponse,
+    JiraWorklog,
 } from './types.ts';
 import type { JiraAttachment } from './client.ts';
 import { adfToText } from './client.ts';
@@ -487,6 +488,31 @@ export function formatEditMeta(issueKey: string, meta: JiraEditMetaResponse): st
                   .join(', ')
             : '';
         lines.push(`| ${id} | ${f.name} | ${f.required ? '✓' : ''} | ${allowed} |`);
+    }
+
+    return lines.join('\n');
+}
+
+// Worklogs to markdown
+export function formatWorklogs(issueKey: string, worklogs: JiraWorklog[]): string {
+    const lines: string[] = [];
+
+    lines.push(`# Worklogs on ${issueLink(issueKey)} (${worklogs.length})`);
+    lines.push('');
+
+    if (worklogs.length === 0) {
+        lines.push('No worklogs.');
+        return lines.join('\n');
+    }
+
+    lines.push(`| ID | Author | Time Spent | Started | Comment |`);
+    lines.push(`|----|--------|------------|---------|---------|`);
+
+    for (const w of worklogs) {
+        const author = w.author?.displayName ?? '-';
+        const started = w.started ? formatDate(w.started) : '-';
+        const comment = w.comment ? adfToText(w.comment).replace(/\n/g, ' ').slice(0, 40) : '';
+        lines.push(`| ${w.id} | ${author} | ${w.timeSpent ?? '-'} | ${started} | ${comment} |`);
     }
 
     return lines.join('\n');

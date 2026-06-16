@@ -99,6 +99,8 @@ interface JiraOptions {
     internal?: boolean;
     public?: boolean;
     jql?: string;
+    time?: string;
+    started?: string;
 }
 
 /**
@@ -189,6 +191,7 @@ COMMANDS:
   editmeta <issue-key>      List editable fields for an issue
   move <issue-key>          Move issue to another project/type (async)
   bulk <action>             Bulk edit/transition/delete issues by JQL (async)
+  worklog <action>          Log work: add/list/update/delete
 
 LINK COMMANDS:
   link <issue-key>          Link two issues
@@ -303,6 +306,11 @@ BULK OPTIONS:
   --jql "<query>"           Select issues to operate on (required)
   --to "<status>"           Target status (bulk transition; no-screen transitions only)
   --field-json '<json>'     editedFieldsInput payload (bulk edit)
+
+WORKLOG OPTIONS:
+  --time <duration>         Time spent, e.g. "2h", "30m" (required for add)
+  --comment "<text>"        Worklog comment (rendered as ADF)
+  --started "<timestamp>"   Start time (yyyy-MM-ddTHH:mm:ss.SSS+0000; defaults to now)
 
 EXAMPLES:
   af jira get PROJ-123
@@ -1089,6 +1097,83 @@ export async function handleJira(args: string[]): Promise<number> {
                           ),
                     json,
                 );
+                break;
+            }
+
+            case 'worklog': {
+                const action = subArgs[0];
+                const issueKey = subArgs[1];
+                if (action === 'list') {
+                    if (!issueKey) {
+                        error('Error: Issue key required. Usage: af jira worklog list <issue-key>');
+                        return 1;
+                    }
+                    const worklogs = await client.getWorklogs(issueKey);
+                    fmt.output(json ? worklogs : fmt.formatWorklogs(issueKey, worklogs), json);
+                } else if (action === 'add') {
+                    if (!issueKey || !options.time) {
+                        error('Error: Issue key and --time required');
+                        console.error(
+                            'Usage: af jira worklog add <issue-key> --time 2h [--comment "..."]',
+                        );
+                        return 1;
+                    }
+                    const wl = await client.addWorklog(issueKey, {
+                        timeSpent: options.time,
+                        started: options.started,
+                        comment: options.comment,
+                    });
+                    fmt.output(
+                        json
+                            ? wl
+                            : fmt.formatSuccess(
+                                  `Logged ${options.time} on ${fmt.issueLink(issueKey)} (worklog ${wl.id})`,
+                              ),
+                        json,
+                    );
+                } else if (action === 'update') {
+                    const worklogId = subArgs[2];
+                    if (!issueKey || !worklogId) {
+                        error('Error: Issue key and worklog id required');
+                        console.error(
+                            'Usage: af jira worklog update <issue-key> <worklog-id> [--time 1h] [--comment "..."]',
+                        );
+                        return 1;
+                    }
+                    const wl = await client.updateWorklog(issueKey, worklogId, {
+                        timeSpent: options.time,
+                        started: options.started,
+                        comment: options.comment,
+                    });
+                    fmt.output(
+                        json
+                            ? wl
+                            : fmt.formatSuccess(
+                                  `Updated worklog ${worklogId} on ${fmt.issueLink(issueKey)}`,
+                              ),
+                        json,
+                    );
+                } else if (action === 'delete') {
+                    const worklogId = subArgs[2];
+                    if (!issueKey || !worklogId) {
+                        error('Error: Issue key and worklog id required');
+                        console.error('Usage: af jira worklog delete <issue-key> <worklog-id>');
+                        return 1;
+                    }
+                    await client.deleteWorklog(issueKey, worklogId);
+                    fmt.output(
+                        json
+                            ? { success: true, key: issueKey, deletedId: worklogId }
+                            : fmt.formatSuccess(
+                                  `Deleted worklog ${worklogId} from ${fmt.issueLink(issueKey)}`,
+                              ),
+                        json,
+                    );
+                } else {
+                    error('Error: worklog requires an action: add | list | update | delete');
+                    console.error('Usage: af jira worklog <add|list|update|delete> <issue-key>');
+                    return 1;
+                }
                 break;
             }
 
