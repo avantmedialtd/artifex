@@ -20,6 +20,11 @@ import {
     addWorklog,
     updateWorklog,
     deleteWorklog,
+    rankIssue,
+    moveIssueToSprint,
+    moveIssueToBacklog,
+    getBoards,
+    getSprints,
 } from './client.ts';
 
 const BASE_URL = 'https://test.atlassian.net';
@@ -512,6 +517,76 @@ describe('jira client', () => {
             const [url, init] = fetchMock.mock.calls[0]!;
             expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/worklog/9`);
             expect((init as RequestInit).method).toBe('DELETE');
+        });
+    });
+
+    describe('agile API', () => {
+        it('rankIssue --above sets rankBeforeIssue on the agile endpoint', async () => {
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await rankIssue('PROJ-1', { above: 'PROJ-9' });
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/agile/1.0/issue/rank`);
+            expect((init as RequestInit).method).toBe('PUT');
+            const body = JSON.parse((init as RequestInit).body as string);
+            expect(body.issues).toEqual(['PROJ-1']);
+            expect(body.rankBeforeIssue).toBe('PROJ-9');
+            expect(body.rankAfterIssue).toBeUndefined();
+        });
+
+        it('rankIssue --below sets rankAfterIssue', async () => {
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await rankIssue('PROJ-1', { below: 'PROJ-9' });
+
+            const [, init] = fetchMock.mock.calls[0]!;
+            const body = JSON.parse((init as RequestInit).body as string);
+            expect(body.rankAfterIssue).toBe('PROJ-9');
+        });
+
+        it('moveIssueToSprint posts to the sprint issue endpoint', async () => {
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await moveIssueToSprint('42', 'PROJ-1');
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/agile/1.0/sprint/42/issue`);
+            const body = JSON.parse((init as RequestInit).body as string);
+            expect(body.issues).toEqual(['PROJ-1']);
+        });
+
+        it('moveIssueToBacklog posts to the backlog endpoint', async () => {
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await moveIssueToBacklog('PROJ-1');
+
+            const [url] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/agile/1.0/backlog/issue`);
+        });
+
+        it('getBoards returns values and passes projectKeyOrId', async () => {
+            fetchMock.mockResolvedValueOnce(
+                mockJsonResponse({ values: [{ id: 1, name: 'Board', type: 'scrum' }] }),
+            );
+
+            const boards = await getBoards({ projectKeyOrId: 'PROJ' });
+
+            expect(boards).toEqual([{ id: 1, name: 'Board', type: 'scrum' }]);
+            const [url] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/agile/1.0/board?projectKeyOrId=PROJ`);
+        });
+
+        it('getSprints lists a board sprints with a state filter', async () => {
+            fetchMock.mockResolvedValueOnce(
+                mockJsonResponse({ values: [{ id: 5, name: 'Sprint 1', state: 'active' }] }),
+            );
+
+            const sprints = await getSprints('7', { state: 'active' });
+
+            expect(sprints).toHaveLength(1);
+            const [url] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/agile/1.0/board/7/sprint?state=active`);
         });
     });
 });

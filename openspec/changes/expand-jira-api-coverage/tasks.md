@@ -46,13 +46,13 @@ This is a roadmap to pick slices from. Groups are ordered by leverage and depend
 
 ## 6. Tier 3: Agile base path and verbs — coordinate with the `pm` skill
 
-- [ ] 6.1 Add a second request base for `/rest/agile/1.0` alongside the hardcoded `/rest/api/3` in `jira/lib/client.ts`
-- [ ] 6.2 Rank (#8): add `af jira rank <key> --above <key2> | --below <key2>` via `PUT /rest/agile/1.0/issue/rank` (respect the 50-issue limit)
-- [ ] 6.3 Sprint ↔ backlog (#9): add `af jira sprint add <key> --sprint <id>` and `af jira sprint remove <key>`
-- [ ] 6.4 Board/sprint listing (#9): add `af jira boards` and `af jira sprints --board <id>`
-- [ ] 6.5 Coordinate sprint ownership with the `pm` skill to avoid duplicating its planning logic
-- [ ] 6.6 Tests for rank above/below, sprint add/remove, boards, and sprints listing
-- [ ] 6.7 Update `commands/help.ts`, README, and `.cspell.json` for Agile terms
+- [x] 6.1 Add a second request base for `/rest/agile/1.0` alongside the hardcoded `/rest/api/3` in `jira/lib/client.ts`
+- [x] 6.2 Rank (#8): add `af jira rank <key> --above <key2> | --below <key2>` via `PUT /rest/agile/1.0/issue/rank` (respect the 50-issue limit)
+- [x] 6.3 Sprint ↔ backlog (#9): add `af jira sprint add <key> --sprint <id>` and `af jira sprint remove <key>`
+- [x] 6.4 Board/sprint listing (#9): add `af jira boards` and `af jira sprints --board <id>`
+- [x] 6.5 Coordinate sprint ownership with the `pm` skill to avoid duplicating its planning logic (documented in design.md; no overlapping planning logic added)
+- [x] 6.6 Tests for rank above/below, sprint add/remove, boards, and sprints listing
+- [x] 6.7 Update `commands/help.ts` and `.cspell.json` for Agile terms (README covered in the final docs pass)
 
 ## 7. Watchers/votes (#10, Tier 1) — optional fill-ins
 

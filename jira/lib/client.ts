@@ -24,6 +24,8 @@ import type {
     BulkTaskSubmitResponse,
     BulkTaskStatus,
     JiraWorklog,
+    JiraBoard,
+    JiraSprint,
 } from './types.ts';
 import type { JiraFieldCatalogEntry, JiraCreateMetaResponse } from './fields/codec-types.ts';
 
@@ -61,10 +63,7 @@ function getAuthHeader(): string {
     return getSharedAuthHeader();
 }
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const baseUrl = getSharedBaseUrl();
-    const url = `${baseUrl}/rest/api/3${endpoint}`;
-
+async function jiraFetch<T>(url: string, options: RequestInit): Promise<T> {
     const response = await fetch(url, {
         ...options,
         headers: {
@@ -98,6 +97,17 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     }
 
     return response.json() as Promise<T>;
+}
+
+// Platform REST v3 (/rest/api/3).
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    return jiraFetch<T>(`${getSharedBaseUrl()}/rest/api/3${endpoint}`, options);
+}
+
+// Jira Software / Agile REST (/rest/agile/1.0) — a separate API surface used by
+// ranking, sprints, and boards.
+async function requestAgile<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    return jiraFetch<T>(`${getSharedBaseUrl()}/rest/agile/1.0${endpoint}`, options);
 }
 
 // Issue operations
@@ -510,6 +520,50 @@ export async function deleteWorklog(issueKey: string, worklogId: string): Promis
     await request(`/issue/${issueKey}/worklog/${worklogId}`, {
         method: 'DELETE',
     });
+}
+
+// Agile API: ranking, sprints, boards. These live under /rest/agile/1.0 and
+// require Jira Software. The rank endpoint accepts up to 50 issues per request.
+export async function rankIssue(
+    issueKey: string,
+    options: { above?: string; below?: string },
+): Promise<void> {
+    const body: Record<string, unknown> = { issues: [issueKey] };
+    // --above places the issue before the target; --below places it after.
+    if (options.above) body.rankBeforeIssue = options.above;
+    else if (options.below) body.rankAfterIssue = options.below;
+    await requestAgile('/issue/rank', { method: 'PUT', body: JSON.stringify(body) });
+}
+
+export async function moveIssueToSprint(sprintId: string, issueKey: string): Promise<void> {
+    await requestAgile(`/sprint/${sprintId}/issue`, {
+        method: 'POST',
+        body: JSON.stringify({ issues: [issueKey] }),
+    });
+}
+
+export async function moveIssueToBacklog(issueKey: string): Promise<void> {
+    await requestAgile('/backlog/issue', {
+        method: 'POST',
+        body: JSON.stringify({ issues: [issueKey] }),
+    });
+}
+
+export async function getBoards(options: { projectKeyOrId?: string } = {}): Promise<JiraBoard[]> {
+    const query = options.projectKeyOrId
+        ? `?projectKeyOrId=${encodeURIComponent(options.projectKeyOrId)}`
+        : '';
+    const res = await requestAgile<{ values: JiraBoard[] }>(`/board${query}`);
+    return res.values;
+}
+
+export async function getSprints(
+    boardId: string,
+    options: { state?: string } = {},
+): Promise<JiraSprint[]> {
+    const query = options.state ? `?state=${encodeURIComponent(options.state)}` : '';
+    const res = await requestAgile<{ values: JiraSprint[] }>(`/board/${boardId}/sprint${query}`);
+    return res.values;
 }
 
 // Transitions

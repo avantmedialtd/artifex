@@ -9,6 +9,8 @@ import type {
     JiraRemoteLink,
     JiraEditMetaResponse,
     JiraWorklog,
+    JiraBoard,
+    JiraSprint,
 } from './types.ts';
 import type { JiraAttachment } from './client.ts';
 import { adfToText } from './client.ts';
@@ -513,6 +515,50 @@ export function formatWorklogs(issueKey: string, worklogs: JiraWorklog[]): strin
         const started = w.started ? formatDate(w.started) : '-';
         const comment = w.comment ? adfToText(w.comment).replace(/\n/g, ' ').slice(0, 40) : '';
         lines.push(`| ${w.id} | ${author} | ${w.timeSpent ?? '-'} | ${started} | ${comment} |`);
+    }
+
+    return lines.join('\n');
+}
+
+// Boards to markdown
+export function formatBoards(boards: JiraBoard[]): string {
+    const lines: string[] = [];
+
+    lines.push(`# Boards (${boards.length})`);
+    lines.push('');
+
+    if (boards.length === 0) {
+        lines.push('No boards.');
+        return lines.join('\n');
+    }
+
+    lines.push(`| ID | Name | Type |`);
+    lines.push(`|----|------|------|`);
+    for (const b of boards) {
+        lines.push(`| ${b.id} | ${b.name} | ${b.type} |`);
+    }
+
+    return lines.join('\n');
+}
+
+// Sprints to markdown
+export function formatSprints(boardId: string, sprints: JiraSprint[]): string {
+    const lines: string[] = [];
+
+    lines.push(`# Sprints for board ${boardId} (${sprints.length})`);
+    lines.push('');
+
+    if (sprints.length === 0) {
+        lines.push('No sprints.');
+        return lines.join('\n');
+    }
+
+    lines.push(`| ID | Name | State | Start | End |`);
+    lines.push(`|----|------|-------|-------|-----|`);
+    for (const s of sprints) {
+        const start = s.startDate ? formatVersionDate(s.startDate) : '-';
+        const end = s.endDate ? formatVersionDate(s.endDate) : '-';
+        lines.push(`| ${s.id} | ${s.name} | ${s.state} | ${start} | ${end} |`);
     }
 
     return lines.join('\n');

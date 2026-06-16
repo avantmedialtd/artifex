@@ -101,6 +101,11 @@ interface JiraOptions {
     jql?: string;
     time?: string;
     started?: string;
+    above?: string;
+    below?: string;
+    sprint?: string;
+    board?: string;
+    state?: string;
 }
 
 /**
@@ -192,6 +197,10 @@ COMMANDS:
   move <issue-key>          Move issue to another project/type (async)
   bulk <action>             Bulk edit/transition/delete issues by JQL (async)
   worklog <action>          Log work: add/list/update/delete
+  rank <issue-key>          Reorder in the backlog (--above/--below) [Jira Software]
+  sprint <action>           Move issue into a sprint or to the backlog [Jira Software]
+  boards                    List boards [Jira Software]
+  sprints --board <id>      List a board's sprints [Jira Software]
 
 LINK COMMANDS:
   link <issue-key>          Link two issues
@@ -311,6 +320,14 @@ WORKLOG OPTIONS:
   --time <duration>         Time spent, e.g. "2h", "30m" (required for add)
   --comment "<text>"        Worklog comment (rendered as ADF)
   --started "<timestamp>"   Start time (yyyy-MM-ddTHH:mm:ss.SSS+0000; defaults to now)
+
+AGILE OPTIONS (Jira Software):
+  --above <issue-key>       Rank the issue before this one (rank)
+  --below <issue-key>       Rank the issue after this one (rank)
+  --sprint <id>             Target sprint id (sprint add)
+  --board <id>              Board id (sprints)
+  --project <key>           Restrict boards to a project (boards)
+  --state <s>               Sprint states, e.g. future,active,closed (sprints)
 
 EXAMPLES:
   af jira get PROJ-123
@@ -1174,6 +1191,85 @@ export async function handleJira(args: string[]): Promise<number> {
                     console.error('Usage: af jira worklog <add|list|update|delete> <issue-key>');
                     return 1;
                 }
+                break;
+            }
+
+            case 'rank': {
+                const issueKey = subArgs[0];
+                if (!issueKey || (!options.above && !options.below)) {
+                    error('Error: Issue key and --above or --below required');
+                    console.error('Usage: af jira rank <issue-key> --above <key> | --below <key>');
+                    return 1;
+                }
+                await client.rankIssue(issueKey, { above: options.above, below: options.below });
+                const rel = options.above ? `above ${options.above}` : `below ${options.below}`;
+                fmt.output(
+                    json
+                        ? {
+                              success: true,
+                              key: issueKey,
+                              above: options.above,
+                              below: options.below,
+                          }
+                        : fmt.formatSuccess(`Ranked ${fmt.issueLink(issueKey)} ${rel}`),
+                    json,
+                );
+                break;
+            }
+
+            case 'sprint': {
+                const action = subArgs[0];
+                const issueKey = subArgs[1];
+                if (action === 'add') {
+                    if (!issueKey || !options.sprint) {
+                        error('Error: Issue key and --sprint required');
+                        console.error('Usage: af jira sprint add <issue-key> --sprint <sprint-id>');
+                        return 1;
+                    }
+                    await client.moveIssueToSprint(options.sprint, issueKey);
+                    fmt.output(
+                        json
+                            ? { success: true, key: issueKey, sprint: options.sprint }
+                            : fmt.formatSuccess(
+                                  `Added ${fmt.issueLink(issueKey)} to sprint ${options.sprint}`,
+                              ),
+                        json,
+                    );
+                } else if (action === 'remove') {
+                    if (!issueKey) {
+                        error(
+                            'Error: Issue key required. Usage: af jira sprint remove <issue-key>',
+                        );
+                        return 1;
+                    }
+                    await client.moveIssueToBacklog(issueKey);
+                    fmt.output(
+                        json
+                            ? { success: true, key: issueKey, sprint: null }
+                            : fmt.formatSuccess(`Moved ${fmt.issueLink(issueKey)} to the backlog`),
+                        json,
+                    );
+                } else {
+                    error('Error: sprint requires an action: add | remove');
+                    console.error('Usage: af jira sprint <add|remove> <issue-key> [--sprint <id>]');
+                    return 1;
+                }
+                break;
+            }
+
+            case 'boards': {
+                const boards = await client.getBoards({ projectKeyOrId: options.project });
+                fmt.output(json ? boards : fmt.formatBoards(boards), json);
+                break;
+            }
+
+            case 'sprints': {
+                if (!options.board) {
+                    error('Error: --board required. Usage: af jira sprints --board <board-id>');
+                    return 1;
+                }
+                const sprints = await client.getSprints(options.board, { state: options.state });
+                fmt.output(json ? sprints : fmt.formatSprints(options.board, sprints), json);
                 break;
             }
 

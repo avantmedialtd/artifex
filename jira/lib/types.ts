@@ -113,6 +113,23 @@ export interface JiraEditMetaResponse {
     fields: Record<string, JiraTransitionField>;
 }
 
+// Agile API (/rest/agile/1.0) entities.
+export interface JiraBoard {
+    id: number;
+    name: string;
+    type: string;
+}
+
+export interface JiraSprint {
+    id: number;
+    name: string;
+    state: string;
+    startDate?: string;
+    endDate?: string;
+    originBoardId?: number;
+    goal?: string;
+}
+
 // Bulk operations are asynchronous: a submit returns a taskId to poll.
 export interface BulkTaskSubmitResponse {
     taskId: string;
