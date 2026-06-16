@@ -70,10 +70,25 @@ export interface JiraComment {
     updated: string;
 }
 
+export interface JiraTransitionField {
+    required: boolean;
+    name: string;
+    schema?: {
+        type: string;
+        items?: string;
+        custom?: string;
+    };
+    operations?: string[];
+    allowedValues?: unknown[];
+}
+
 export interface JiraTransition {
     id: string;
     name: string;
     to: JiraStatus;
+    // Present when transitions are fetched with `?expand=transitions.fields`.
+    hasScreen?: boolean;
+    fields?: Record<string, JiraTransitionField>;
 }
 
 export interface JiraIssueLinkType {

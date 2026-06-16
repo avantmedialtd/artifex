@@ -18,6 +18,31 @@ async function resolveShowFields(flag: string | undefined): Promise<CustomFieldD
 }
 
 /**
+ * Parse repeatable `--field name=value` pairs into a raw fields object for a
+ * transition screen. Values that parse as JSON are used as-is (so callers can
+ * pass `{"id":"3"}` or `["a","b"]`); everything else is kept as a string.
+ * Returns undefined when no pairs are present.
+ */
+function parseTransitionFields(pairs: string[] | undefined): Record<string, unknown> | undefined {
+    if (!pairs || pairs.length === 0) return undefined;
+    const fields: Record<string, unknown> = {};
+    for (const pair of pairs) {
+        const eq = pair.indexOf('=');
+        if (eq === -1) {
+            throw new Error(`Invalid --field "${pair}" (expected name=value)`);
+        }
+        const name = pair.slice(0, eq).trim();
+        const raw = pair.slice(eq + 1);
+        try {
+            fields[name] = JSON.parse(raw);
+        } catch {
+            fields[name] = raw;
+        }
+    }
+    return fields;
+}
+
+/**
  * Command options for Jira CLI
  */
 interface JiraOptions {
@@ -29,6 +54,8 @@ interface JiraOptions {
     priority?: string;
     labels?: string;
     to?: string;
+    resolution?: string;
+    comment?: string;
     add?: string;
     limit?: number;
     parent?: string;
@@ -224,6 +251,9 @@ COMMENT OPTIONS:
 
 TRANSITION OPTIONS:
   --to "<status>"           Target status name (required)
+  --resolution <name>       Set the resolution (e.g., Fixed, "Won't Do")
+  --comment "<text>"        Add a comment as part of the transition
+  --field <name>=<value>    Set a transition-screen field (repeatable; value may be JSON)
 
 ASSIGN OPTIONS:
   --to "<email>"            User email (use "none" to unassign)
@@ -246,6 +276,8 @@ EXAMPLES:
   af jira update PROJ-123 --fix-version "v2.0.0" --affected-version "v1.0.0"
   af jira comment PROJ-123 --add "Working on this"
   af jira transition PROJ-123 --to "In Progress"
+  af jira transition PROJ-123 --to Done --resolution Fixed --comment "Shipped in v1.2"
+  af jira transitions PROJ-123
   af jira assign PROJ-123 --to user@example.com
   af jira link PROJ-123 --to PROJ-456
   af jira link PROJ-123 --to PROJ-456 --type "Relates"
@@ -504,7 +536,11 @@ export async function handleJira(args: string[]): Promise<number> {
                     console.error('Usage: af jira transition <issue-key> --to "Status Name"');
                     return 1;
                 }
-                await client.transitionIssue(issueKey, options.to);
+                await client.transitionIssue(issueKey, options.to, {
+                    resolution: options.resolution,
+                    comment: options.comment,
+                    fields: parseTransitionFields(options.field),
+                });
                 fmt.output(
                     json
                         ? { success: true, key: issueKey, status: options.to }
@@ -522,7 +558,9 @@ export async function handleJira(args: string[]): Promise<number> {
                     error('Error: Issue key required. Usage: af jira transitions <issue-key>');
                     return 1;
                 }
-                const { transitions } = await client.getTransitions(issueKey);
+                const { transitions } = await client.getTransitions(issueKey, {
+                    expandFields: true,
+                });
                 fmt.output(json ? transitions : fmt.formatTransitions(issueKey, transitions), json);
                 break;
             }

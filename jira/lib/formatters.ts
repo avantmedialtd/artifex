@@ -342,6 +342,26 @@ export function formatTransitions(issueKey: string, transitions: JiraTransition[
         return lines.join('\n');
     }
 
+    // When fetched with screen expansion, surface which transitions present a
+    // screen and which fields they require so callers know what to supply.
+    const hasScreenInfo = transitions.some(
+        t => t.fields !== undefined || t.hasScreen !== undefined,
+    );
+
+    if (hasScreenInfo) {
+        lines.push(`| Transition | Target Status | Screen | Required Fields |`);
+        lines.push(`|------------|---------------|--------|-----------------|`);
+        for (const t of transitions) {
+            const fields = t.fields ?? {};
+            const required = Object.entries(fields)
+                .filter(([, meta]) => meta.required)
+                .map(([id, meta]) => meta.name || id);
+            const screen = t.hasScreen || Object.keys(fields).length > 0 ? 'Yes' : 'No';
+            lines.push(`| ${t.name} | ${t.to.name} | ${screen} | ${required.join(', ') || '-'} |`);
+        }
+        return lines.join('\n');
+    }
+
     lines.push(`| Transition | Target Status |`);
     lines.push(`|------------|---------------|`);
 

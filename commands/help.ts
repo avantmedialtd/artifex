@@ -76,6 +76,7 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af jira list PROJ --limit 20     # List project issues',
             'af jira search "status = Open"   # Search with JQL',
             'af jira create --project PROJ --type Bug --summary "Title"',
+            'af jira transition PROJ-123 --to Done --resolution Fixed --comment "Shipped"',
             'af jira link PROJ-123 --to PROJ-456 --type "Blocks"',
             'af jira unlink PROJ-123 --from PROJ-456',
             'af jira remote-link PROJ-123     # List remote links',

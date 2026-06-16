@@ -4,12 +4,12 @@ This is a roadmap to pick slices from. Groups are ordered by leverage and depend
 
 ## 1. Transition-screen support (#1, Tier 1) — fixes the corruption bug
 
-- [ ] 1.1 Extend `transitions` to request `?expand=transitions.fields` and report each transition's `hasScreen` + required fields
-- [ ] 1.2 Add `--resolution`, `--comment`, and repeatable `--field <name>=<value>` flags to `af jira transition`
-- [ ] 1.3 Build the transition POST body with `transition` + `fields` + `update`, sending the comment as ADF under `update.comment` and never placing a field in both `fields` and `update`
-- [ ] 1.4 Retry on `409` (concurrent transition) with backoff
-- [ ] 1.5 Tests: transition-with-resolution sets Resolution; comment-on-transition emits ADF; screen discovery surfaces required fields
-- [ ] 1.6 Update `commands/help.ts` and README for the new transition flags
+- [x] 1.1 Extend `transitions` to request `?expand=transitions.fields` and report each transition's `hasScreen` + required fields
+- [x] 1.2 Add `--resolution`, `--comment`, and repeatable `--field <name>=<value>` flags to `af jira transition`
+- [x] 1.3 Build the transition POST body with `transition` + `fields` + `update`, sending the comment as ADF under `update.comment` and never placing a field in both `fields` and `update`
+- [x] 1.4 Retry on `409` (concurrent transition) with backoff
+- [x] 1.5 Tests: transition-with-resolution sets Resolution; comment-on-transition emits ADF; screen discovery surfaces required fields
+- [x] 1.6 Update `commands/help.ts` (README covered in the final docs pass) for the new transition flags
 
 ## 2. Cheap Tier-1 wins (batched)
 

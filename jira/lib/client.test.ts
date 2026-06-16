@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createIssue, updateIssue, getFields, getCreateMeta } from './client.ts';
+import {
+    createIssue,
+    updateIssue,
+    getFields,
+    getCreateMeta,
+    getTransitions,
+    transitionIssue,
+} from './client.ts';
 
 const BASE_URL = 'https://test.atlassian.net';
 
@@ -157,6 +164,86 @@ describe('jira client', () => {
             expect(String(fetchMock.mock.calls[1]![0])).toBe(
                 `${BASE_URL}/rest/api/3/issue/createmeta/PROJ/issuetypes/10001`,
             );
+        });
+    });
+
+    describe('getTransitions', () => {
+        it('requests screen fields when expandFields is set', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ transitions: [] }));
+
+            await getTransitions('PROJ-3', { expandFields: true });
+
+            const [url] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(
+                `${BASE_URL}/rest/api/3/issue/PROJ-3/transitions?expand=transitions.fields`,
+            );
+        });
+
+        it('omits the expand query by default', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ transitions: [] }));
+
+            await getTransitions('PROJ-3');
+
+            const [url] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-3/transitions`);
+        });
+    });
+
+    describe('transitionIssue', () => {
+        function mockTransitionLookup(): void {
+            fetchMock.mockResolvedValueOnce(
+                mockJsonResponse({
+                    transitions: [
+                        { id: '5', name: 'Done', to: { name: 'Done' } },
+                        { id: '7', name: 'In Review', to: { name: 'In Review' } },
+                    ],
+                }),
+            );
+        }
+
+        it('sends the resolution in fields alongside the transition id', async () => {
+            mockTransitionLookup();
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await transitionIssue('PROJ-1', 'Done', { resolution: 'Fixed' });
+
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+            const [postUrl, postInit] = fetchMock.mock.calls[1]!;
+            expect(String(postUrl)).toContain('/issue/PROJ-1/transitions');
+            const body = JSON.parse((postInit as RequestInit).body as string);
+            expect(body.transition).toEqual({ id: '5' });
+            expect(body.fields.resolution).toEqual({ name: 'Fixed' });
+            expect(body.update).toBeUndefined();
+        });
+
+        it('emits the comment as ADF under update.comment', async () => {
+            mockTransitionLookup();
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await transitionIssue('PROJ-2', 'In Review', { comment: 'Ready for QA' });
+
+            const [, postInit] = fetchMock.mock.calls[1]!;
+            const body = JSON.parse((postInit as RequestInit).body as string);
+            expect(body.update.comment[0].add.body.type).toBe('doc');
+            expect(JSON.stringify(body.update.comment[0].add.body)).toContain('Ready for QA');
+            expect(body.fields).toBeUndefined();
+        });
+
+        it('retries on 409 conflict then succeeds', async () => {
+            mockTransitionLookup();
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ errorMessages: ['conflict'] }, 409));
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await transitionIssue('PROJ-4', 'Done');
+
+            // GET transitions + POST(409) + POST(204)
+            expect(fetchMock).toHaveBeenCalledTimes(3);
+        });
+
+        it('throws with available transitions when the name does not match', async () => {
+            mockTransitionLookup();
+
+            await expect(transitionIssue('PROJ-5', 'Nope')).rejects.toThrow(/Available: Done/);
         });
     });
 });

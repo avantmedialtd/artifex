@@ -25,6 +25,23 @@ import type { JiraFieldCatalogEntry, JiraCreateMetaResponse } from './fields/cod
 // Re-export ADF converters for backward compatibility
 export { textToAdf, adfToText };
 
+/**
+ * Error thrown for non-2xx Jira responses. Carries the HTTP status so callers
+ * can react to specific codes (e.g. retry a transition on 409 Conflict).
+ */
+export class JiraApiError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+        super(message);
+        this.name = 'JiraApiError';
+        this.status = status;
+    }
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Lazy config loading - only fetched when first API call is made
 let _config: Config | null = null;
 
@@ -67,7 +84,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
         } catch {
             // Use default error message
         }
-        throw new Error(errorMessage);
+        throw new JiraApiError(errorMessage, response.status);
     }
 
     // Handle 204 No Content
@@ -232,11 +249,28 @@ export async function addComment(issueKey: string, text: string): Promise<JiraCo
 }
 
 // Transitions
-export async function getTransitions(issueKey: string): Promise<JiraTransitionsResponse> {
-    return request<JiraTransitionsResponse>(`/issue/${issueKey}/transitions`);
+export async function getTransitions(
+    issueKey: string,
+    options: { expandFields?: boolean } = {},
+): Promise<JiraTransitionsResponse> {
+    const query = options.expandFields ? '?expand=transitions.fields' : '';
+    return request<JiraTransitionsResponse>(`/issue/${issueKey}/transitions${query}`);
 }
 
-export async function transitionIssue(issueKey: string, transitionName: string): Promise<void> {
+export interface TransitionOptions {
+    // Sets the Resolution field on the transition screen (e.g. "Fixed", "Won't Do").
+    resolution?: string;
+    // Added as a comment in the same request, rendered as ADF.
+    comment?: string;
+    // Raw transition-screen fields merged into the `fields` body (advanced).
+    fields?: Record<string, unknown>;
+}
+
+export async function transitionIssue(
+    issueKey: string,
+    transitionName: string,
+    options: TransitionOptions = {},
+): Promise<void> {
     const { transitions } = await getTransitions(issueKey);
     const transition = transitions.find(t => t.name.toLowerCase() === transitionName.toLowerCase());
 
@@ -245,10 +279,42 @@ export async function transitionIssue(issueKey: string, transitionName: string):
         throw new Error(`Transition "${transitionName}" not found. Available: ${available}`);
     }
 
-    await request(`/issue/${issueKey}/transitions`, {
-        method: 'POST',
-        body: JSON.stringify({ transition: { id: transition.id } }),
-    });
+    // A field must appear in either `fields` or `update`, never both. The
+    // resolution and any raw screen fields go in `fields`; the comment goes
+    // in `update.comment` as ADF.
+    const body: {
+        transition: { id: string };
+        fields?: Record<string, unknown>;
+        update?: Record<string, unknown>;
+    } = { transition: { id: transition.id } };
+
+    const fields: Record<string, unknown> = { ...options.fields };
+    if (options.resolution) {
+        fields.resolution = { name: options.resolution };
+    }
+    if (Object.keys(fields).length > 0) {
+        body.fields = fields;
+    }
+    if (options.comment) {
+        body.update = { comment: [{ add: { body: textToAdf(options.comment) } }] };
+    }
+
+    // Jira returns 409 when another transition is already in flight; retry with backoff.
+    for (let attempt = 1; ; attempt++) {
+        try {
+            await request(`/issue/${issueKey}/transitions`, {
+                method: 'POST',
+                body: JSON.stringify(body),
+            });
+            return;
+        } catch (err) {
+            if (err instanceof JiraApiError && err.status === 409 && attempt < 3) {
+                await sleep(attempt * 250);
+                continue;
+            }
+            throw err;
+        }
+    }
 }
 
 // Assignment
