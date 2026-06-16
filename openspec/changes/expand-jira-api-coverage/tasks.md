@@ -23,11 +23,11 @@ This is a roadmap to pick slices from. Groups are ordered by leverage and depend
 
 ## 3. Async task-poller, then move (#2, Tier 2)
 
-- [ ] 3.1 Build a reusable async bulk task-poller: submit → capture `taskId` → poll `GET /rest/api/3/bulk/queue/{taskId}` to a terminal state, handling unknown/non-terminal statuses defensively
-- [ ] 3.2 Add `af jira move <key> --to-project <key> [--type <name>]` calling `POST /rest/api/3/bulk/issues/move`
-- [ ] 3.3 Build `targetToSourcesMapping` with the `"PROJECT-KEY,<issueTypeId>"` descriptor key and set/auto-suggest `inferStatusDefaults` (or an explicit `targetStatus` mapping)
-- [ ] 3.4 Tests: move polls the task to completion; cross-workflow move infers status defaults
-- [ ] 3.5 Update `commands/help.ts` and README for `move`
+- [x] 3.1 Build a reusable async bulk task-poller: submit → capture `taskId` → poll `GET /rest/api/3/bulk/queue/{taskId}` to a terminal state, handling unknown/non-terminal statuses defensively
+- [x] 3.2 Add `af jira move <key> --to-project <key> [--type <name>]` calling `POST /rest/api/3/bulk/issues/move`
+- [x] 3.3 Build `targetToSourcesMapping` with the `"PROJECT-KEY,<issueTypeId>"` descriptor key and set/auto-suggest `inferStatusDefaults` (or an explicit `targetStatus` mapping)
+- [x] 3.4 Tests: move polls the task to completion; cross-workflow move infers status defaults
+- [x] 3.5 Update `commands/help.ts` (README covered in the final docs pass) for `move`
 
 ## 4. Bulk operations over JQL (#6, Tier 2) — reuses the poller
 

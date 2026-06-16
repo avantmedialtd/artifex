@@ -102,6 +102,25 @@ export interface JiraEditMetaResponse {
     fields: Record<string, JiraTransitionField>;
 }
 
+// Bulk operations are asynchronous: a submit returns a taskId to poll.
+export interface BulkTaskSubmitResponse {
+    taskId: string;
+}
+
+export interface BulkTaskStatus {
+    taskId: string;
+    // Observed values include ENQUEUED / RUNNING / COMPLETE; the failure enum is
+    // not fully documented, so callers match defensively on the string.
+    status: string;
+    progressPercent?: number;
+    processedAccessibleIssues?: Array<string | number>;
+    invalidOrInaccessibleIssueCount?: number;
+    totalIssueCount?: number;
+    created?: number;
+    started?: number;
+    updated?: number;
+}
+
 export interface JiraIssueLinkType {
     id: string;
     name: string;

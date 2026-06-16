@@ -67,6 +67,7 @@ interface JiraOptions {
     priority?: string;
     labels?: string;
     to?: string;
+    'to-project'?: string;
     resolution?: string;
     comment?: string;
     add?: string;
@@ -185,6 +186,7 @@ COMMANDS:
   types <project>           List issue types for a project
   fields                    List custom fields (discovery for --field flags)
   editmeta <issue-key>      List editable fields for an issue
+  move <issue-key>          Move issue to another project/type (async)
 
 LINK COMMANDS:
   link <issue-key>          Link two issues
@@ -290,6 +292,10 @@ TRANSITION OPTIONS:
 
 ASSIGN OPTIONS:
   --to "<email>"            User email (use "none" to unassign)
+
+MOVE OPTIONS:
+  --to-project <KEY>        Destination project key (required)
+  --type <name>             Target issue type (defaults to the current type)
 
 EXAMPLES:
   af jira get PROJ-123
@@ -960,6 +966,30 @@ export async function handleJira(args: string[]): Promise<number> {
                 }
                 const meta = await client.getEditMeta(issueKey);
                 fmt.output(json ? meta : fmt.formatEditMeta(issueKey, meta), json);
+                break;
+            }
+
+            case 'move': {
+                const issueKey = subArgs[0];
+                const toProject = options['to-project'];
+                if (!issueKey || !toProject) {
+                    error('Error: Issue key and --to-project required');
+                    console.error(
+                        'Usage: af jira move <issue-key> --to-project <KEY> [--type <name>]',
+                    );
+                    return 1;
+                }
+                const task = await client.moveIssue(issueKey, toProject, { type: options.type });
+                fmt.output(
+                    json
+                        ? { success: true, key: issueKey, toProject, type: options.type, task }
+                        : fmt.formatSuccess(
+                              `Moved ${fmt.issueLink(issueKey)} to ${toProject}` +
+                                  `${options.type ? ` as ${options.type}` : ''} ` +
+                                  `(task ${task.taskId}: ${task.status})`,
+                          ),
+                    json,
+                );
                 break;
             }
 

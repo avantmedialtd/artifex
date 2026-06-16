@@ -21,6 +21,8 @@ import type {
     JiraRemoteLink,
     JiraVisibility,
     JiraEditMetaResponse,
+    BulkTaskSubmitResponse,
+    BulkTaskStatus,
 } from './types.ts';
 import type { JiraFieldCatalogEntry, JiraCreateMetaResponse } from './fields/codec-types.ts';
 
@@ -314,6 +316,87 @@ export async function addServiceDeskComment(
 // Edit metadata — the per-issue, edit-context twin of createmeta.
 export async function getEditMeta(issueKey: string): Promise<JiraEditMetaResponse> {
     return request<JiraEditMetaResponse>(`/issue/${issueKey}/editmeta`);
+}
+
+// Bulk operations (async). All submits return a taskId; poll /bulk/queue/{taskId}.
+const BULK_FAILURE_STATES = ['FAIL', 'DEAD', 'CANCEL'];
+
+export async function getBulkTaskStatus(taskId: string): Promise<BulkTaskStatus> {
+    return request<BulkTaskStatus>(`/bulk/queue/${taskId}`);
+}
+
+/**
+ * Poll a bulk task until it reaches a terminal state. Resolves on success,
+ * throws on a failure/cancelled state, and throws if it never settles. The
+ * failure-state enum is not fully documented, so matching is substring-based.
+ */
+export async function pollBulkTask(
+    taskId: string,
+    options: { intervalMs?: number; maxAttempts?: number } = {},
+): Promise<BulkTaskStatus> {
+    const interval = options.intervalMs ?? 1000;
+    const maxAttempts = options.maxAttempts ?? 120;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const status = await getBulkTaskStatus(taskId);
+        const s = (status.status ?? '').toUpperCase();
+        if (s.includes('COMPLETE')) return status;
+        if (BULK_FAILURE_STATES.some(f => s.includes(f))) {
+            throw new Error(`Bulk task ${taskId} ended with status ${status.status}`);
+        }
+        await sleep(interval);
+    }
+    throw new Error(`Bulk task ${taskId} did not complete after ${maxAttempts} polls`);
+}
+
+export async function submitBulkMove(
+    mapping: Record<string, unknown>,
+    sendBulkNotification = false,
+): Promise<string> {
+    const res = await request<BulkTaskSubmitResponse>('/bulk/issues/move', {
+        method: 'POST',
+        body: JSON.stringify({ sendBulkNotification, targetToSourcesMapping: mapping }),
+    });
+    return res.taskId;
+}
+
+/**
+ * Move one issue to another project (and optionally a new issue type) via the
+ * async bulk move endpoint. The target type defaults to the issue's current
+ * type. Status/field defaults are inferred so callers need not hand-map them.
+ */
+export async function moveIssue(
+    issueKey: string,
+    toProjectKey: string,
+    options: { type?: string; intervalMs?: number; maxAttempts?: number } = {},
+): Promise<BulkTaskStatus> {
+    let typeName = options.type;
+    if (!typeName) {
+        const issue = await getIssue(issueKey);
+        typeName = issue.fields.issuetype.name;
+    }
+    const types = await getIssueTypes(toProjectKey);
+    const match = types.find(t => t.name.toLowerCase() === typeName.toLowerCase());
+    if (!match) {
+        const available = types.map(t => t.name).join(', ');
+        throw new Error(
+            `Issue type "${typeName}" not found in project ${toProjectKey}. Available: ${available}`,
+        );
+    }
+    // Mapping key is the target descriptor "PROJECT-KEY,<issueTypeId>".
+    const mapping = {
+        [`${toProjectKey},${match.id}`]: {
+            issueIdsOrKeys: [issueKey],
+            inferStatusDefaults: true,
+            inferFieldDefaults: true,
+            inferSubtaskTypeDefault: true,
+            inferClassificationDefaults: true,
+        },
+    };
+    const taskId = await submitBulkMove(mapping);
+    return pollBulkTask(taskId, {
+        intervalMs: options.intervalMs,
+        maxAttempts: options.maxAttempts,
+    });
 }
 
 // Transitions

@@ -79,6 +79,7 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af jira transition PROJ-123 --to Done --resolution Fixed --comment "Shipped"',
             'af jira update PROJ-123 --parent PROJ-100   # Reparent / set epic',
             'af jira editmeta PROJ-123                    # Editable fields for an issue',
+            'af jira move PROJ-123 --to-project NEWPROJ --type Story   # Async move',
             'af jira link PROJ-123 --to PROJ-456 --type "Blocks"',
             'af jira unlink PROJ-123 --from PROJ-456',
             'af jira remote-link PROJ-123     # List remote links',

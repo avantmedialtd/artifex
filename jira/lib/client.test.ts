@@ -10,6 +10,8 @@ import {
     updateComment,
     deleteComment,
     getEditMeta,
+    moveIssue,
+    pollBulkTask,
 } from './client.ts';
 
 const BASE_URL = 'https://test.atlassian.net';
@@ -320,6 +322,65 @@ describe('jira client', () => {
 
             const [url] = fetchMock.mock.calls[0]!;
             expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/editmeta`);
+        });
+    });
+
+    describe('pollBulkTask', () => {
+        it('resolves when the task reaches a COMPLETE state', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ taskId: '1', status: 'RUNNING' }));
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ taskId: '1', status: 'COMPLETE' }));
+
+            const result = await pollBulkTask('1', { intervalMs: 0 });
+
+            expect(result.status).toBe('COMPLETE');
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+        });
+
+        it('throws when the task reaches a failure state', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ taskId: '2', status: 'FAILED' }));
+
+            await expect(pollBulkTask('2', { intervalMs: 0 })).rejects.toThrow(/FAILED/);
+        });
+    });
+
+    describe('moveIssue', () => {
+        it('resolves the target type, submits a bulk move, and polls to completion', async () => {
+            // getIssueTypes(NEWPROJ)
+            fetchMock.mockResolvedValueOnce(
+                mockJsonResponse({
+                    issueTypes: [{ id: '10001', name: 'Story', subtask: false }],
+                }),
+            );
+            // POST /bulk/issues/move
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ taskId: '42' }, 201));
+            // GET /bulk/queue/42
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ taskId: '42', status: 'COMPLETE' }));
+
+            const result = await moveIssue('PROJ-1', 'NEWPROJ', { type: 'Story', intervalMs: 0 });
+
+            expect(result.status).toBe('COMPLETE');
+            const [moveUrl, moveInit] = fetchMock.mock.calls[1]!;
+            expect(String(moveUrl)).toBe(`${BASE_URL}/rest/api/3/bulk/issues/move`);
+            const body = JSON.parse((moveInit as RequestInit).body as string);
+            expect(body.targetToSourcesMapping['NEWPROJ,10001'].issueIdsOrKeys).toEqual(['PROJ-1']);
+            expect(body.targetToSourcesMapping['NEWPROJ,10001'].inferStatusDefaults).toBe(true);
+            expect(String(fetchMock.mock.calls[2]![0])).toBe(
+                `${BASE_URL}/rest/api/3/bulk/queue/42`,
+            );
+        });
+
+        it('throws when the move task fails', async () => {
+            fetchMock.mockResolvedValueOnce(
+                mockJsonResponse({
+                    issueTypes: [{ id: '10001', name: 'Story', subtask: false }],
+                }),
+            );
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ taskId: '7' }, 201));
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ taskId: '7', status: 'FAILED' }));
+
+            await expect(
+                moveIssue('PROJ-1', 'NEWPROJ', { type: 'Story', intervalMs: 0 }),
+            ).rejects.toThrow(/FAILED/);
         });
     });
 });
