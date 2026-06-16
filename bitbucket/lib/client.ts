@@ -46,10 +46,16 @@ import {
     bbRequestText as requestText,
 } from './request.ts';
 import type {
+    BitbucketAccount,
+    BitbucketActivityEntry,
+    BitbucketBranch,
     BitbucketComment,
+    BitbucketCommit,
+    BitbucketCommitStatus,
     BitbucketCreateCommentRequest,
     BitbucketCreatePullRequestRequest,
     BitbucketCreateTaskRequest,
+    BitbucketDiffStatEntry,
     BitbucketMergeRequest,
     BitbucketPipeline,
     BitbucketPipelineState,
@@ -58,6 +64,8 @@ import type {
     BitbucketPullRequest,
     BitbucketPullRequestState,
     BitbucketRepository,
+    BitbucketSrcEntry,
+    BitbucketTag,
     BitbucketTask,
     BitbucketTaskState,
     BitbucketTriggerPipelineRequest,
@@ -619,4 +627,308 @@ export async function listMembers(
         const nick = m.user.nickname?.toLowerCase() ?? '';
         return name.includes(needle) || nick.includes(needle);
     });
+}
+
+// --- Read surface: account ----------------------------------------------
+
+/**
+ * The authenticated account (`GET /user`). Requires the token's Account read
+ * scope; a 403 is rewritten with a scope hint since that is the common cause.
+ */
+export async function getCurrentUser(): Promise<BitbucketAccount> {
+    try {
+        return await request<BitbucketAccount>(`${API_BASE}/user`);
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // The shared request layer surfaces Bitbucket's error envelope, whose 403
+        // body reads "…lack one or more required privilege scopes." (no "403"), so
+        // match the scope wording as well as the bare HTTP status fallback.
+        if (msg.includes('403') || /forbidden|privilege scope|scope/i.test(msg)) {
+            throw new Error(
+                'whoami failed: the Bitbucket token lacks the Account read scope. ' +
+                    'Grant "Account: Read" on the workspace API token or app password ' +
+                    `(https://bitbucket.org/account/settings/app-passwords/).\nUnderlying error: ${msg}`,
+            );
+        }
+        throw err;
+    }
+}
+
+// --- Read surface: repositories -----------------------------------------
+
+export interface ListRepositoriesOptions {
+    query?: string;
+    role?: string;
+    sort?: string;
+}
+
+export async function listRepositories(
+    workspace: string,
+    opts: ListRepositoriesOptions = {},
+): Promise<BitbucketRepository[]> {
+    const url =
+        `${API_BASE}/repositories/${encodeURIComponent(workspace)}` +
+        buildQuery({ q: opts.query, role: opts.role, sort: opts.sort });
+    const out: BitbucketRepository[] = [];
+    for await (const r of paginate<BitbucketRepository>(url)) out.push(r);
+    return out;
+}
+
+// --- Read surface: refs (branches & tags) -------------------------------
+
+export interface ListRefsOptions {
+    query?: string;
+    sort?: string;
+}
+
+export async function listBranches(
+    workspace: string,
+    repo: string,
+    opts: ListRefsOptions = {},
+): Promise<BitbucketBranch[]> {
+    const url =
+        `${repoUrl(workspace, repo)}/refs/branches` +
+        buildQuery({ q: opts.query, sort: opts.sort });
+    const out: BitbucketBranch[] = [];
+    for await (const b of paginate<BitbucketBranch>(url)) out.push(b);
+    return out;
+}
+
+export async function getBranch(
+    workspace: string,
+    repo: string,
+    name: string,
+): Promise<BitbucketBranch> {
+    return request<BitbucketBranch>(
+        `${repoUrl(workspace, repo)}/refs/branches/${encodeURIComponent(name)}`,
+    );
+}
+
+export async function listTags(
+    workspace: string,
+    repo: string,
+    opts: ListRefsOptions = {},
+): Promise<BitbucketTag[]> {
+    const url =
+        `${repoUrl(workspace, repo)}/refs/tags` + buildQuery({ q: opts.query, sort: opts.sort });
+    const out: BitbucketTag[] = [];
+    for await (const t of paginate<BitbucketTag>(url)) out.push(t);
+    return out;
+}
+
+export async function getTag(workspace: string, repo: string, name: string): Promise<BitbucketTag> {
+    return request<BitbucketTag>(
+        `${repoUrl(workspace, repo)}/refs/tags/${encodeURIComponent(name)}`,
+    );
+}
+
+/**
+ * Resolve a ref to a commit hash *only when it contains a slash*.
+ *
+ * In path-positional endpoints (`/src/{ref}/{path}`, `/commits/{ref}`,
+ * `/diff/{spec}`) Bitbucket Cloud treats a `%2F`-encoded slash as a path
+ * delimiter and resolves the wrong ref (BCLOUD-20223). Slash-free refs (`main`,
+ * `v1.2.0`, a sha) are safe in those positions and are returned unchanged with
+ * no extra request; slashed refs (`feature/x`) are looked up via the *leaf*
+ * `refs/branches|tags/{name}` endpoints (which DO accept `%2F`) and replaced
+ * with their target hash. Unknown refs are returned as-is so the API surfaces a
+ * clear 404.
+ */
+async function resolveRefToHash(workspace: string, repo: string, ref: string): Promise<string> {
+    if (!ref.includes('/')) return ref;
+    try {
+        const branch = await getBranch(workspace, repo, ref);
+        if (branch.target?.hash) return branch.target.hash;
+    } catch {
+        /* not a branch — fall through to tag */
+    }
+    try {
+        const tag = await getTag(workspace, repo, ref);
+        if (tag.target?.hash) return tag.target.hash;
+    } catch {
+        /* not a tag — give up, let the downstream call 404 */
+    }
+    return ref;
+}
+
+/**
+ * Resolve a revspec for the diff/patch endpoints. Splits on `...`/`..` (git
+ * refnames cannot contain consecutive dots, so this is unambiguous) and
+ * hash-resolves each slashed side. A bare sha or slash-free ref incurs no extra
+ * request.
+ */
+async function resolveSpec(workspace: string, repo: string, spec: string): Promise<string> {
+    const sep = spec.includes('...') ? '...' : spec.includes('..') ? '..' : null;
+    if (!sep) return resolveRefToHash(workspace, repo, spec);
+    const [a, b] = spec.split(sep);
+    const [ra, rb] = await Promise.all([
+        resolveRefToHash(workspace, repo, a ?? ''),
+        resolveRefToHash(workspace, repo, b ?? ''),
+    ]);
+    return `${ra}${sep}${rb}`;
+}
+
+// --- Read surface: commits ----------------------------------------------
+
+export interface ListCommitsOptions {
+    branch?: string;
+    include?: string[];
+    exclude?: string[];
+    /** Stop draining pages once this many commits are collected. Default 25. */
+    limit?: number;
+}
+
+export async function listCommits(
+    workspace: string,
+    repo: string,
+    opts: ListCommitsOptions = {},
+): Promise<BitbucketCommit[]> {
+    // Defensive: never let an invalid limit defeat the cap and drain full history.
+    const limit = Number.isInteger(opts.limit) && (opts.limit as number) > 0 ? opts.limit! : 25;
+    const branchSeg = opts.branch
+        ? await resolveRefToHash(workspace, repo, opts.branch)
+        : undefined;
+    const base = branchSeg
+        ? `${repoUrl(workspace, repo)}/commits/${encodeURIComponent(branchSeg)}`
+        : `${repoUrl(workspace, repo)}/commits`;
+    const params = new URLSearchParams();
+    for (const inc of opts.include ?? []) params.append('include', inc);
+    for (const exc of opts.exclude ?? []) params.append('exclude', exc);
+    const qs = params.toString();
+    const url = qs ? `${base}?${qs}` : base;
+    const out: BitbucketCommit[] = [];
+    for await (const c of paginate<BitbucketCommit>(url)) {
+        out.push(c);
+        if (out.length >= limit) break;
+    }
+    return out;
+}
+
+export async function getCommit(
+    workspace: string,
+    repo: string,
+    sha: string,
+): Promise<BitbucketCommit> {
+    return request<BitbucketCommit>(
+        `${repoUrl(workspace, repo)}/commit/${encodeURIComponent(sha)}`,
+    );
+}
+
+// --- Read surface: diff / patch / diffstat (commit sha or revspec) -------
+
+/** Raw unified diff for a commit sha or a revspec such as `main..feature`. */
+export async function getDiff(workspace: string, repo: string, spec: string): Promise<string> {
+    const resolved = await resolveSpec(workspace, repo, spec);
+    return requestText(`${repoUrl(workspace, repo)}/diff/${encodeURIComponent(resolved)}`);
+}
+
+/** Mbox-style patch for a commit sha or a revspec. */
+export async function getPatch(workspace: string, repo: string, spec: string): Promise<string> {
+    const resolved = await resolveSpec(workspace, repo, spec);
+    return requestText(`${repoUrl(workspace, repo)}/patch/${encodeURIComponent(resolved)}`);
+}
+
+/** Per-file added/removed summary for a commit sha or a revspec. */
+export async function getDiffStat(
+    workspace: string,
+    repo: string,
+    spec: string,
+): Promise<BitbucketDiffStatEntry[]> {
+    const resolved = await resolveSpec(workspace, repo, spec);
+    const out: BitbucketDiffStatEntry[] = [];
+    for await (const d of paginate<BitbucketDiffStatEntry>(
+        `${repoUrl(workspace, repo)}/diffstat/${encodeURIComponent(resolved)}`,
+    )) {
+        out.push(d);
+    }
+    return out;
+}
+
+// --- Read surface: source (read & browse) -------------------------------
+
+/** Encode a repo-relative path: keep the slashes, encode each segment. */
+function encodePath(path: string): string {
+    return path.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+}
+
+/**
+ * Resolve the ref for a `/src/{ref}/…` request: fall back to the repository's
+ * main branch when omitted, and hash-resolve a slashed ref so the slash is not
+ * mis-read as a path delimiter (see `resolveRefToHash`).
+ */
+async function resolveRef(workspace: string, repo: string, ref?: string): Promise<string> {
+    if (!ref) {
+        const info = await getRepository(workspace, repo);
+        const main = info.mainbranch?.name;
+        if (!main) {
+            throw new Error('Could not resolve the repository main branch; pass --ref explicitly');
+        }
+        return main;
+    }
+    return resolveRefToHash(workspace, repo, ref);
+}
+
+export async function readSource(
+    workspace: string,
+    repo: string,
+    path: string,
+    ref?: string,
+): Promise<string> {
+    const resolved = await resolveRef(workspace, repo, ref);
+    return requestText(
+        `${repoUrl(workspace, repo)}/src/${encodeURIComponent(resolved)}/${encodePath(path)}`,
+    );
+}
+
+export interface BrowseSourceOptions {
+    ref?: string;
+    recursive?: boolean;
+}
+
+export async function browseSource(
+    workspace: string,
+    repo: string,
+    path: string,
+    opts: BrowseSourceOptions = {},
+): Promise<BitbucketSrcEntry[]> {
+    const resolved = await resolveRef(workspace, repo, opts.ref);
+    const base = `${repoUrl(workspace, repo)}/src/${encodeURIComponent(resolved)}/`;
+    const dir = path ? `${encodePath(path)}/` : '';
+    const url = `${base}${dir}` + buildQuery({ max_depth: opts.recursive ? 100 : undefined });
+    const out: BitbucketSrcEntry[] = [];
+    for await (const e of paginate<BitbucketSrcEntry>(url)) out.push(e);
+    return out;
+}
+
+// --- Read surface: PR activity & statuses -------------------------------
+
+export async function listPullRequestActivity(
+    workspace: string,
+    repo: string,
+    id: number,
+    opts: { limit?: number } = {},
+): Promise<BitbucketActivityEntry[]> {
+    const limit = Number.isInteger(opts.limit) && (opts.limit as number) > 0 ? opts.limit! : 25;
+    const out: BitbucketActivityEntry[] = [];
+    for await (const a of paginate<BitbucketActivityEntry>(
+        `${repoUrl(workspace, repo)}/pullrequests/${id}/activity`,
+    )) {
+        out.push(a);
+        if (out.length >= limit) break;
+    }
+    return out;
+}
+
+export async function listPullRequestStatuses(
+    workspace: string,
+    repo: string,
+    id: number,
+): Promise<BitbucketCommitStatus[]> {
+    const out: BitbucketCommitStatus[] = [];
+    for await (const s of paginate<BitbucketCommitStatus>(
+        `${repoUrl(workspace, repo)}/pullrequests/${id}/statuses`,
+    )) {
+        out.push(s);
+    }
+    return out;
 }

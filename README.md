@@ -188,7 +188,7 @@ af confluence spaces                        # List all spaces
 
 ### Bitbucket (`af bb`)
 
-Pull requests, review comments, tasks, and pipelines on Bitbucket Cloud. `af bb` is a shorthand alias for `af bitbucket`.
+Pull requests, review comments, tasks, and pipelines on Bitbucket Cloud, plus a read-only surface for inspecting repos, refs, commits, source, and PR gate state. `af bb` is a shorthand alias for `af bitbucket`.
 
 ```bash
 # Pull requests
@@ -207,10 +207,22 @@ af bb pr comment resolve 42 100            af bb pr comment reopen 42 100
 af bb pr task add 42 --body "Add a test" --on-comment 100
 af bb pr task update 42 7 --resolved
 
+# PR review/gate state (read-only)
+af bb pr activity 42                       af bb pr reviewers 42 --pending
+af bb pr status 42                         # build/commit statuses — "is it green?"
+
 # Pipelines
 af bb pipeline list --branch main
 af bb pipeline trigger --branch main --custom nightly --var FOO=bar
 af bb pipeline logs <pipeline-uuid> <step-uuid> --follow
+
+# Read the remote without a clone (all read-only, all support --json)
+af bb whoami                               # Authenticated account + account id
+af bb repo list --sort -updated_on         af bb repo get
+af bb branch list                          af bb tag list
+af bb commit list --branch main --limit 5  af bb commit get <sha> --diff
+af bb src read README.md --ref main        af bb src ls src --recursive
+af bb diff main..feature --stat            # diff/diffstat for any revspec
 
 # Reviewers must be account IDs — look them up:
 af bb members --query alice

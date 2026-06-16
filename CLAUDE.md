@@ -444,11 +444,27 @@ af bb pipeline stop <uuid>
 af bb pipeline steps <uuid>
 af bb pipeline logs <pipeline-uuid> <step-uuid> [--follow]
 
+# PR review/gate state (read-only)
+af bb pr activity <id> [--limit N]          af bb pr reviewers <id> [--pending]
+af bb pr status <id>                        # build/commit statuses, grouped by commit
+
+# Read surface — inspect the remote without a clone (all read-only)
+af bb whoami                                # authenticated account (GET /user)
+af bb repo list [--query Q] [--role R] [--sort S]   af bb repo get
+af bb branch list [--query Q] [--sort S]    af bb branch get <name>
+af bb tag list [--query Q] [--sort S]       af bb tag get <name>
+af bb commit list [--branch B] [--include REF] [--exclude REF] [--limit N]
+af bb commit get <sha> [--diff | --diffstat | --patch]
+af bb src read <path> [--ref REF]           af bb src ls [path] [--ref REF] [--recursive]
+af bb diff <spec> [--stat]                  # e.g. main..feature; /diff + /diffstat revspec
+
 # Account-id lookup helper
 af bb members [--query Q]
 ```
 
 Reviewers must be passed as Bitbucket Cloud account IDs (not usernames). Use `af bb members --query <name>` to look them up.
+
+The read surface is intentionally read-only (every command is a GET) and mirrors the `af sonar` inspection shape. `pr status` is informational and always exits `0` even when a status is `FAILED` — gate it in scripts via `--json`. `commit list` and `pr activity` are bounded by `--limit` (default 25); `repo`/`branch`/`tag` lists drain all pages. `src read`/`src ls`/`commit list` default to the repository's main branch when `--ref`/`--branch` is omitted. `whoami` needs the token's Account read scope. Write-to-repo, `status` publishing, and repo administration are deliberately out of scope (later tiers).
 
 The target workspace and repo are resolved in this order:
 

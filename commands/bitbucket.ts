@@ -44,8 +44,24 @@ interface BitbucketOptions {
     var?: string[];
     follow?: boolean;
 
-    // Members
+    // Members / repo list
     query?: string;
+    role?: string;
+    sort?: string;
+
+    // Commits / source / diff
+    include?: string[];
+    exclude?: string[];
+    limit?: number;
+    ref?: string;
+    recursive?: boolean;
+    diff?: boolean;
+    diffstat?: boolean;
+    patch?: boolean;
+    stat?: boolean;
+
+    // PR reviewers
+    pending?: boolean;
 }
 
 const BOOLEAN_FLAGS = new Set([
@@ -56,11 +72,17 @@ const BOOLEAN_FLAGS = new Set([
     '--resolved',
     '--unresolved',
     '--follow',
+    '--recursive',
+    '--diff',
+    '--diffstat',
+    '--patch',
+    '--stat',
+    '--pending',
 ]);
 
-const NUMBER_FLAGS = new Set(['--line', '--reply-to', '--on-comment']);
+const NUMBER_FLAGS = new Set(['--line', '--reply-to', '--on-comment', '--limit']);
 
-const REPEATABLE_FLAGS = new Set(['--var']);
+const REPEATABLE_FLAGS = new Set(['--var', '--include', '--exclude']);
 
 // Flag aliases normalized at parse time so the rest of the handler only sees
 // canonical keys (`from`, `to`, ...). Last-write-wins between any canonical
@@ -90,8 +112,9 @@ export function parseArgs(argv: string[]): {
         } else if (REPEATABLE_FLAGS.has(arg)) {
             const value = argv[++i];
             if (value === undefined) throw new Error(`Option ${rawArg} requires a value`);
-            const key = arg.slice(2) as 'var';
-            (options[key] ??= []).push(value);
+            const key = arg.slice(2);
+            const rec = options as Record<string, string[] | undefined>;
+            (rec[key] ??= []).push(value);
         } else if (arg.startsWith('--')) {
             const key = arg.slice(2) as keyof BitbucketOptions;
             const value = argv[++i];
@@ -113,7 +136,8 @@ export function parseArgs(argv: string[]): {
 
 function showHelp(): void {
     console.log(`
-Bitbucket CLI - Manage Bitbucket Cloud pull requests, comments, tasks, and pipelines
+Bitbucket CLI - Manage Bitbucket Cloud pull requests, comments, tasks, pipelines,
+and inspect repos, refs, commits, and source (read-only)
 
 USAGE:
   af bitbucket <subcommand> [args] [options]
@@ -131,6 +155,9 @@ PULL REQUESTS:
   pr request-changes <id>
   pr merge <id> [--strategy merge_commit|squash|fast_forward] [--close-source]
   pr decline <id>
+  pr activity <id> [--limit N]                     Chronological activity feed
+  pr status <id>                                    Build/commit statuses (gate view)
+  pr reviewers <id> [--pending]                     Reviewers + approval state
 
 PR COMMENTS:
   pr comment list <pr-id>
@@ -157,6 +184,20 @@ PIPELINES:
   pipeline steps <uuid>
   pipeline logs <pipeline-uuid> <step-uuid> [--follow]
 
+REPOSITORY & REFS (read-only):
+  whoami                                            Show the authenticated account
+  repo list [--query Q] [--role R] [--sort S]       List workspace repositories
+  repo get                                          Show the resolved repository
+  branch list [--query Q] [--sort S]   branch get <name>
+  tag list [--query Q] [--sort S]      tag get <name>
+
+COMMITS & SOURCE (read-only):
+  commit list [--branch B] [--include REF] [--exclude REF] [--limit N]
+  commit get <sha> [--diff | --diffstat | --patch]
+  src read <path> [--ref REF]                       Raw file content at a ref
+  src ls [path] [--ref REF] [--recursive]           Browse a directory at a ref
+  diff <spec> [--stat]                              Diff a revspec, e.g. main..feature
+
 MEMBERS:
   members [--query Q]                                Look up account IDs
 
@@ -173,6 +214,12 @@ EXAMPLES:
   af bb pr task update 42 7 --resolved
   af bb pipeline trigger --branch main --custom nightly --var FOO=bar
   af bb pipeline logs {uuid} {step-uuid} --follow
+  af bb whoami
+  af bb repo list --sort -updated_on
+  af bb commit list --branch main --limit 5
+  af bb src read README.md --ref main
+  af bb diff main..feature/x --stat
+  af bb pr status 42
 `);
 }
 
@@ -224,6 +271,14 @@ function requireIdArg(value: string | undefined, name: string): number {
     const n = parseInt(v, 10);
     if (Number.isNaN(n)) throw new Error(`${name} must be a number`);
     return n;
+}
+
+/** Reject a `--limit` that parsed to NaN/≤0, which would otherwise silently
+ *  disable the page cap and drain the full history. */
+function checkLimit(options: BitbucketOptions): void {
+    if (options.limit !== undefined && (!Number.isFinite(options.limit) || options.limit <= 0)) {
+        throw new Error('--limit must be a positive integer');
+    }
 }
 
 const TERMINAL_STEP_STATES = new Set(['SUCCESSFUL', 'FAILED', 'STOPPED', 'ERROR']);
@@ -278,6 +333,50 @@ export async function handleBitbucket(args: string[]): Promise<number> {
                 return await handlePr(subArgs, options, json, ensureTarget, ws, repo, client, fmt);
             case 'pipeline':
                 return await handlePipeline(
+                    subArgs,
+                    options,
+                    json,
+                    ensureTarget,
+                    ws,
+                    repo,
+                    client,
+                    fmt,
+                );
+            case 'whoami': {
+                const account = await client.getCurrentUser();
+                fmt.output(json ? account : fmt.formatAccount(account), false);
+                return 0;
+            }
+            case 'repo':
+                return await handleRepo(subArgs, options, json, client, fmt);
+            case 'branch':
+                return await handleBranch(
+                    subArgs,
+                    options,
+                    json,
+                    ensureTarget,
+                    ws,
+                    repo,
+                    client,
+                    fmt,
+                );
+            case 'tag':
+                return await handleTag(subArgs, options, json, ensureTarget, ws, repo, client, fmt);
+            case 'commit':
+                return await handleCommit(
+                    subArgs,
+                    options,
+                    json,
+                    ensureTarget,
+                    ws,
+                    repo,
+                    client,
+                    fmt,
+                );
+            case 'src':
+                return await handleSrc(subArgs, options, json, ensureTarget, ws, repo, client, fmt);
+            case 'diff':
+                return await handleDiff(
                     subArgs,
                     options,
                     json,
@@ -453,6 +552,32 @@ async function handlePr(
             const id = requireIdArg(args[1], 'pr id');
             const pr = await client.declinePullRequest(ws, repo, id);
             fmt.output(json ? pr : fmt.formatPullRequest(pr), false);
+            return 0;
+        }
+        case 'activity': {
+            const id = requireIdArg(args[1], 'pr id');
+            checkLimit(options);
+            const activity = await client.listPullRequestActivity(ws, repo, id, {
+                limit: options.limit,
+            });
+            fmt.output(json ? activity : fmt.formatActivity(activity), false);
+            return 0;
+        }
+        case 'status': {
+            // Informational: always exits 0 even when a status is FAILED.
+            const id = requireIdArg(args[1], 'pr id');
+            const statuses = await client.listPullRequestStatuses(ws, repo, id);
+            fmt.output(json ? statuses : fmt.formatStatusList(statuses), false);
+            return 0;
+        }
+        case 'reviewers': {
+            const id = requireIdArg(args[1], 'pr id');
+            const pr = await client.getPullRequest(ws, repo, id);
+            const participants = pr.participants ?? [];
+            fmt.output(
+                json ? participants : fmt.formatReviewers(participants, options.pending),
+                false,
+            );
             return 0;
         }
         default:
@@ -724,4 +849,211 @@ async function handlePipeline(
             error(`Error: Unknown pipeline subcommand: ${action}`);
             return 1;
     }
+}
+
+async function handleRepo(
+    args: string[],
+    options: BitbucketOptions,
+    json: boolean,
+    client: ClientModule,
+    fmt: FmtModule,
+): Promise<number> {
+    const { resolveWorkspace, resolveTarget } = await import('../bitbucket/lib/config.ts');
+    const action = args[0] ?? 'get';
+    switch (action) {
+        case 'list': {
+            // `repo list` needs only a workspace, not a specific repository.
+            const ws = resolveWorkspace({ workspace: options.workspace });
+            const repos = await client.listRepositories(ws, {
+                query: options.query,
+                role: options.role,
+                sort: options.sort,
+            });
+            fmt.output(json ? repos : fmt.formatRepositoryList(repos), false);
+            return 0;
+        }
+        case 'get': {
+            const target = resolveTarget({ workspace: options.workspace, repo: options.repo });
+            const repo = await client.getRepository(target.workspace, target.repo);
+            fmt.output(json ? repo : fmt.formatRepository(repo), false);
+            return 0;
+        }
+        default:
+            error(`Error: Unknown repo subcommand: ${action} (expected list or get)`);
+            return 1;
+    }
+}
+
+async function handleBranch(
+    args: string[],
+    options: BitbucketOptions,
+    json: boolean,
+    ensureTarget: () => boolean,
+    ws: string,
+    repo: string,
+    client: ClientModule,
+    fmt: FmtModule,
+): Promise<number> {
+    if (!ensureTarget()) return 1;
+    const action = args[0] ?? 'list';
+    switch (action) {
+        case 'list': {
+            const branches = await client.listBranches(ws, repo, {
+                query: options.query,
+                sort: options.sort,
+            });
+            fmt.output(json ? branches : fmt.formatBranchList(branches), false);
+            return 0;
+        }
+        case 'get': {
+            const name = requireArg(args[1], 'branch name');
+            const branch = await client.getBranch(ws, repo, name);
+            fmt.output(json ? branch : fmt.formatBranch(branch), false);
+            return 0;
+        }
+        default:
+            error(`Error: Unknown branch subcommand: ${action} (expected list or get)`);
+            return 1;
+    }
+}
+
+async function handleTag(
+    args: string[],
+    options: BitbucketOptions,
+    json: boolean,
+    ensureTarget: () => boolean,
+    ws: string,
+    repo: string,
+    client: ClientModule,
+    fmt: FmtModule,
+): Promise<number> {
+    if (!ensureTarget()) return 1;
+    const action = args[0] ?? 'list';
+    switch (action) {
+        case 'list': {
+            const tags = await client.listTags(ws, repo, {
+                query: options.query,
+                sort: options.sort,
+            });
+            fmt.output(json ? tags : fmt.formatTagList(tags), false);
+            return 0;
+        }
+        case 'get': {
+            const name = requireArg(args[1], 'tag name');
+            const tag = await client.getTag(ws, repo, name);
+            fmt.output(json ? tag : fmt.formatTag(tag), false);
+            return 0;
+        }
+        default:
+            error(`Error: Unknown tag subcommand: ${action} (expected list or get)`);
+            return 1;
+    }
+}
+
+async function handleCommit(
+    args: string[],
+    options: BitbucketOptions,
+    json: boolean,
+    ensureTarget: () => boolean,
+    ws: string,
+    repo: string,
+    client: ClientModule,
+    fmt: FmtModule,
+): Promise<number> {
+    if (!ensureTarget()) return 1;
+    const action = args[0] ?? 'list';
+    switch (action) {
+        case 'list': {
+            checkLimit(options);
+            const commits = await client.listCommits(ws, repo, {
+                branch: options.branch,
+                include: options.include,
+                exclude: options.exclude,
+                limit: options.limit,
+            });
+            fmt.output(json ? commits : fmt.formatCommitList(commits), false);
+            return 0;
+        }
+        case 'get': {
+            const sha = requireArg(args[1], 'commit sha');
+            if (options.diff) {
+                console.log(await client.getDiff(ws, repo, sha));
+                return 0;
+            }
+            if (options.patch) {
+                console.log(await client.getPatch(ws, repo, sha));
+                return 0;
+            }
+            if (options.diffstat) {
+                const stat = await client.getDiffStat(ws, repo, sha);
+                fmt.output(json ? stat : fmt.formatDiffStat(stat), false);
+                return 0;
+            }
+            const commit = await client.getCommit(ws, repo, sha);
+            fmt.output(json ? commit : fmt.formatCommit(commit), false);
+            return 0;
+        }
+        default:
+            error(`Error: Unknown commit subcommand: ${action} (expected list or get)`);
+            return 1;
+    }
+}
+
+async function handleSrc(
+    args: string[],
+    options: BitbucketOptions,
+    json: boolean,
+    ensureTarget: () => boolean,
+    ws: string,
+    repo: string,
+    client: ClientModule,
+    fmt: FmtModule,
+): Promise<number> {
+    if (!ensureTarget()) return 1;
+    const action = args[0];
+    switch (action) {
+        case 'read': {
+            const path = requireArg(args[1], 'file path');
+            const content = await client.readSource(ws, repo, path, options.ref);
+            process.stdout.write(content);
+            return 0;
+        }
+        case 'ls': {
+            const path = args[1] ?? '';
+            const entries = await client.browseSource(ws, repo, path, {
+                ref: options.ref,
+                recursive: options.recursive,
+            });
+            fmt.output(json ? entries : fmt.formatSrcList(entries), false);
+            return 0;
+        }
+        default:
+            error(
+                action
+                    ? `Error: Unknown src subcommand: ${action} (expected read or ls)`
+                    : 'Error: src requires a subcommand (read, ls)',
+            );
+            return 1;
+    }
+}
+
+async function handleDiff(
+    args: string[],
+    options: BitbucketOptions,
+    json: boolean,
+    ensureTarget: () => boolean,
+    ws: string,
+    repo: string,
+    client: ClientModule,
+    fmt: FmtModule,
+): Promise<number> {
+    if (!ensureTarget()) return 1;
+    const spec = requireArg(args[0], 'revspec (e.g. main..feature)');
+    if (options.stat) {
+        const stat = await client.getDiffStat(ws, repo, spec);
+        fmt.output(json ? stat : fmt.formatDiffStat(stat), false);
+        return 0;
+    }
+    console.log(await client.getDiff(ws, repo, spec));
+    return 0;
 }

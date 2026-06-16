@@ -8,10 +8,20 @@
 
 import { link } from '../../utils/output.ts';
 import type {
+    BitbucketAccount,
+    BitbucketActivityEntry,
+    BitbucketBranch,
     BitbucketComment,
+    BitbucketCommit,
+    BitbucketCommitStatus,
+    BitbucketDiffStatEntry,
+    BitbucketParticipant,
     BitbucketPipeline,
     BitbucketPipelineStep,
     BitbucketPullRequest,
+    BitbucketRepository,
+    BitbucketSrcEntry,
+    BitbucketTag,
     BitbucketTask,
     BitbucketWorkspaceMember,
 } from './types.ts';
@@ -232,6 +242,239 @@ export function formatMembers(members: BitbucketWorkspaceMember[]): string {
         lines.push(
             `| ${m.user.display_name} | ${m.user.nickname ?? '—'} | \`${m.user.account_id}\` |`,
         );
+    }
+    return lines.join('\n');
+}
+
+// --- Read surface -------------------------------------------------------
+
+function shortHash(hash: string | undefined): string {
+    return hash ? hash.slice(0, 7) : '—';
+}
+
+function commitAuthor(commit: BitbucketCommit): string {
+    return commit.author?.user?.display_name ?? commit.author?.raw ?? '—';
+}
+
+function firstLine(message: string | undefined): string {
+    return (message ?? '').split('\n')[0]?.trim() ?? '';
+}
+
+export function formatAccount(account: BitbucketAccount): string {
+    const lines: string[] = [];
+    lines.push(`# ${account.display_name}`);
+    lines.push('');
+    lines.push('| Field | Value |');
+    lines.push('|-------|-------|');
+    if (account.username) lines.push(`| Username | ${account.username} |`);
+    if (account.nickname) lines.push(`| Nickname | ${account.nickname} |`);
+    lines.push(`| Account ID | \`${account.account_id}\` |`);
+    if (account.uuid) lines.push(`| UUID | ${account.uuid} |`);
+    return lines.join('\n');
+}
+
+export function formatRepositoryList(repos: BitbucketRepository[]): string {
+    if (repos.length === 0) return '_No repositories._';
+    const lines: string[] = [];
+    lines.push('| Name | Full Name | Main Branch |');
+    lines.push('|------|-----------|-------------|');
+    for (const r of repos) {
+        lines.push(
+            `| ${escapePipe(r.name)} | ${escapePipe(r.full_name)} | ${r.mainbranch?.name ?? '—'} |`,
+        );
+    }
+    return lines.join('\n');
+}
+
+export function formatRepository(repo: BitbucketRepository): string {
+    const lines: string[] = [];
+    lines.push(`# ${repo.full_name}`);
+    lines.push('');
+    lines.push('| Field | Value |');
+    lines.push('|-------|-------|');
+    lines.push(`| Name | ${repo.name} |`);
+    lines.push(`| Main branch | ${repo.mainbranch?.name ?? '—'} |`);
+    if (repo.workspace?.slug) lines.push(`| Workspace | ${repo.workspace.slug} |`);
+    if (repo.uuid) lines.push(`| UUID | ${repo.uuid} |`);
+    return lines.join('\n');
+}
+
+export function formatBranchList(branches: BitbucketBranch[]): string {
+    if (branches.length === 0) return '_No branches._';
+    const lines: string[] = [];
+    lines.push('| Branch | Head |');
+    lines.push('|--------|------|');
+    for (const b of branches) {
+        lines.push(`| ${escapePipe(b.name)} | \`${shortHash(b.target?.hash)}\` |`);
+    }
+    return lines.join('\n');
+}
+
+export function formatBranch(branch: BitbucketBranch): string {
+    return [
+        `# Branch \`${branch.name}\``,
+        '',
+        `- Head: \`${shortHash(branch.target?.hash)}\``,
+    ].join('\n');
+}
+
+export function formatTagList(tags: BitbucketTag[]): string {
+    if (tags.length === 0) return '_No tags._';
+    const lines: string[] = [];
+    lines.push('| Tag | Target |');
+    lines.push('|-----|--------|');
+    for (const t of tags) {
+        lines.push(`| ${escapePipe(t.name)} | \`${shortHash(t.target?.hash)}\` |`);
+    }
+    return lines.join('\n');
+}
+
+export function formatTag(tag: BitbucketTag): string {
+    const lines: string[] = [
+        `# Tag \`${tag.name}\``,
+        '',
+        `- Target: \`${shortHash(tag.target?.hash)}\``,
+    ];
+    if (tag.message) lines.push(`- Message: ${firstLine(tag.message)}`);
+    return lines.join('\n');
+}
+
+export function formatCommitList(commits: BitbucketCommit[]): string {
+    if (commits.length === 0) return '_No commits._';
+    const lines: string[] = [];
+    lines.push('| Commit | Author | Date | Message |');
+    lines.push('|--------|--------|------|---------|');
+    for (const c of commits) {
+        lines.push(
+            `| \`${shortHash(c.hash)}\` | ${escapePipe(commitAuthor(c))} | ${formatDate(c.date)} ` +
+                `| ${escapePipe(firstLine(c.message))} |`,
+        );
+    }
+    return lines.join('\n');
+}
+
+export function formatCommit(commit: BitbucketCommit): string {
+    const lines: string[] = [];
+    lines.push(`# Commit \`${shortHash(commit.hash)}\``);
+    lines.push('');
+    lines.push('| Field | Value |');
+    lines.push('|-------|-------|');
+    lines.push(`| Hash | \`${commit.hash}\` |`);
+    lines.push(`| Author | ${commitAuthor(commit)} |`);
+    lines.push(`| Date | ${formatDate(commit.date)} |`);
+    if (commit.parents?.length) {
+        lines.push(
+            `| Parents | ${commit.parents.map(p => `\`${shortHash(p.hash)}\``).join(', ')} |`,
+        );
+    }
+    if (commit.message) {
+        lines.push('');
+        lines.push('## Message');
+        lines.push('');
+        lines.push(commit.message.trim());
+    }
+    return lines.join('\n');
+}
+
+export function formatDiffStat(entries: BitbucketDiffStatEntry[]): string {
+    if (entries.length === 0) return '_No changes._';
+    const lines: string[] = [];
+    lines.push('| Status | File | +/− |');
+    lines.push('|--------|------|-----|');
+    for (const e of entries) {
+        const path = e.new?.path ?? e.old?.path ?? '—';
+        lines.push(`| ${e.status} | ${escapePipe(path)} | +${e.lines_added} −${e.lines_removed} |`);
+    }
+    return lines.join('\n');
+}
+
+export function formatSrcList(entries: BitbucketSrcEntry[]): string {
+    if (entries.length === 0) return '_Empty._';
+    const lines: string[] = [];
+    for (const e of entries) {
+        const isDir = e.type === 'commit_directory';
+        const suffix = isDir ? '/' : '';
+        const size = !isDir && e.size !== undefined ? ` (${e.size} B)` : '';
+        lines.push(`- ${escapePipe(e.path)}${suffix}${size}`);
+    }
+    return lines.join('\n');
+}
+
+export function formatActivity(entries: BitbucketActivityEntry[]): string {
+    if (entries.length === 0) return '_No activity._';
+    const lines: string[] = [];
+    for (const a of entries) {
+        if (a.approval) {
+            lines.push(
+                `- ✓ **approved** by ${a.approval.user?.display_name ?? '—'} — ${formatDate(a.approval.date)}`,
+            );
+        } else if (a.changes_requested) {
+            lines.push(
+                `- ✗ **changes requested** by ${a.changes_requested.user?.display_name ?? '—'} — ${formatDate(a.changes_requested.date)}`,
+            );
+        } else if (a.update) {
+            const who = a.update.author?.display_name ?? '—';
+            lines.push(
+                `- ⟳ **${a.update.state ?? 'update'}** by ${who} — ${formatDate(a.update.date)}`,
+            );
+        } else if (a.comment) {
+            lines.push(
+                `- 💬 **comment** by ${a.comment.user?.display_name ?? '—'} — ${formatDate(a.comment.updated_on)}`,
+            );
+        }
+    }
+    return lines.length ? lines.join('\n') : '_No activity._';
+}
+
+function statusState(state: BitbucketCommitStatus['state']): string {
+    const mark =
+        state === 'SUCCESSFUL'
+            ? '✓'
+            : state === 'FAILED'
+              ? '✗'
+              : state === 'INPROGRESS'
+                ? '⟳'
+                : '○';
+    return `${mark} ${state}`;
+}
+
+export function formatStatusList(statuses: BitbucketCommitStatus[]): string {
+    if (statuses.length === 0) return '_No statuses._';
+    // Group by commit so a multi-commit PR's gate is not misleadingly flat.
+    const byCommit = new Map<string, BitbucketCommitStatus[]>();
+    for (const s of statuses) {
+        const key = s.commit?.hash ?? '—';
+        const list = byCommit.get(key) ?? [];
+        list.push(s);
+        byCommit.set(key, list);
+    }
+    const lines: string[] = [];
+    for (const [hash, list] of byCommit) {
+        lines.push(`### Commit \`${shortHash(hash)}\``);
+        for (const s of list) {
+            const where = s.url ? ` — ${link(s.key, s.url)}` : ` — ${s.key}`;
+            lines.push(`- ${statusState(s.state)} ${s.name ?? s.key}${where}`);
+        }
+    }
+    return lines.join('\n');
+}
+
+export function formatReviewers(participants: BitbucketParticipant[], pendingOnly = false): string {
+    // Show all participants (REVIEWER + PARTICIPANT) so the rendered view matches
+    // the raw `participants[]` that `--json` emits; assigned reviewers sort first.
+    const ordered = [...participants].sort((a, b) =>
+        a.role === b.role ? 0 : a.role === 'REVIEWER' ? -1 : 1,
+    );
+    const shown = pendingOnly ? ordered.filter(p => !p.approved) : ordered;
+    if (shown.length === 0) return pendingOnly ? '_No pending reviewers._' : '_No reviewers._';
+    const lines: string[] = [];
+    for (const p of shown) {
+        const status = p.approved
+            ? '✓ approved'
+            : p.state === 'changes_requested'
+              ? '✗ changes requested'
+              : '○ pending';
+        lines.push(`- ${p.user.display_name} (${p.role.toLowerCase()}) — ${status}`);
     }
     return lines.join('\n');
 }

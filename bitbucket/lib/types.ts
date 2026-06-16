@@ -166,6 +166,89 @@ export interface BitbucketWorkspaceMember {
     workspace?: { slug: string };
 }
 
+// --- Read surface: account, refs, commits, source, statuses, activity ---
+
+/** The authenticated account, as returned by `GET /user`. */
+export interface BitbucketAccount {
+    type?: string;
+    account_id: string;
+    nickname?: string;
+    display_name: string;
+    username?: string;
+    uuid?: string;
+    created_on?: string;
+}
+
+/** A commit object as returned by the commits/commit endpoints. */
+export interface BitbucketCommit {
+    hash: string;
+    message?: string;
+    date?: string;
+    author?: { raw?: string; user?: BitbucketUser };
+    summary?: { raw?: string };
+    parents?: { hash: string }[];
+}
+
+/** A tag ref under `…/refs/tags`. */
+export interface BitbucketTag {
+    name: string;
+    target?: { hash: string; date?: string };
+    message?: string;
+    date?: string;
+    tagger?: { raw?: string; user?: BitbucketUser };
+}
+
+/** One entry of a `…/diffstat/{spec}` response. */
+export interface BitbucketDiffStatEntry {
+    type?: string;
+    status: 'added' | 'removed' | 'modified' | 'renamed' | string;
+    lines_added: number;
+    lines_removed: number;
+    old?: { path: string } | null;
+    new?: { path: string } | null;
+}
+
+export type BitbucketCommitStatusState = 'INPROGRESS' | 'SUCCESSFUL' | 'FAILED' | 'STOPPED';
+
+/** A build/commit status, as returned by `…/pullrequests/{id}/statuses`. */
+export interface BitbucketCommitStatus {
+    type?: string;
+    key: string;
+    name?: string;
+    description?: string;
+    state: BitbucketCommitStatusState;
+    url?: string;
+    refname?: string;
+    commit?: { hash: string };
+    created_on?: string;
+    updated_on?: string;
+}
+
+/** One entry of a `…/src/{ref}/{path}/` directory listing. */
+export interface BitbucketSrcEntry {
+    type: 'commit_file' | 'commit_directory';
+    path: string;
+    size?: number;
+    mimetype?: string | null;
+    commit?: { hash: string };
+    attributes?: string[];
+}
+
+/** One entry of a `…/pullrequests/{id}/activity` feed (only one sub-key is set). */
+export interface BitbucketActivityEntry {
+    update?: {
+        state?: string;
+        date?: string;
+        author?: BitbucketUser;
+        title?: string;
+        reason?: string;
+    };
+    approval?: { date?: string; user?: BitbucketUser };
+    changes_requested?: { date?: string; user?: BitbucketUser };
+    comment?: BitbucketComment;
+    pull_request?: { id: number; title?: string };
+}
+
 export interface BitbucketPaginated<T> {
     values?: T[];
     next?: string;

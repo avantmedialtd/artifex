@@ -93,3 +93,28 @@ export function resolveTarget(opts: ResolveTargetOptions = {}): BitbucketTarget 
             '  3. A git origin remote pointing at bitbucket.org',
     );
 }
+
+/**
+ * Resolve just the workspace, using the same precedence as `resolveTarget` but
+ * without requiring a repository. Used by workspace-scoped commands such as
+ * `repo list`, which list repositories within a workspace.
+ */
+export function resolveWorkspace(opts: ResolveTargetOptions = {}): string {
+    if (opts.workspace) return opts.workspace;
+
+    const af = loadAfConfig();
+    if (af?.bitbucket?.workspace) return af.bitbucket.workspace;
+
+    const remote = readGitOriginRemote();
+    if (remote) {
+        const parsed = parseBitbucketRemote(remote);
+        if (parsed) return parsed.workspace;
+    }
+
+    throw new Error(
+        'Could not resolve a Bitbucket workspace. Provide one of:\n' +
+            '  1. --workspace <ws> flag\n' +
+            '  2. bitbucket.workspace in af.json\n' +
+            '  3. A git origin remote pointing at bitbucket.org',
+    );
+}

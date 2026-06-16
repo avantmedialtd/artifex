@@ -1,17 +1,29 @@
 import { describe, it, expect } from 'vitest';
 import {
+    formatAccount,
+    formatBranchList,
     formatCommentList,
+    formatCommitList,
+    formatDiffStat,
     formatMembers,
     formatPipelineList,
     formatPullRequestList,
+    formatReviewers,
+    formatSrcList,
+    formatStatusList,
     formatStepList,
     formatTaskList,
 } from './formatters.ts';
 import type {
     BitbucketComment,
+    BitbucketCommit,
+    BitbucketCommitStatus,
+    BitbucketDiffStatEntry,
+    BitbucketParticipant,
     BitbucketPipeline,
     BitbucketPipelineStep,
     BitbucketPullRequest,
+    BitbucketSrcEntry,
     BitbucketTask,
     BitbucketWorkspaceMember,
 } from './types.ts';
@@ -194,5 +206,119 @@ describe('formatMembers', () => {
             user: { ...fakeUser, account_id: 'a:b:c' },
         };
         expect(formatMembers([m])).toContain('a:b:c');
+    });
+});
+
+describe('formatAccount', () => {
+    it('renders the account id', () => {
+        const out = formatAccount({
+            account_id: 'acct-99',
+            display_name: 'Alice',
+            username: 'alice',
+        });
+        expect(out).toContain('Alice');
+        expect(out).toContain('acct-99');
+    });
+});
+
+describe('formatBranchList', () => {
+    it('renders name and short head', () => {
+        const out = formatBranchList([{ name: 'main', target: { hash: 'abcdef1234567890' } }]);
+        expect(out).toContain('main');
+        expect(out).toContain('abcdef1');
+    });
+
+    it('renders empty', () => {
+        expect(formatBranchList([])).toBe('_No branches._');
+    });
+});
+
+describe('formatCommitList', () => {
+    it('renders hash, author and first line of message', () => {
+        const c: BitbucketCommit = {
+            hash: 'ab12cd34ef90',
+            message: 'Fix the thing\n\nlong body',
+            date: '2025-01-01T00:00:00Z',
+            author: { user: fakeUser },
+        };
+        const out = formatCommitList([c]);
+        expect(out).toContain('ab12cd3');
+        expect(out).toContain('Alice');
+        expect(out).toContain('Fix the thing');
+        expect(out).not.toContain('long body');
+    });
+});
+
+describe('formatDiffStat', () => {
+    it('renders per-file add/remove counts', () => {
+        const entries: BitbucketDiffStatEntry[] = [
+            { status: 'modified', lines_added: 3, lines_removed: 1, new: { path: 'a.ts' } },
+        ];
+        const out = formatDiffStat(entries);
+        expect(out).toContain('a.ts');
+        expect(out).toContain('+3');
+        expect(out).toContain('−1');
+    });
+});
+
+describe('formatSrcList', () => {
+    it('marks directories with a trailing slash', () => {
+        const entries: BitbucketSrcEntry[] = [
+            { type: 'commit_directory', path: 'src' },
+            { type: 'commit_file', path: 'README.md', size: 12 },
+        ];
+        const out = formatSrcList(entries);
+        expect(out).toContain('src/');
+        expect(out).toContain('README.md');
+    });
+});
+
+describe('formatStatusList', () => {
+    it('groups statuses by commit and shows state', () => {
+        const statuses: BitbucketCommitStatus[] = [
+            { key: 'build', state: 'SUCCESSFUL', name: 'Build', commit: { hash: 'abc1234' } },
+            { key: 'lint', state: 'FAILED', name: 'Lint', commit: { hash: 'abc1234' } },
+        ];
+        const out = formatStatusList(statuses);
+        expect(out).toContain('abc1234');
+        expect(out).toContain('SUCCESSFUL');
+        expect(out).toContain('FAILED');
+    });
+});
+
+describe('formatReviewers', () => {
+    const reviewer = (name: string, approved: boolean): BitbucketParticipant => ({
+        user: { ...fakeUser, display_name: name },
+        role: 'REVIEWER',
+        approved,
+        state: approved ? 'approved' : null,
+    });
+
+    it('renders all reviewers with approval state', () => {
+        const out = formatReviewers([reviewer('Alice', true), reviewer('Bob', false)]);
+        expect(out).toContain('Alice');
+        expect(out).toContain('Bob');
+        expect(out).toContain('approved');
+        expect(out).toContain('pending');
+    });
+
+    it('--pending filters to non-approvers', () => {
+        const out = formatReviewers([reviewer('Alice', true), reviewer('Bob', false)], true);
+        expect(out).not.toContain('Alice');
+        expect(out).toContain('Bob');
+    });
+
+    it('includes PARTICIPANTs, not only assigned reviewers', () => {
+        const participant: BitbucketParticipant = {
+            user: { ...fakeUser, display_name: 'Carol' },
+            role: 'PARTICIPANT',
+            approved: true,
+            state: 'approved',
+        };
+        const out = formatReviewers([participant, reviewer('Alice', false)]);
+        expect(out).toContain('Carol');
+        expect(out).toContain('Alice');
+        // assigned reviewers sort ahead of plain participants
+        expect(out.indexOf('Alice')).toBeLessThan(out.indexOf('Carol'));
     });
 });

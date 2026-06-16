@@ -58,10 +58,11 @@ When `--ref` is omitted, `src read`, `src ls`, and `commit list` default to the 
 
 `repo list`, `branch list`, `tag list` drain all pages like the existing `pr list` (bounded result sets in practice). `commit list` and `pr activity` are effectively unbounded histories, so they take `--limit` (default 25) and stop draining once the limit is reached — preventing an accidental full-history fetch.
 
-### Path / revspec encoding
+### Path / revspec encoding (and the slashed-ref hazard)
 
 - `src/{ref}/{path}`: the **ref** is one URL segment (percent-encoded); the **path** keeps its slashes (joined raw, each segment encoded). A trailing `/` requests a directory listing.
 - `diff/{spec}` and `diffstat/{spec}`: the spec (`main..feature`, `A...B`, or a bare sha) is a **single** segment and is percent-encoded whole — the `..`/`...` belong to Bitbucket's revspec grammar, not the URL structure.
+- **Slashed refs.** In these *path-positional* endpoints (`/src/{ref}/…`, `/commits/{ref}`, `/diff|diffstat|patch/{spec}`), Bitbucket Cloud treats a `%2F`-encoded slash as a path delimiter and resolves the wrong ref (BCLOUD-20223) — so a ref like `feature/x` cannot simply be percent-encoded into the segment. The fix: **hash-resolve a ref only when it contains a slash**. Slash-free refs (`main`, `v1.2.0`, a sha) are safe in the segment and pass through with no extra request; a slashed ref is looked up via the *leaf* `refs/branches|tags/{name}` endpoint (which **does** accept `%2F`) and replaced with its target commit hash. For a revspec, each side is split on `..`/`...` (git refnames forbid consecutive dots, so the split is unambiguous) and resolved independently. This keeps `commit get <sha>` and slash-free diffs zero-extra-fetch while making `af bb diff main..feature/x`, `commit list --branch feature/x`, and `src read --ref feature/x` correct.
 
 ## Risks / Trade-offs
 
