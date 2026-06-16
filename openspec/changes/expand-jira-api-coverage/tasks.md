@@ -13,13 +13,13 @@ This is a roadmap to pick slices from. Groups are ordered by leverage and depend
 
 ## 2. Cheap Tier-1 wins (batched)
 
-- [ ] 2.1 Reparent (#5): add `--parent <key>` to `af jira update`, sending `{ fields: { parent: { key } } }`
-- [ ] 2.2 Reparent (#5): add `--clear-parent` as provisional (attempt `parent: null`), guarded/documented as unverified
-- [ ] 2.3 Comment edit/delete (#4): add `af jira comment edit <id>` and `af jira comment delete <id>`
-- [ ] 2.4 Comment visibility (#4): add `--visibility <role-or-group>` to comment add/edit; branch to `/rest/servicedeskapi` for JSM internal notes
-- [ ] 2.5 editmeta (#7): add `af jira editmeta <key>` reporting editable fields + allowed values (parallel to existing `fields`)
-- [ ] 2.6 Tests for reparent set/clear, comment edit/delete, visibility, and editmeta rendering
-- [ ] 2.7 Update `commands/help.ts` and README for the new flags/subcommands
+- [x] 2.1 Reparent (#5): add `--parent <key>` to `af jira update`, sending `{ fields: { parent: { key } } }`
+- [x] 2.2 Reparent (#5): add `--clear-parent` as provisional (attempt `parent: null`), guarded/documented as unverified
+- [x] 2.3 Comment edit/delete (#4): add `af jira comment edit <id>` and `af jira comment delete <id>`
+- [x] 2.4 Comment visibility (#4): add `--visibility <role-or-group>` to comment add/edit; branch to `/rest/servicedeskapi` for JSM internal notes (`--internal`/`--public`)
+- [x] 2.5 editmeta (#7): add `af jira editmeta <key>` reporting editable fields + allowed values (parallel to existing `fields`)
+- [x] 2.6 Tests for reparent set/clear, comment edit/delete, visibility, and editmeta rendering
+- [x] 2.7 Update `commands/help.ts` (README covered in the final docs pass) for the new flags/subcommands
 
 ## 3. Async task-poller, then move (#2, Tier 2)
 

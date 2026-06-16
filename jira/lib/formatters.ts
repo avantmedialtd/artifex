@@ -7,6 +7,7 @@ import type {
     JiraSearchResult,
     JiraVersion,
     JiraRemoteLink,
+    JiraEditMetaResponse,
 } from './types.ts';
 import type { JiraAttachment } from './client.ts';
 import { adfToText } from './client.ts';
@@ -447,6 +448,48 @@ export function formatRemoteLinks(issueKey: string, links: JiraRemoteLink[]): st
 // Success message
 export function formatSuccess(message: string): string {
     return `**Success:** ${message}`;
+}
+
+// Extract a human label from an allowed-value entry ({name}|{value}|{id}|string).
+function allowedValueLabel(v: unknown): string {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'object') {
+        const o = v as Record<string, unknown>;
+        return String(o.name ?? o.value ?? o.id ?? '');
+    }
+    return String(v);
+}
+
+// Edit metadata to markdown (the editable-fields twin of `af jira fields`)
+export function formatEditMeta(issueKey: string, meta: JiraEditMetaResponse): string {
+    const lines: string[] = [];
+    const entries = Object.entries(meta.fields);
+
+    lines.push(`# Editable Fields for ${issueLink(issueKey)} (${entries.length})`);
+    lines.push('');
+
+    if (entries.length === 0) {
+        lines.push('No editable fields.');
+        return lines.join('\n');
+    }
+
+    lines.push(`| ID | Name | Required | Allowed Values |`);
+    lines.push(`|----|------|----------|----------------|`);
+
+    const sorted = entries.sort((a, b) => a[1].name.localeCompare(b[1].name));
+    for (const [id, f] of sorted) {
+        const allowed = Array.isArray(f.allowedValues)
+            ? f.allowedValues
+                  .map(v => allowedValueLabel(v))
+                  .filter(Boolean)
+                  .slice(0, 6)
+                  .join(', ')
+            : '';
+        lines.push(`| ${id} | ${f.name} | ${f.required ? '✓' : ''} | ${allowed} |`);
+    }
+
+    return lines.join('\n');
 }
 
 // Date formatting for versions (date only, no time)

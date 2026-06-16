@@ -43,6 +43,19 @@ function parseTransitionFields(pairs: string[] | undefined): Record<string, unkn
 }
 
 /**
+ * Parse a `--visibility` value into a Jira visibility restriction. A `group:` or
+ * `role:` prefix selects the type; the default is a project role.
+ */
+function parseVisibility(
+    value: string | undefined,
+): { type: 'group' | 'role'; value: string } | undefined {
+    if (!value) return undefined;
+    if (value.startsWith('group:')) return { type: 'group', value: value.slice(6) };
+    if (value.startsWith('role:')) return { type: 'role', value: value.slice(5) };
+    return { type: 'role', value };
+}
+
+/**
  * Command options for Jira CLI
  */
 interface JiraOptions {
@@ -79,6 +92,11 @@ interface JiraOptions {
     'show-field'?: string;
     refresh?: boolean;
     verbose?: boolean;
+    body?: string;
+    visibility?: string;
+    'clear-parent'?: boolean;
+    internal?: boolean;
+    public?: boolean;
 }
 
 /**
@@ -106,6 +124,12 @@ function parseArgs(argv: string[]): {
             options.refresh = true;
         } else if (arg === '--verbose') {
             options.verbose = true;
+        } else if (arg === '--clear-parent') {
+            options['clear-parent'] = true;
+        } else if (arg === '--internal') {
+            options.internal = true;
+        } else if (arg === '--public') {
+            options.public = true;
         } else if (arg === '--field') {
             const value = argv[++i];
             if (value === undefined) {
@@ -151,6 +175,8 @@ COMMANDS:
   update <issue-key>        Update an issue
   delete <issue-key>        Delete an issue
   comment <issue-key>       List or add comments
+  comment edit <key> <id>   Edit a comment
+  comment delete <key> <id> Delete a comment
   attach <issue-key> <file> Attach a file to an issue
   transition <issue-key>    Change issue status
   transitions <issue-key>   List available transitions
@@ -158,6 +184,7 @@ COMMANDS:
   projects                  List all projects
   types <project>           List issue types for a project
   fields                    List custom fields (discovery for --field flags)
+  editmeta <issue-key>      List editable fields for an issue
 
 LINK COMMANDS:
   link <issue-key>          Link two issues
@@ -211,6 +238,8 @@ UPDATE OPTIONS:
   --remaining <time>        Remaining estimate (e.g., "1h", "4h")
   --fix-version <v1,v2>     Fix version(s), comma-separated (empty to clear)
   --affected-version <v>    Affected version(s), comma-separated (empty to clear)
+  --parent <issue-key>      Set the parent (subtask parent or epic)
+  --clear-parent            Detach the parent (provisional; behavior varies by project)
   --field <name>=<value>    Set a custom field (repeatable). Empty value clears it.
   --field-json '<json>'     Merge a JSON object of custom fields into the update
 
@@ -248,6 +277,10 @@ REMOTE-LINK OPTIONS:
 
 COMMENT OPTIONS:
   --add "<text>"            Add a comment (omit to list comments)
+  --body "<text>"           Comment body for the 'comment edit' action
+  --visibility <name>       Restrict visibility (role by default; "group:Name" for a group)
+  --internal                Add as a JSM internal note (Service Desk API)
+  --public                  Add as a JSM public reply (Service Desk API)
 
 TRANSITION OPTIONS:
   --to "<status>"           Target status name (required)
@@ -461,6 +494,11 @@ export async function handleJira(args: string[]): Promise<number> {
                         ? options['affected-version'].split(',').map(v => v.trim())
                         : [];
                 }
+                if (options['clear-parent']) {
+                    updates.clearParent = true;
+                } else if (options.parent !== undefined) {
+                    updates.parent = options.parent;
+                }
 
                 const { resolveFieldFlags: resolveUpdateFlags } =
                     await import('../jira/lib/fields/resolve-flags.ts');
@@ -475,7 +513,7 @@ export async function handleJira(args: string[]): Promise<number> {
                 if (Object.keys(updates).length === 0) {
                     error('Error: No update options provided');
                     console.error(
-                        'Use --summary, --description, --priority, --labels, --estimate, --remaining, --fix-version, --affected-version, --field, or --field-json',
+                        'Use --summary, --description, --priority, --labels, --estimate, --remaining, --fix-version, --affected-version, --parent, --clear-parent, --field, or --field-json',
                     );
                     return 1;
                 }
@@ -507,7 +545,55 @@ export async function handleJira(args: string[]): Promise<number> {
             }
 
             case 'comment': {
-                const issueKey = subArgs[0];
+                const action = subArgs[0];
+                if (action === 'edit') {
+                    const issueKey = subArgs[1];
+                    const commentId = subArgs[2];
+                    const text = options.body ?? options.add;
+                    if (!issueKey || !commentId || text === undefined) {
+                        error('Error: Issue key, comment id, and --body required');
+                        console.error(
+                            'Usage: af jira comment edit <issue-key> <comment-id> --body "text"',
+                        );
+                        return 1;
+                    }
+                    const comment = await client.updateComment(
+                        issueKey,
+                        commentId,
+                        text,
+                        parseVisibility(options.visibility),
+                    );
+                    fmt.output(
+                        json
+                            ? comment
+                            : fmt.formatSuccess(
+                                  `Updated comment ${commentId} on ${fmt.issueLink(issueKey)}`,
+                              ),
+                        json,
+                    );
+                    break;
+                }
+                if (action === 'delete') {
+                    const issueKey = subArgs[1];
+                    const commentId = subArgs[2];
+                    if (!issueKey || !commentId) {
+                        error('Error: Issue key and comment id required');
+                        console.error('Usage: af jira comment delete <issue-key> <comment-id>');
+                        return 1;
+                    }
+                    await client.deleteComment(issueKey, commentId);
+                    fmt.output(
+                        json
+                            ? { success: true, key: issueKey, deletedId: commentId }
+                            : fmt.formatSuccess(
+                                  `Deleted comment ${commentId} from ${fmt.issueLink(issueKey)}`,
+                              ),
+                        json,
+                    );
+                    break;
+                }
+
+                const issueKey = action;
                 if (!issueKey) {
                     error(
                         'Error: Issue key required. Usage: af jira comment <issue-key> [--add "text"]',
@@ -515,7 +601,20 @@ export async function handleJira(args: string[]): Promise<number> {
                     return 1;
                 }
                 if (options.add) {
-                    const comment = await client.addComment(issueKey, options.add);
+                    // JSM internal/public notes must go through the Service Desk API,
+                    // since the platform comment endpoint's public flag is read-only.
+                    const comment =
+                        options.internal || options.public
+                            ? await client.addServiceDeskComment(
+                                  issueKey,
+                                  options.add,
+                                  Boolean(options.public),
+                              )
+                            : await client.addComment(
+                                  issueKey,
+                                  options.add,
+                                  parseVisibility(options.visibility),
+                              );
                     fmt.output(
                         json
                             ? comment
@@ -850,6 +949,17 @@ export async function handleJira(args: string[]): Promise<number> {
                         false,
                     );
                 }
+                break;
+            }
+
+            case 'editmeta': {
+                const issueKey = subArgs[0];
+                if (!issueKey) {
+                    error('Error: Issue key required. Usage: af jira editmeta <issue-key>');
+                    return 1;
+                }
+                const meta = await client.getEditMeta(issueKey);
+                fmt.output(json ? meta : fmt.formatEditMeta(issueKey, meta), json);
                 break;
             }
 

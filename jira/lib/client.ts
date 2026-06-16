@@ -19,6 +19,8 @@ import type {
     JiraCreateVersionRequest,
     JiraUpdateVersionRequest,
     JiraRemoteLink,
+    JiraVisibility,
+    JiraEditMetaResponse,
 } from './types.ts';
 import type { JiraFieldCatalogEntry, JiraCreateMetaResponse } from './fields/codec-types.ts';
 
@@ -183,6 +185,8 @@ export async function updateIssue(
         remainingEstimate?: string;
         fixVersions?: string[];
         affectedVersions?: string[];
+        parent?: string;
+        clearParent?: boolean;
         customFields?: Record<string, unknown>;
     },
 ): Promise<void> {
@@ -215,6 +219,14 @@ export async function updateIssue(
     if (updates.affectedVersions !== undefined) {
         body.fields.versions = updates.affectedVersions.map(name => ({ name }));
     }
+    // `parent` is the canonical field for both subtask parents and epic-level
+    // parents (it replaced the deprecated Epic Link). Clearing via `null` is
+    // undocumented and project-type-dependent — treated as provisional.
+    if (updates.clearParent) {
+        body.fields.parent = null;
+    } else if (updates.parent !== undefined) {
+        body.fields.parent = { key: updates.parent };
+    }
     if (updates.customFields) {
         for (const [key, value] of Object.entries(updates.customFields)) {
             body.fields[key] = value;
@@ -239,13 +251,69 @@ export async function getComments(issueKey: string): Promise<JiraComment[]> {
     return response.comments;
 }
 
-export async function addComment(issueKey: string, text: string): Promise<JiraComment> {
+export async function addComment(
+    issueKey: string,
+    text: string,
+    visibility?: JiraVisibility,
+): Promise<JiraComment> {
+    const body: { body: unknown; visibility?: JiraVisibility } = { body: textToAdf(text) };
+    if (visibility) body.visibility = visibility;
     return request<JiraComment>(`/issue/${issueKey}/comment`, {
         method: 'POST',
-        body: JSON.stringify({
-            body: textToAdf(text),
-        }),
+        body: JSON.stringify(body),
     });
+}
+
+export async function updateComment(
+    issueKey: string,
+    commentId: string,
+    text: string,
+    visibility?: JiraVisibility,
+): Promise<JiraComment> {
+    const body: { body: unknown; visibility?: JiraVisibility } = { body: textToAdf(text) };
+    if (visibility) body.visibility = visibility;
+    return request<JiraComment>(`/issue/${issueKey}/comment/${commentId}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+    });
+}
+
+export async function deleteComment(issueKey: string, commentId: string): Promise<void> {
+    await request(`/issue/${issueKey}/comment/${commentId}`, {
+        method: 'DELETE',
+    });
+}
+
+/**
+ * Add a Jira Service Management request comment, choosing public vs internal.
+ * The platform comment API's `jsdPublic` flag is read-only, so internal/public
+ * notes go through the JSM API (a different base path). The body is plain text.
+ */
+export async function addServiceDeskComment(
+    issueKey: string,
+    text: string,
+    isPublic: boolean,
+): Promise<JiraComment> {
+    const baseUrl = getSharedBaseUrl();
+    const url = `${baseUrl}/rest/servicedeskapi/request/${issueKey}/comment`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            Authorization: getAuthHeader(),
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        },
+        body: JSON.stringify({ body: text, public: isPublic }),
+    });
+    if (!response.ok) {
+        throw new JiraApiError(`HTTP ${response.status}: ${response.statusText}`, response.status);
+    }
+    return response.json() as Promise<JiraComment>;
+}
+
+// Edit metadata — the per-issue, edit-context twin of createmeta.
+export async function getEditMeta(issueKey: string): Promise<JiraEditMetaResponse> {
+    return request<JiraEditMetaResponse>(`/issue/${issueKey}/editmeta`);
 }
 
 // Transitions

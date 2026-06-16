@@ -6,6 +6,10 @@ import {
     getCreateMeta,
     getTransitions,
     transitionIssue,
+    addComment,
+    updateComment,
+    deleteComment,
+    getEditMeta,
 } from './client.ts';
 
 const BASE_URL = 'https://test.atlassian.net';
@@ -244,6 +248,78 @@ describe('jira client', () => {
             mockTransitionLookup();
 
             await expect(transitionIssue('PROJ-5', 'Nope')).rejects.toThrow(/Available: Done/);
+        });
+    });
+
+    describe('updateIssue reparent', () => {
+        it('sets fields.parent.key when parent is given', async () => {
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await updateIssue('PROJ-1', { parent: 'PROJ-5' });
+
+            const [, init] = fetchMock.mock.calls[0]!;
+            const body = JSON.parse((init as RequestInit).body as string);
+            expect(body.fields.parent).toEqual({ key: 'PROJ-5' });
+        });
+
+        it('sets fields.parent to null when clearParent is set', async () => {
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await updateIssue('PROJ-1', { clearParent: true });
+
+            const [, init] = fetchMock.mock.calls[0]!;
+            const body = JSON.parse((init as RequestInit).body as string);
+            expect(body.fields.parent).toBeNull();
+        });
+    });
+
+    describe('comments', () => {
+        it('addComment attaches a visibility restriction when provided', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '1' }));
+
+            await addComment('PROJ-1', 'Internal note', {
+                type: 'role',
+                value: 'Administrators',
+            });
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toContain('/issue/PROJ-1/comment');
+            const body = JSON.parse((init as RequestInit).body as string);
+            expect(body.visibility).toEqual({ type: 'role', value: 'Administrators' });
+            expect(body.body.type).toBe('doc');
+        });
+
+        it('updateComment PUTs the new body to the comment id', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '9' }));
+
+            await updateComment('PROJ-1', '9', 'Edited text');
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/comment/9`);
+            expect((init as RequestInit).method).toBe('PUT');
+            const body = JSON.parse((init as RequestInit).body as string);
+            expect(JSON.stringify(body.body)).toContain('Edited text');
+        });
+
+        it('deleteComment DELETEs the comment id', async () => {
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await deleteComment('PROJ-1', '9');
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/comment/9`);
+            expect((init as RequestInit).method).toBe('DELETE');
+        });
+    });
+
+    describe('getEditMeta', () => {
+        it('GETs the editmeta endpoint', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ fields: {} }));
+
+            await getEditMeta('PROJ-1');
+
+            const [url] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/editmeta`);
         });
     });
 });

@@ -91,6 +91,17 @@ export interface JiraTransition {
     fields?: Record<string, JiraTransitionField>;
 }
 
+export interface JiraVisibility {
+    type: 'group' | 'role';
+    value: string;
+    identifier?: string;
+}
+
+// Returned by GET /issue/{key}/editmeta — the per-issue edit-context twin of createmeta.
+export interface JiraEditMetaResponse {
+    fields: Record<string, JiraTransitionField>;
+}
+
 export interface JiraIssueLinkType {
     id: string;
     name: string;
