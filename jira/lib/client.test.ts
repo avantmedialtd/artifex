@@ -12,6 +12,10 @@ import {
     getEditMeta,
     moveIssue,
     pollBulkTask,
+    chunk,
+    runBulkOverKeys,
+    submitBulkDelete,
+    submitBulkTransition,
 } from './client.ts';
 
 const BASE_URL = 'https://test.atlassian.net';
@@ -381,6 +385,66 @@ describe('jira client', () => {
             await expect(
                 moveIssue('PROJ-1', 'NEWPROJ', { type: 'Story', intervalMs: 0 }),
             ).rejects.toThrow(/FAILED/);
+        });
+    });
+
+    describe('chunk', () => {
+        it('splits a list into chunks of the given size', () => {
+            const keys = Array.from({ length: 1500 }, (_, i) => `K-${i}`);
+            const parts = chunk(keys, 1000);
+            expect(parts.map(p => p.length)).toEqual([1000, 500]);
+        });
+    });
+
+    describe('runBulkOverKeys', () => {
+        it('submits one task per 1000-issue chunk and polls each serially', async () => {
+            const keys = Array.from({ length: 1500 }, (_, i) => `K-${i}`);
+            // Fresh Response per poll — a Response body can only be read once.
+            fetchMock.mockImplementation(async () =>
+                mockJsonResponse({ taskId: 'x', status: 'COMPLETE' }),
+            );
+            let submitted = 0;
+
+            const tasks = await runBulkOverKeys(
+                keys,
+                async () => {
+                    submitted++;
+                    return `task-${submitted}`;
+                },
+                { intervalMs: 0 },
+            );
+
+            expect(submitted).toBe(2);
+            expect(tasks).toHaveLength(2);
+            expect(tasks.every(t => t.status === 'COMPLETE')).toBe(true);
+        });
+    });
+
+    describe('bulk submit shapes', () => {
+        it('submitBulkDelete posts selectedIssueIdsOrKeys', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ taskId: '1' }, 201));
+
+            const id = await submitBulkDelete(['A-1', 'A-2']);
+
+            expect(id).toBe('1');
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/bulk/issues/delete`);
+            const body = JSON.parse((init as RequestInit).body as string);
+            expect(body.selectedIssueIdsOrKeys).toEqual(['A-1', 'A-2']);
+        });
+
+        it('submitBulkTransition wraps keys in bulkTransitionInputs', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ taskId: '2' }, 201));
+
+            await submitBulkTransition(['A-1'], '31');
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/bulk/issues/transition`);
+            const body = JSON.parse((init as RequestInit).body as string);
+            expect(body.bulkTransitionInputs[0]).toEqual({
+                selectedIssueIdsOrKeys: ['A-1'],
+                transitionId: '31',
+            });
         });
     });
 });

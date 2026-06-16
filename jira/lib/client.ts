@@ -399,6 +399,71 @@ export async function moveIssue(
     });
 }
 
+// Bulk edit / transition / delete over a set of issue keys.
+export const BULK_MAX_ISSUES = 1000;
+
+export function chunk<T>(items: T[], size: number): T[][] {
+    const out: T[][] = [];
+    for (let i = 0; i < items.length; i += size) {
+        out.push(items.slice(i, i + size));
+    }
+    return out;
+}
+
+export async function submitBulkDelete(issueKeys: string[]): Promise<string> {
+    const res = await request<BulkTaskSubmitResponse>('/bulk/issues/delete', {
+        method: 'POST',
+        body: JSON.stringify({ selectedIssueIdsOrKeys: issueKeys }),
+    });
+    return res.taskId;
+}
+
+export async function submitBulkTransition(
+    issueKeys: string[],
+    transitionId: string,
+): Promise<string> {
+    const res = await request<BulkTaskSubmitResponse>('/bulk/issues/transition', {
+        method: 'POST',
+        body: JSON.stringify({
+            bulkTransitionInputs: [{ selectedIssueIdsOrKeys: issueKeys, transitionId }],
+        }),
+    });
+    return res.taskId;
+}
+
+export async function submitBulkEdit(
+    issueKeys: string[],
+    editedFieldsInput: Record<string, unknown>,
+): Promise<string> {
+    const res = await request<BulkTaskSubmitResponse>('/bulk/issues/fields', {
+        method: 'POST',
+        body: JSON.stringify({
+            selectedIssueIdsOrKeys: issueKeys,
+            selectedActions: Object.keys(editedFieldsInput),
+            editedFieldsInput,
+        }),
+    });
+    return res.taskId;
+}
+
+/**
+ * Apply a bulk submit over a set of issue keys, chunked to the per-request cap
+ * and run serially (so at most one bulk task is in flight, well within the
+ * global 5-concurrent ceiling). Returns each chunk's final task status.
+ */
+export async function runBulkOverKeys(
+    keys: string[],
+    submit: (chunk: string[]) => Promise<string>,
+    options: { intervalMs?: number; maxAttempts?: number } = {},
+): Promise<BulkTaskStatus[]> {
+    const results: BulkTaskStatus[] = [];
+    for (const part of chunk(keys, BULK_MAX_ISSUES)) {
+        const taskId = await submit(part);
+        results.push(await pollBulkTask(taskId, options));
+    }
+    return results;
+}
+
 // Transitions
 export async function getTransitions(
     issueKey: string,

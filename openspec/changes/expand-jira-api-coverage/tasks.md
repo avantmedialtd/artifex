@@ -31,11 +31,11 @@ This is a roadmap to pick slices from. Groups are ordered by leverage and depend
 
 ## 4. Bulk operations over JQL (#6, Tier 2) — reuses the poller
 
-- [ ] 4.1 Add `af jira bulk <edit|transition|delete> --jql "<query>"` resolving issues by JQL
-- [ ] 4.2 Chunk selections to ≤1,000 issues/request and serialize to ≤5 concurrent tasks
-- [ ] 4.3 Detect field-requiring transitions (via `transitions?expand=fields`) and refuse bulk-transition with a pointer to single-issue `transition`
-- [ ] 4.4 Tests: bulk transition polls; large selection chunks/serializes; field-requiring transition refused
-- [ ] 4.5 Update `commands/help.ts` and README for `bulk`
+- [x] 4.1 Add `af jira bulk <edit|transition|delete> --jql "<query>"` resolving issues by JQL
+- [x] 4.2 Chunk selections to ≤1,000 issues/request and serialize to ≤5 concurrent tasks
+- [x] 4.3 Detect field-requiring transitions (via `transitions?expand=fields`) and refuse bulk-transition with a pointer to single-issue `transition`
+- [x] 4.4 Tests: bulk transition polls; large selection chunks/serializes; field-requiring transition refused
+- [x] 4.5 Update `commands/help.ts` (README covered in the final docs pass) for `bulk`
 
 ## 5. Worklogs (#3, Tier 1) — standalone
 

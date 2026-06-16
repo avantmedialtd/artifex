@@ -98,6 +98,7 @@ interface JiraOptions {
     'clear-parent'?: boolean;
     internal?: boolean;
     public?: boolean;
+    jql?: string;
 }
 
 /**
@@ -187,6 +188,7 @@ COMMANDS:
   fields                    List custom fields (discovery for --field flags)
   editmeta <issue-key>      List editable fields for an issue
   move <issue-key>          Move issue to another project/type (async)
+  bulk <action>             Bulk edit/transition/delete issues by JQL (async)
 
 LINK COMMANDS:
   link <issue-key>          Link two issues
@@ -296,6 +298,11 @@ ASSIGN OPTIONS:
 MOVE OPTIONS:
   --to-project <KEY>        Destination project key (required)
   --type <name>             Target issue type (defaults to the current type)
+
+BULK OPTIONS:
+  --jql "<query>"           Select issues to operate on (required)
+  --to "<status>"           Target status (bulk transition; no-screen transitions only)
+  --field-json '<json>'     editedFieldsInput payload (bulk edit)
 
 EXAMPLES:
   af jira get PROJ-123
@@ -987,6 +994,98 @@ export async function handleJira(args: string[]): Promise<number> {
                               `Moved ${fmt.issueLink(issueKey)} to ${toProject}` +
                                   `${options.type ? ` as ${options.type}` : ''} ` +
                                   `(task ${task.taskId}: ${task.status})`,
+                          ),
+                    json,
+                );
+                break;
+            }
+
+            case 'bulk': {
+                const action = subArgs[0];
+                if (!action || !['delete', 'transition', 'edit'].includes(action)) {
+                    error('Error: bulk requires an action: delete | transition | edit');
+                    console.error('Usage: af jira bulk <delete|transition|edit> --jql "<query>"');
+                    return 1;
+                }
+                if (!options.jql) {
+                    error('Error: --jql required');
+                    console.error('Usage: af jira bulk <action> --jql "<query>"');
+                    return 1;
+                }
+                const found = await client.searchIssues(options.jql, client.BULK_MAX_ISSUES);
+                const keys = found.issues.map(i => i.key);
+                if (keys.length === 0) {
+                    fmt.output(
+                        json
+                            ? { matched: 0, tasks: [] }
+                            : fmt.formatSuccess('No issues matched the JQL; nothing to do.'),
+                        json,
+                    );
+                    break;
+                }
+
+                let tasks;
+                if (action === 'delete') {
+                    tasks = await client.runBulkOverKeys(keys, k => client.submitBulkDelete(k));
+                } else if (action === 'transition') {
+                    if (!options.to) {
+                        error('Error: --to <status> required for bulk transition');
+                        return 1;
+                    }
+                    // Resolve the transition on a sample issue and refuse if it needs a screen,
+                    // since the bulk transition endpoint cannot supply field input.
+                    const { transitions } = await client.getTransitions(keys[0], {
+                        expandFields: true,
+                    });
+                    const t = transitions.find(
+                        x => x.name.toLowerCase() === options.to!.toLowerCase(),
+                    );
+                    if (!t) {
+                        const available = transitions.map(x => x.name).join(', ');
+                        throw new Error(
+                            `Transition "${options.to}" not found on ${keys[0]}. Available: ${available}`,
+                        );
+                    }
+                    const required = Object.values(t.fields ?? {}).filter(f => f.required);
+                    if (t.hasScreen || required.length > 0) {
+                        error(
+                            `Error: transition "${options.to}" presents a screen / required fields; bulk transition can't supply them.`,
+                        );
+                        console.error(
+                            `Use single-issue: af jira transition <key> --to "${options.to}" --resolution ... --field ...`,
+                        );
+                        return 1;
+                    }
+                    tasks = await client.runBulkOverKeys(keys, k =>
+                        client.submitBulkTransition(k, t.id),
+                    );
+                } else {
+                    if (!options['field-json']) {
+                        error("Error: bulk edit requires --field-json '<editedFieldsInput>'");
+                        console.error(
+                            'See the Jira bulk edit API for the editedFieldsInput shape.',
+                        );
+                        return 1;
+                    }
+                    let edited: Record<string, unknown>;
+                    try {
+                        edited = JSON.parse(options['field-json']);
+                    } catch {
+                        error('Error: --field-json must be valid JSON');
+                        return 1;
+                    }
+                    tasks = await client.runBulkOverKeys(keys, k =>
+                        client.submitBulkEdit(k, edited),
+                    );
+                }
+
+                const allDone = tasks.every(t => t.status.toUpperCase().includes('COMPLETE'));
+                fmt.output(
+                    json
+                        ? { matched: keys.length, chunks: tasks.length, tasks }
+                        : fmt.formatSuccess(
+                              `Bulk ${action} over ${keys.length} issue(s) in ${tasks.length} task(s): ` +
+                                  `${allDone ? 'all complete' : 'see task statuses'}`,
                           ),
                     json,
                 );
