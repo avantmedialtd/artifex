@@ -25,6 +25,9 @@ import {
     moveIssueToBacklog,
     getBoards,
     getSprints,
+    watchIssue,
+    unwatchIssue,
+    voteIssue,
 } from './client.ts';
 
 const BASE_URL = 'https://test.atlassian.net';
@@ -587,6 +590,42 @@ describe('jira client', () => {
             expect(sprints).toHaveLength(1);
             const [url] = fetchMock.mock.calls[0]!;
             expect(String(url)).toBe(`${BASE_URL}/rest/agile/1.0/board/7/sprint?state=active`);
+        });
+    });
+
+    describe('watchers and votes', () => {
+        it('watchIssue POSTs to the watchers endpoint', async () => {
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await watchIssue('PROJ-1');
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/watchers`);
+            expect((init as RequestInit).method).toBe('POST');
+        });
+
+        it('unwatchIssue resolves the caller then DELETEs with their accountId', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ accountId: 'abc123' }));
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await unwatchIssue('PROJ-1');
+
+            expect(String(fetchMock.mock.calls[0]![0])).toBe(`${BASE_URL}/rest/api/3/myself`);
+            const [url, init] = fetchMock.mock.calls[1]!;
+            expect(String(url)).toBe(
+                `${BASE_URL}/rest/api/3/issue/PROJ-1/watchers?accountId=abc123`,
+            );
+            expect((init as RequestInit).method).toBe('DELETE');
+        });
+
+        it('voteIssue POSTs to the votes endpoint', async () => {
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await voteIssue('PROJ-1');
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/votes`);
+            expect((init as RequestInit).method).toBe('POST');
         });
     });
 });

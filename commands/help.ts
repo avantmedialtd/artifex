@@ -85,6 +85,7 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af jira rank PROJ-123 --above PROJ-99   # Reorder in the backlog',
             'af jira sprint add PROJ-123 --sprint 42',
             'af jira boards                          # List boards',
+            'af jira watch PROJ-123                  # Watch / vote',
             'af jira link PROJ-123 --to PROJ-456 --type "Blocks"',
             'af jira unlink PROJ-123 --from PROJ-456',
             'af jira remote-link PROJ-123     # List remote links',

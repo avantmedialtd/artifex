@@ -56,10 +56,10 @@ This is a roadmap to pick slices from. Groups are ordered by leverage and depend
 
 ## 7. Watchers/votes (#10, Tier 1) — optional fill-ins
 
-- [ ] 7.1 Add `af jira watch <key>` and `af jira unwatch <key>`
-- [ ] 7.2 Add `af jira vote <key>`
-- [ ] 7.3 Tests for watch/unwatch/vote
-- [ ] 7.4 Update `commands/help.ts` and README
+- [x] 7.1 Add `af jira watch <key>` and `af jira unwatch <key>`
+- [x] 7.2 Add `af jira vote <key>`
+- [x] 7.3 Tests for watch/unwatch/vote
+- [x] 7.4 Update `commands/help.ts` (README covered in the final docs pass)
 
 ## 8. Cross-cutting docs and packaging
 

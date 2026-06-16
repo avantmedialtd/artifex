@@ -566,6 +566,28 @@ export async function getSprints(
     return res.values;
 }
 
+// Watchers and votes (operate on the calling user).
+export async function getMyself(): Promise<JiraUser> {
+    return request<JiraUser>('/myself');
+}
+
+export async function watchIssue(issueKey: string): Promise<void> {
+    // POST with no body adds the calling user as a watcher.
+    await request(`/issue/${issueKey}/watchers`, { method: 'POST' });
+}
+
+export async function unwatchIssue(issueKey: string): Promise<void> {
+    // DELETE requires the accountId; remove the calling user.
+    const me = await getMyself();
+    await request(`/issue/${issueKey}/watchers?accountId=${encodeURIComponent(me.accountId)}`, {
+        method: 'DELETE',
+    });
+}
+
+export async function voteIssue(issueKey: string): Promise<void> {
+    await request(`/issue/${issueKey}/votes`, { method: 'POST' });
+}
+
 // Transitions
 export async function getTransitions(
     issueKey: string,

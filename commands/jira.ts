@@ -201,6 +201,9 @@ COMMANDS:
   sprint <action>           Move issue into a sprint or to the backlog [Jira Software]
   boards                    List boards [Jira Software]
   sprints --board <id>      List a board's sprints [Jira Software]
+  watch <issue-key>         Watch an issue (current user)
+  unwatch <issue-key>       Stop watching an issue (current user)
+  vote <issue-key>          Vote on an issue (current user)
 
 LINK COMMANDS:
   link <issue-key>          Link two issues
@@ -1270,6 +1273,34 @@ export async function handleJira(args: string[]): Promise<number> {
                 }
                 const sprints = await client.getSprints(options.board, { state: options.state });
                 fmt.output(json ? sprints : fmt.formatSprints(options.board, sprints), json);
+                break;
+            }
+
+            case 'watch':
+            case 'unwatch':
+            case 'vote': {
+                const issueKey = subArgs[0];
+                if (!issueKey) {
+                    error(`Error: Issue key required. Usage: af jira ${subcommand} <issue-key>`);
+                    return 1;
+                }
+                let message: string;
+                if (subcommand === 'watch') {
+                    await client.watchIssue(issueKey);
+                    message = `Watching ${fmt.issueLink(issueKey)}`;
+                } else if (subcommand === 'unwatch') {
+                    await client.unwatchIssue(issueKey);
+                    message = `Stopped watching ${fmt.issueLink(issueKey)}`;
+                } else {
+                    await client.voteIssue(issueKey);
+                    message = `Voted on ${fmt.issueLink(issueKey)}`;
+                }
+                fmt.output(
+                    json
+                        ? { success: true, key: issueKey, action: subcommand }
+                        : fmt.formatSuccess(message),
+                    json,
+                );
                 break;
             }
 
