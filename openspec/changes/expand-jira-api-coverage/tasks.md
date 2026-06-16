@@ -63,6 +63,6 @@ This is a roadmap to pick slices from. Groups are ordered by leverage and depend
 
 ## 8. Cross-cutting docs and packaging
 
-- [ ] 8.1 Update the Jira section of `CLAUDE.md` with the new subcommands/flags
-- [ ] 8.2 Add any new proper nouns/terms to `.cspell.json`
-- [ ] 8.3 Run `bun run format`, `bun run lint`, `bun run spell:check`, and `bun run test`
+- [x] 8.1 Update the Jira section of `CLAUDE.md` with the new subcommands/flags (and the README Commands › Jira section)
+- [x] 8.2 Add any new proper nouns/terms to `.cspell.json`
+- [x] 8.3 Run `bun run format`, `bun run lint`, `bun run spell:check`, and `bun run test`

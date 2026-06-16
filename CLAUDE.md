@@ -379,6 +379,21 @@ Optional aliases go in `af.json`:
 
 Field metadata is cached under `~/.cache/artifex/jira/<instance-slug>/`. Use `--refresh` on `af jira fields` to bust the cache.
 
+### Jira Workflow, Move, and Agile Operations
+
+Beyond CRUD, `af jira` covers transitions-with-screens, issue moves, worklogs, bulk operations, and the Jira Software (Agile) surface:
+
+- **Transitions carry screens.** `af jira transition KEY --to Done --resolution Fixed --comment "…" --field name=value` sends `fields` + `update` to `POST /issue/{key}/transitions`; the comment is ADF in `update.comment`; a 409 (concurrent transition) retries with backoff. `af jira transitions KEY` requests `?expand=transitions.fields` and shows which transitions present a screen and what they require. (A field goes in either `fields` or `update`, never both.)
+- **Reparent.** `af jira update KEY --parent PARENT` sets the canonical `parent` field (it replaced Epic Link); `--clear-parent` attempts `parent: null` (provisional — Jira's clearing behavior is undocumented and varies by project type).
+- **Comments.** `af jira comment edit KEY <id> --body …` / `comment delete KEY <id>`; `--visibility "Role"` (or `group:Name`) restricts the platform comment; `--internal` / `--public` route through the JSM Service Desk API (`/rest/servicedeskapi/...`), since the platform `jsdPublic` flag is read-only.
+- **editmeta.** `af jira editmeta KEY` reports editable fields + allowed values (the edit-context twin of `fields`/createmeta).
+- **Move + bulk (async).** `af jira move KEY --to-project P [--type T]` and `af jira bulk <delete|transition|edit> --jql "…"` use the asynchronous bulk endpoints (`POST /bulk/issues/*` → poll `GET /bulk/queue/{taskId}`). Selections chunk to ≤1000 issues and run serially (within the global 5-concurrent ceiling). Bulk transition refuses screen/field-requiring transitions and points at single-issue `transition`. Move infers status/field defaults so cross-workflow moves don't need a hand-built mapping.
+- **Worklogs.** `af jira worklog add/list/update/delete`; comments render as ADF; `started` defaults to now in Jira's timestamp format.
+- **Agile (Jira Software).** The client speaks a second base path, `/rest/agile/1.0`, for `af jira rank KEY --above/--below KEY2`, `af jira sprint add/remove`, `af jira boards`, and `af jira sprints --board <id>`. Sprint ownership is intentionally not duplicated from the `pm` skill.
+- **Watch/vote.** `af jira watch/unwatch KEY` (unwatch resolves the caller via `/myself` for the accountId-scoped delete) and `af jira vote KEY`.
+
+All subcommands support `--json`. The client lives in `jira/lib/client.ts` (`request` = `/rest/api/3`, `requestAgile` = `/rest/agile/1.0`, both via a shared `jiraFetch`; `JiraApiError` carries the HTTP status).
+
 ### Bitbucket Command
 
 The `af bitbucket` command (alias `af bb`) manages Bitbucket Cloud pull requests, comments, tasks, and pipelines.

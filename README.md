@@ -112,7 +112,8 @@ Run `af help` for the full list, or `af help <command>` for details on any one. 
 
 ### Jira
 
-Manage issues end-to-end, including custom fields.
+Manage issues end-to-end, including custom fields, workflow transitions, moves,
+worklogs, and (for Jira Software) ranking and sprints.
 
 ```bash
 af jira get PROJ-123                       # Issue details (renders custom fields when present)
@@ -121,11 +122,53 @@ af jira list PROJ --show-field storyPoints # Add custom-field columns
 af jira search "status = Open AND assignee = currentUser()"
 af jira create --project PROJ --type Bug --summary "Title" --field storyPoints=5
 af jira update PROJ-123 --field storyPoints=8
-af jira transition PROJ-123 --to "Done"    # (af jira transitions PROJ-123 lists options)
+af jira update PROJ-123 --parent PROJ-100   # Reparent / set epic
 af jira link PROJ-123 --to PROJ-456 --type "Blocks"
 af jira fields --project PROJ --type Story  # Required + allowed values for create
+af jira editmeta PROJ-123                   # Editable fields for an existing issue
 af jira projects                            # List visible projects
 ```
+
+**Workflow transitions** carry resolution, comment, and screen fields — so an
+agent can close an issue _correctly_ instead of leaving it resolved with no
+resolution:
+
+```bash
+af jira transitions PROJ-123                                 # Lists transitions + which need a screen
+af jira transition PROJ-123 --to Done --resolution Fixed --comment "Shipped in v1.2"
+```
+
+**Comments, worklogs, watching, voting:**
+
+```bash
+af jira comment PROJ-123 --add "Note" --visibility "Administrators"
+af jira comment edit PROJ-123 10042 --body "Edited"
+af jira comment delete PROJ-123 10042
+af jira worklog add PROJ-123 --time 2h --comment "Investigated root cause"
+af jira worklog list PROJ-123
+af jira watch PROJ-123      # unwatch / vote likewise
+```
+
+**Move** an issue across projects/types (asynchronous bulk API — polled to
+completion), and **bulk** operate over a JQL selection:
+
+```bash
+af jira move PROJ-123 --to-project NEWPROJ --type Story
+af jira bulk transition --jql "project = PROJ AND status = Backlog" --to "To Do"
+af jira bulk delete --jql "project = SCRATCH AND created < -90d"
+```
+
+**Jira Software** ranking and sprints:
+
+```bash
+af jira rank PROJ-123 --above PROJ-99       # Reorder in the backlog
+af jira boards --project PROJ
+af jira sprints --board 7 --state active
+af jira sprint add PROJ-123 --sprint 42     # sprint remove moves it to the backlog
+```
+
+Every subcommand supports `--json` for scripting. Run `af jira --help` for the
+full command and flag reference.
 
 ### Confluence
 
