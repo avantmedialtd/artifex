@@ -5,6 +5,8 @@ import * as client from '../bitbucket/lib/client.ts';
 vi.mock('../bitbucket/lib/client.ts', () => ({
     resolveComment: vi.fn(),
     reopenComment: vi.fn(),
+    listComments: vi.fn(),
+    listTasks: vi.fn(),
 }));
 
 // These tests cover the flag-alias contract for `af bb pr create`: the canonical
@@ -123,5 +125,227 @@ describe('pr comment resolve/reopen routing', () => {
         expect(code).toBe(0);
         const printed = logSpy.mock.calls.map(c => String(c[0])).join('\n');
         expect(printed).toContain('pullrequest_comment_resolution');
+    });
+});
+
+// Resolution-state filtering on the two list surfaces. The client is mocked to
+// return a fixed mixed set; we assert the rendered/JSON output only carries the
+// threads/tasks matching the filter, and that the flags are mutually exclusive.
+describe('pr comment list --resolved / --unresolved', () => {
+    const fakeUser = {
+        type: 'user' as const,
+        account_id: 'acct1',
+        nickname: 'alice',
+        display_name: 'Alice',
+    };
+    // #1 resolved root + reply #2 ; #3 open root + reply #4.
+    const mixedComments = [
+        {
+            id: 1,
+            content: { raw: 'resolved root' },
+            user: fakeUser,
+            created_on: '2025-01-01T00:00:00Z',
+            updated_on: '2025-01-01T00:00:00Z',
+            resolution: { type: 'pullrequest_comment_resolution', user: fakeUser },
+        },
+        {
+            id: 2,
+            content: { raw: 'reply to resolved' },
+            user: fakeUser,
+            created_on: '2025-01-01T00:00:00Z',
+            updated_on: '2025-01-01T00:00:00Z',
+            parent: { id: 1 },
+        },
+        {
+            id: 3,
+            content: { raw: 'open root' },
+            user: fakeUser,
+            created_on: '2025-01-01T00:00:00Z',
+            updated_on: '2025-01-01T00:00:00Z',
+        },
+        {
+            id: 4,
+            content: { raw: 'reply to open' },
+            user: fakeUser,
+            created_on: '2025-01-01T00:00:00Z',
+            updated_on: '2025-01-01T00:00:00Z',
+            parent: { id: 3 },
+        },
+    ];
+
+    let logSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+        vi.mocked(client.listComments)
+            .mockReset()
+            .mockResolvedValue(mixedComments as never);
+        logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        logSpy.mockRestore();
+    });
+
+    const base = ['--workspace', 'ws', '--repo', 'repo'];
+    const printed = () => logSpy.mock.calls.map(c => String(c[0])).join('\n');
+
+    it('renders only resolved threads (with replies) under --resolved', async () => {
+        const code = await handleBitbucket(['pr', 'comment', 'list', '42', '--resolved', ...base]);
+        expect(code).toBe(0);
+        const out = printed();
+        expect(out).toContain('**#1**');
+        expect(out).toContain('**#2**');
+        expect(out).not.toContain('**#3**');
+        expect(out).not.toContain('**#4**');
+    });
+
+    it('renders only open threads (with replies) under --unresolved', async () => {
+        const code = await handleBitbucket([
+            'pr',
+            'comment',
+            'list',
+            '42',
+            '--unresolved',
+            ...base,
+        ]);
+        expect(code).toBe(0);
+        const out = printed();
+        expect(out).toContain('**#3**');
+        expect(out).toContain('**#4**');
+        expect(out).not.toContain('**#1**');
+        expect(out).not.toContain('**#2**');
+    });
+
+    it('filters the --json payload too', async () => {
+        const code = await handleBitbucket([
+            'pr',
+            'comment',
+            'list',
+            '42',
+            '--resolved',
+            '--json',
+            ...base,
+        ]);
+        expect(code).toBe(0);
+        const out = printed();
+        expect(out).toContain('"id": 1');
+        expect(out).toContain('"id": 2');
+        expect(out).not.toContain('"id": 3');
+        expect(out).not.toContain('"id": 4');
+    });
+
+    it('rejects --resolved --unresolved together with exit 1', async () => {
+        const code = await handleBitbucket([
+            'pr',
+            'comment',
+            'list',
+            '42',
+            '--resolved',
+            '--unresolved',
+            ...base,
+        ]);
+        expect(code).toBe(1);
+        expect(client.listComments).not.toHaveBeenCalled();
+    });
+});
+
+describe('pr task list --resolved / --unresolved', () => {
+    const fakeUser = {
+        type: 'user' as const,
+        account_id: 'acct1',
+        nickname: 'alice',
+        display_name: 'Alice',
+    };
+    const mixedTasks = [
+        {
+            id: 1,
+            content: { raw: 'open task' },
+            state: 'UNRESOLVED' as const,
+            creator: fakeUser,
+            created_on: '2025-01-01T00:00:00Z',
+            updated_on: '2025-01-01T00:00:00Z',
+        },
+        {
+            id: 2,
+            content: { raw: 'done task' },
+            state: 'RESOLVED' as const,
+            creator: fakeUser,
+            created_on: '2025-01-01T00:00:00Z',
+            updated_on: '2025-01-01T00:00:00Z',
+        },
+        {
+            id: 3,
+            content: { raw: 'another open task' },
+            state: 'UNRESOLVED' as const,
+            creator: fakeUser,
+            created_on: '2025-01-01T00:00:00Z',
+            updated_on: '2025-01-01T00:00:00Z',
+        },
+    ];
+
+    let logSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+        vi.mocked(client.listTasks)
+            .mockReset()
+            .mockResolvedValue(mixedTasks as never);
+        logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        logSpy.mockRestore();
+    });
+
+    const base = ['--workspace', 'ws', '--repo', 'repo'];
+    const printed = () => logSpy.mock.calls.map(c => String(c[0])).join('\n');
+
+    it('renders only resolved tasks under --resolved', async () => {
+        const code = await handleBitbucket(['pr', 'task', 'list', '42', '--resolved', ...base]);
+        expect(code).toBe(0);
+        const out = printed();
+        expect(out).toContain('**#2**');
+        expect(out).not.toContain('**#1**');
+        expect(out).not.toContain('**#3**');
+    });
+
+    it('renders only unresolved tasks under --unresolved', async () => {
+        const code = await handleBitbucket(['pr', 'task', 'list', '42', '--unresolved', ...base]);
+        expect(code).toBe(0);
+        const out = printed();
+        expect(out).toContain('**#1**');
+        expect(out).toContain('**#3**');
+        expect(out).not.toContain('**#2**');
+    });
+
+    it('filters the --json payload too', async () => {
+        const code = await handleBitbucket([
+            'pr',
+            'task',
+            'list',
+            '42',
+            '--resolved',
+            '--json',
+            ...base,
+        ]);
+        expect(code).toBe(0);
+        const out = printed();
+        expect(out).toContain('"id": 2');
+        expect(out).toContain('RESOLVED');
+        expect(out).not.toContain('"id": 1');
+        expect(out).not.toContain('"id": 3');
+    });
+
+    it('rejects --resolved --unresolved together with exit 1', async () => {
+        const code = await handleBitbucket([
+            'pr',
+            'task',
+            'list',
+            '42',
+            '--resolved',
+            '--unresolved',
+            ...base,
+        ]);
+        expect(code).toBe(1);
+        expect(client.listTasks).not.toHaveBeenCalled();
     });
 });

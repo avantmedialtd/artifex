@@ -422,7 +422,8 @@ af bb pr merge <id> [--strategy merge_commit|squash|fast_forward] [--close-sourc
 af bb pr decline <id>
 
 # PR comments — body shape determined by flags on `add`
-af bb pr comment list <pr-id>               af bb pr comment get <pr-id> <cid>
+af bb pr comment list <pr-id> [--resolved | --unresolved]   # filter by thread state
+af bb pr comment get <pr-id> <cid>
 af bb pr comment add <pr-id> --body / --body-file
                               [--file PATH --line N]   # inline anchor
                               [--reply-to CID]         # reply
@@ -431,7 +432,7 @@ af bb pr comment delete <pr-id> <cid>
 af bb pr comment resolve <pr-id> <cid>      af bb pr comment reopen <pr-id> <cid>
 
 # PR tasks — standalone or anchored to a comment
-af bb pr task list <pr-id>
+af bb pr task list <pr-id> [--resolved | --unresolved]      # filter by task state
 af bb pr task add <pr-id> --body / --body-file [--on-comment CID]
 af bb pr task update <pr-id> <tid> [--body / --body-file] [--resolved | --unresolved]
 af bb pr task delete <pr-id> <tid>
@@ -463,6 +464,8 @@ af bb members [--query Q]
 ```
 
 Reviewers must be passed as Bitbucket Cloud account IDs (not usernames). Use `af bb members --query <name>` to look them up.
+
+`pr comment list` and `pr task list` accept `--resolved` / `--unresolved` (mutually exclusive) to filter by resolution state; the filter also narrows `--json` output. Comment resolution is a _thread_ property, so the filter keeps or drops whole threads by their root comment's state — the replies of a matching thread are retained. Tasks carry per-task state, so their filter is a flat match.
 
 The read surface is intentionally read-only (every command is a GET) and mirrors the `af sonar` inspection shape. `pr status` is informational and always exits `0` even when a status is `FAILED` — gate it in scripts via `--json`. `commit list` and `pr activity` are bounded by `--limit` (default 25); `repo`/`branch`/`tag` lists drain all pages. `src read`/`src ls`/`commit list` default to the repository's main branch when `--ref`/`--branch` is omitted. `whoami` needs the token's Account read scope. Write-to-repo, `status` publishing, and repo administration are deliberately out of scope (later tiers).
 

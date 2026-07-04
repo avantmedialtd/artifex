@@ -1,5 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { error } from '../utils/output.ts';
+import {
+    filterCommentsByResolution,
+    filterTasksByResolution,
+    resolutionFilterFromFlags,
+} from '../bitbucket/lib/filters.ts';
 
 interface BitbucketOptions {
     json?: boolean;
@@ -160,7 +165,7 @@ PULL REQUESTS:
   pr reviewers <id> [--pending]                     Reviewers + approval state
 
 PR COMMENTS:
-  pr comment list <pr-id>
+  pr comment list <pr-id> [--resolved | --unresolved]
   pr comment get <pr-id> <comment-id>
   pr comment add <pr-id> --body / --body-file
                          [--file PATH --line N]
@@ -171,7 +176,7 @@ PR COMMENTS:
   pr comment reopen <pr-id> <comment-id>           Reopen a resolved thread
 
 PR TASKS:
-  pr task list <pr-id>
+  pr task list <pr-id> [--resolved | --unresolved]
   pr task add <pr-id> --body / --body-file [--on-comment COMMENT-ID]
   pr task update <pr-id> <task-id> [--body / --body-file] [--resolved | --unresolved]
   pr task delete <pr-id> <task-id>
@@ -602,7 +607,15 @@ async function handleComment(
     switch (action) {
         case 'list': {
             const prId = requireIdArg(args[1], 'pr id');
-            const comments = await client.listComments(ws, repo, prId);
+            if (options.resolved && options.unresolved) {
+                error('Error: --resolved and --unresolved are mutually exclusive');
+                return 1;
+            }
+            const filter = resolutionFilterFromFlags(options.resolved, options.unresolved);
+            const comments = filterCommentsByResolution(
+                await client.listComments(ws, repo, prId),
+                filter,
+            );
             fmt.output(json ? comments : fmt.formatCommentList(comments), false);
             return 0;
         }
@@ -694,7 +707,12 @@ async function handleTask(
     switch (action) {
         case 'list': {
             const prId = requireIdArg(args[1], 'pr id');
-            const tasks = await client.listTasks(ws, repo, prId);
+            if (options.resolved && options.unresolved) {
+                error('Error: --resolved and --unresolved are mutually exclusive');
+                return 1;
+            }
+            const filter = resolutionFilterFromFlags(options.resolved, options.unresolved);
+            const tasks = filterTasksByResolution(await client.listTasks(ws, repo, prId), filter);
             fmt.output(json ? tasks : fmt.formatTaskList(tasks), false);
             return 0;
         }
