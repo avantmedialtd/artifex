@@ -10,3 +10,4 @@
 /vscode-extension/*.vsix
 
 /.claude/scheduled_tasks.lock
+/.claude/settings.json
