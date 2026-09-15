@@ -61,19 +61,20 @@
         "prepublishOnly": "node -e \"if(!process.env.CI) throw new Error('Publish via CI only — use /release')\""
     },
     "devDependencies": {
-        "@types/node": "^25.0.3",
-        "@types/react": "^19.2.7",
-        "@vitest/ui": "^4.0.16",
-        "cspell": "^9.4.0",
-        "oxlint": "^1.36.0",
-        "prettier": "^3.7.4",
-        "typescript": "^5.9.3",
+        "@types/node": "^26.4.0",
+        "@types/react": "^19.2.18",
+        "@vitest/ui": "^4.1.11",
+        "cspell": "^10.1.1",
+        "oxlint": "^1.80.0",
+        "prettier": "^3.9.6",
+        "typescript": "^7.0.2",
         "react-devtools-core": "^7.0.1",
-        "vitest": "^4.0.16"
+        "vitest": "^4.1.11"
     },
     "dependencies": {
         "bun": ">=1.1.0",
-        "ink": "^6.6.0",
-        "react": "^19.2.3"
+        "chalk": "^6.0.0",
+        "ink": "^7.1.1",
+        "react": "^19.2.8"
     }
 }
