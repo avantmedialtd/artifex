@@ -411,7 +411,8 @@ Generate a workspace API token at `https://bitbucket.org/<workspace>/workspace/s
 
 ```bash
 # Pull requests
-af bb pr list [--state OPEN|MERGED|DECLINED|ALL] [--mine | --author Q]
+af bb pr list [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--mine | --author Q]
+af bb pr mine [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--workspace W] [--limit N]
 af bb pr get <id>                           af bb pr diff <id>
 af bb pr create --title T [--from B] [--to B] [--description / --description-file F]
                 [--reviewers a,b] [--draft]
@@ -464,6 +465,8 @@ af bb members [--query Q]
 ```
 
 Reviewers must be passed as Bitbucket Cloud account IDs (not usernames). Use `af bb members --query <name>` to look them up.
+
+`pr mine` lists the pull requests _authored_ by the authenticated account across **every workspace it belongs to** (`GET /user/workspaces`, then `GET /workspaces/{ws}/pullrequests/{uuid}` per workspace), merged newest-updated first with a Repo column. It needs no repository, and only an explicit `--workspace` narrows it — `af.json` and the git remote are deliberately ignored. A workspace answering 403/404 is skipped with a warning on stderr (exit stays `0`); any other error exits `1`. `--limit N` returns the N most recently updated across workspaces and stops paging early; without it every page is drained, so pair `--state ALL` with `--limit`. It needs the Account read scope (like `whoami`), and a workspace/repository _access token_ authenticates as a bot, so "mine" is then the bot's PRs. `pr list --state ALL` sends every state explicitly (Bitbucket returns only `OPEN` when `state` is omitted).
 
 `pr comment list` and `pr task list` accept `--resolved` / `--unresolved` (mutually exclusive) to filter by resolution state; the filter also narrows `--json` output. Comment resolution is a _thread_ property, so the filter keeps or drops whole threads by their root comment's state — the replies of a matching thread are retained. Tasks carry per-task state, so their filter is a flat match.
 

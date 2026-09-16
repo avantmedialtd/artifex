@@ -110,6 +110,7 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
         usage: 'af bitbucket <subcommand> [args] [options]',
         examples: [
             'af bb pr list --state OPEN',
+            'af bb pr mine                             # My PRs across all my workspaces',
             'af bb pr get 42',
             'af bb pr create --title "Fix bug" --reviewers abc123,def456',
             'af bb pr comment add 42 --body "LGTM" --reply-to 100',

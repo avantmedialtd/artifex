@@ -81,6 +81,26 @@ export function formatPullRequestList(prs: BitbucketPullRequest[]): string {
     return lines.join('\n');
 }
 
+/**
+ * The caller's own pull requests across workspaces (`pr mine`). A Repo column
+ * replaces Author (always the caller), since ids are only unique per repository.
+ */
+export function formatMyPullRequestList(prs: BitbucketPullRequest[]): string {
+    if (prs.length === 0) return '_No pull requests._';
+    const lines: string[] = [];
+    lines.push('| Repo | ID | State | Title | Branches | Updated |');
+    lines.push('|------|----|-------|-------|----------|---------|');
+    for (const pr of prs) {
+        const repo = pr.destination.repository?.full_name ?? '—';
+        lines.push(
+            `| ${repo} | ${prLink(pr)} | ${pr.state} | ${escapePipe(pr.title)} ` +
+                `| ${pr.source.branch.name} → ${pr.destination.branch.name} ` +
+                `| ${formatDate(pr.updated_on)} |`,
+        );
+    }
+    return lines.join('\n');
+}
+
 export function formatPullRequest(pr: BitbucketPullRequest): string {
     const lines: string[] = [];
     lines.push(`# ${prLink(pr)}: ${pr.title}`);

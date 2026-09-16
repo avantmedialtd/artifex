@@ -6,6 +6,7 @@ import {
     formatCommitList,
     formatDiffStat,
     formatMembers,
+    formatMyPullRequestList,
     formatPipelineList,
     formatPullRequestList,
     formatReviewers,
@@ -55,6 +56,43 @@ describe('formatPullRequestList', () => {
         expect(out).toContain('Fix bug');
         expect(out).toContain('feature/x → main');
         expect(out).toContain('OPEN');
+    });
+});
+
+describe('formatMyPullRequestList', () => {
+    const base: BitbucketPullRequest = {
+        id: 42,
+        title: 'Fix bug',
+        state: 'OPEN',
+        author: fakeUser,
+        source: { branch: { name: 'feature/x' } },
+        destination: { branch: { name: 'main' }, repository: { full_name: 'acme/api' } },
+        created_on: '2025-01-01T00:00:00Z',
+        updated_on: '2025-01-02T00:00:00Z',
+    };
+
+    it('renders empty', () => {
+        expect(formatMyPullRequestList([])).toBe('_No pull requests._');
+    });
+
+    it('renders a Repo column instead of Author', () => {
+        const out = formatMyPullRequestList([base]);
+        const [header, , row] = out.split('\n');
+        expect(header).toBe('| Repo | ID | State | Title | Branches | Updated |');
+        expect(header).not.toContain('Author');
+        expect(row).toMatch(/^\| acme\/api \| #42 \| OPEN \| Fix bug \| feature\/x → main \| /);
+    });
+
+    it('falls back to — when the destination repository is missing', () => {
+        const out = formatMyPullRequestList([
+            { ...base, destination: { branch: { name: 'main' } } },
+        ]);
+        expect(out.split('\n')[2]).toMatch(/^\| — \| #42 \|/);
+    });
+
+    it('escapes pipes in titles', () => {
+        const out = formatMyPullRequestList([{ ...base, title: 'a | b' }]);
+        expect(out).toContain('a \\| b');
     });
 });
 

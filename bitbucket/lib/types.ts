@@ -179,6 +179,12 @@ export interface BitbucketAccount {
     created_on?: string;
 }
 
+/** A workspace the authenticated account can access, as returned by `GET /user/workspaces`. */
+export interface BitbucketWorkspaceAccess {
+    administrator?: boolean;
+    workspace: { slug: string; name?: string; uuid?: string };
+}
+
 /** A commit object as returned by the commits/commit endpoints. */
 export interface BitbucketCommit {
     hash: string;

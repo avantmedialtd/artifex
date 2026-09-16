@@ -40,6 +40,7 @@
  */
 
 import { execSync } from 'node:child_process';
+import { AtlassianHttpError } from '../../atlassian/lib/request.ts';
 import {
     bbPaginate as paginate,
     bbRequest as request,
@@ -71,6 +72,7 @@ import type {
     BitbucketTriggerPipelineRequest,
     BitbucketUpdatePullRequestRequest,
     BitbucketUpdateTaskRequest,
+    BitbucketWorkspaceAccess,
     BitbucketWorkspaceMember,
 } from './types.ts';
 
@@ -115,6 +117,32 @@ export async function getRepository(workspace: string, repo: string): Promise<Bi
 
 // --- Pull requests ------------------------------------------------------
 
+const ALL_PULL_REQUEST_STATES: BitbucketPullRequestState[] = [
+    'OPEN',
+    'MERGED',
+    'DECLINED',
+    'SUPERSEDED',
+];
+
+/**
+ * The explicit `state` values to request. Bitbucket returns only OPEN pull
+ * requests when `state` is absent, so `ALL` must name every state (sent as a
+ * repeated `state` parameter) rather than omit the filter.
+ */
+export function pullRequestStates(
+    state?: BitbucketPullRequestState | 'ALL',
+): BitbucketPullRequestState[] {
+    if (state === 'ALL') return [...ALL_PULL_REQUEST_STATES];
+    return [state ?? 'OPEN'];
+}
+
+function appendStateParams(
+    params: URLSearchParams,
+    state?: BitbucketPullRequestState | 'ALL',
+): void {
+    for (const s of pullRequestStates(state)) params.append('state', s);
+}
+
 export interface ListPullRequestsOptions {
     state?: BitbucketPullRequestState | 'ALL';
     q?: string;
@@ -125,14 +153,10 @@ export async function listPullRequests(
     repo: string,
     opts: ListPullRequestsOptions = {},
 ): Promise<BitbucketPullRequest[]> {
-    const params: Record<string, string> = {};
-    if (opts.state && opts.state !== 'ALL') {
-        params.state = opts.state;
-    }
-    if (opts.q) {
-        params.q = opts.q;
-    }
-    const url = `${repoUrl(workspace, repo)}/pullrequests${buildQuery(params)}`;
+    const params = new URLSearchParams();
+    appendStateParams(params, opts.state);
+    if (opts.q) params.append('q', opts.q);
+    const url = `${repoUrl(workspace, repo)}/pullrequests?${params.toString()}`;
     const out: BitbucketPullRequest[] = [];
     for await (const pr of paginate<BitbucketPullRequest>(url)) out.push(pr);
     return out;
@@ -643,15 +667,158 @@ export async function getCurrentUser(): Promise<BitbucketAccount> {
         // The shared request layer surfaces Bitbucket's error envelope, whose 403
         // body reads "…lack one or more required privilege scopes." (no "403"), so
         // match the scope wording as well as the bare HTTP status fallback.
-        if (msg.includes('403') || /forbidden|privilege scope|scope/i.test(msg)) {
+        const forbidden = err instanceof AtlassianHttpError && err.status === 403;
+        if (forbidden || msg.includes('403') || /forbidden|privilege scope|scope/i.test(msg)) {
             throw new Error(
-                'whoami failed: the Bitbucket token lacks the Account read scope. ' +
-                    'Grant "Account: Read" on the workspace API token or app password ' +
+                'Could not resolve the authenticated Bitbucket account: the token lacks the ' +
+                    'Account read scope. Grant "Account: Read" on the workspace API token or app password ' +
                     `(https://bitbucket.org/account/settings/app-passwords/).\nUnderlying error: ${msg}`,
             );
         }
         throw err;
     }
+}
+
+// --- Read surface: my pull requests across workspaces -------------------
+
+/** Workspaces searched in parallel by `listMyPullRequests`. */
+const WORKSPACE_CONCURRENCY = 4;
+
+/** Every workspace the authenticated account can access (`GET /user/workspaces`). */
+export async function listUserWorkspaces(): Promise<BitbucketWorkspaceAccess[]> {
+    const out: BitbucketWorkspaceAccess[] = [];
+    for await (const w of paginate<BitbucketWorkspaceAccess>(`${API_BASE}/user/workspaces`)) {
+        out.push(w);
+    }
+    return out;
+}
+
+export interface ListUserPullRequestsOptions {
+    state?: BitbucketPullRequestState | 'ALL';
+    /** Stop draining pages once this many pull requests are collected. Unbounded when omitted. */
+    limit?: number;
+}
+
+/**
+ * Pull requests authored by `user` across every repository in `workspace`
+ * (`GET /workspaces/{ws}/pullrequests/{user}`), newest-updated first. `user` is
+ * a curly-braced account UUID or an Atlassian account id. This replaces the
+ * cross-workspace `/pullrequests/{user}` endpoint Bitbucket removed in 2025.
+ */
+export async function listWorkspacePullRequestsForUser(
+    workspace: string,
+    user: string,
+    opts: ListUserPullRequestsOptions = {},
+): Promise<BitbucketPullRequest[]> {
+    const params = new URLSearchParams();
+    appendStateParams(params, opts.state);
+    params.append('sort', '-updated_on');
+    const url =
+        `${API_BASE}/workspaces/${encodeURIComponent(workspace)}` +
+        `/pullrequests/${encodeURIComponent(user)}?${params.toString()}`;
+    const out: BitbucketPullRequest[] = [];
+    for await (const pr of paginate<BitbucketPullRequest>(url)) {
+        out.push(pr);
+        if (opts.limit !== undefined && out.length >= opts.limit) break;
+    }
+    return out;
+}
+
+/**
+ * Map `items` through `fn` with at most `concurrency` calls in flight,
+ * preserving input order. Stops starting new calls after the first rejection.
+ */
+async function mapWithConcurrency<T, R>(
+    items: readonly T[],
+    concurrency: number,
+    fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+    const results: R[] = [];
+    let next = 0;
+    let failed = false;
+    async function worker(): Promise<void> {
+        while (!failed && next < items.length) {
+            const i = next++;
+            try {
+                results[i] = await fn(items[i] as T);
+            } catch (err) {
+                failed = true;
+                throw err;
+            }
+        }
+    }
+    const workers = Math.min(concurrency, items.length);
+    await Promise.all(Array.from({ length: workers }, worker));
+    return results;
+}
+
+export interface ListMyPullRequestsOptions extends ListUserPullRequestsOptions {
+    /** Search only this workspace instead of every workspace the account belongs to. */
+    workspace?: string;
+}
+
+/** A workspace whose pull requests could not be read (HTTP 403/404) and was skipped. */
+export interface SkippedWorkspace {
+    workspace: string;
+    status: number;
+    message: string;
+}
+
+export interface MyPullRequests {
+    pullRequests: BitbucketPullRequest[];
+    skipped: SkippedWorkspace[];
+}
+
+/**
+ * Pull requests authored by the authenticated account across every workspace it
+ * belongs to (or just `opts.workspace`), merged newest-updated first.
+ *
+ * A workspace answering 403/404 (e.g. one the token is not scoped to) is
+ * reported in `skipped` rather than failing the whole search; any other error
+ * propagates. With `limit`, each workspace stops paginating after `limit` pull
+ * requests — its most recently updated — so the merged top-`limit` is exact.
+ */
+export async function listMyPullRequests(
+    opts: ListMyPullRequestsOptions = {},
+): Promise<MyPullRequests> {
+    const account = await getCurrentUser();
+    const user = account.uuid ?? account.account_id;
+    const workspaces = opts.workspace
+        ? [opts.workspace]
+        : (await listUserWorkspaces()).map(w => w.workspace.slug);
+
+    const perWorkspace = await mapWithConcurrency(
+        workspaces,
+        WORKSPACE_CONCURRENCY,
+        async (workspace): Promise<BitbucketPullRequest[] | SkippedWorkspace> => {
+            try {
+                return await listWorkspacePullRequestsForUser(workspace, user, {
+                    state: opts.state,
+                    limit: opts.limit,
+                });
+            } catch (err) {
+                if (
+                    err instanceof AtlassianHttpError &&
+                    (err.status === 403 || err.status === 404)
+                ) {
+                    return { workspace, status: err.status, message: err.message };
+                }
+                throw err;
+            }
+        },
+    );
+
+    const pullRequests: BitbucketPullRequest[] = [];
+    const skipped: SkippedWorkspace[] = [];
+    for (const result of perWorkspace) {
+        if (Array.isArray(result)) pullRequests.push(...result);
+        else skipped.push(result);
+    }
+    pullRequests.sort((a, b) => Date.parse(b.updated_on) - Date.parse(a.updated_on));
+    return {
+        pullRequests: opts.limit !== undefined ? pullRequests.slice(0, opts.limit) : pullRequests,
+        skipped,
+    };
 }
 
 // --- Read surface: repositories -----------------------------------------

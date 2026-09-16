@@ -1,13 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { parseArgs, handleBitbucket } from './bitbucket.ts';
 import * as client from '../bitbucket/lib/client.ts';
+import * as bbConfig from '../bitbucket/lib/config.ts';
 
 vi.mock('../bitbucket/lib/client.ts', () => ({
     resolveComment: vi.fn(),
     reopenComment: vi.fn(),
     listComments: vi.fn(),
     listTasks: vi.fn(),
+    listPullRequests: vi.fn(),
+    listMyPullRequests: vi.fn(),
 }));
+
+// Pass through to the real resolver by default; individual tests override it to
+// simulate "no Bitbucket context" or "af.json names a workspace" without
+// depending on this checkout's git remote.
+vi.mock('../bitbucket/lib/config.ts', async importOriginal => {
+    const actual = await importOriginal<typeof import('../bitbucket/lib/config.ts')>();
+    return { ...actual, resolveTarget: vi.fn(actual.resolveTarget) };
+});
 
 // These tests cover the flag-alias contract for `af bb pr create`: the canonical
 // keys `from` and `to` accept `--source`/`--src` and `--destination`/`--dest`
@@ -347,5 +358,182 @@ describe('pr task list --resolved / --unresolved', () => {
         ]);
         expect(code).toBe(1);
         expect(client.listTasks).not.toHaveBeenCalled();
+    });
+});
+
+describe('pr mine', () => {
+    let logSpy: ReturnType<typeof vi.spyOn>;
+    let errSpy: ReturnType<typeof vi.spyOn>;
+
+    const mine = {
+        id: 42,
+        title: 'Add rate limit',
+        state: 'OPEN',
+        author: { type: 'user', account_id: 'acc-1', display_name: 'Me' },
+        source: { branch: { name: 'feature/rl' } },
+        destination: { branch: { name: 'main' }, repository: { full_name: 'w1/api' } },
+        created_on: '2026-09-01T00:00:00Z',
+        updated_on: '2026-09-02T00:00:00Z',
+    };
+
+    const stdout = () => logSpy.mock.calls.map(c => String(c[0])).join('\n');
+    const stderr = () => errSpy.mock.calls.map(c => String(c[0])).join('\n');
+
+    beforeEach(() => {
+        vi.mocked(client.listMyPullRequests)
+            .mockReset()
+            .mockResolvedValue({ pullRequests: [mine], skipped: [] } as never);
+        logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        logSpy.mockRestore();
+        errSpy.mockRestore();
+        vi.mocked(bbConfig.resolveTarget).mockClear();
+    });
+
+    it('works with no resolvable workspace or repository', async () => {
+        vi.mocked(bbConfig.resolveTarget).mockImplementationOnce(() => {
+            throw new Error('Could not resolve Bitbucket workspace/repo');
+        });
+        const code = await handleBitbucket(['pr', 'mine']);
+        expect(code).toBe(0);
+        expect(client.listMyPullRequests).toHaveBeenCalledWith({
+            workspace: undefined,
+            state: 'OPEN',
+            limit: undefined,
+        });
+        expect(stderr()).not.toContain('Could not resolve');
+        expect(stdout()).toContain('| Repo | ID |');
+        expect(stdout()).toContain('w1/api');
+    });
+
+    it('does not narrow to a workspace resolved from af.json or the git remote', async () => {
+        vi.mocked(bbConfig.resolveTarget).mockReturnValueOnce({ workspace: 'W1', repo: 'R' });
+        const code = await handleBitbucket(['pr', 'mine']);
+        expect(code).toBe(0);
+        expect(vi.mocked(client.listMyPullRequests).mock.calls[0]?.[0]?.workspace).toBeUndefined();
+    });
+
+    it('narrows to an explicit --workspace', async () => {
+        const code = await handleBitbucket(['pr', 'mine', '--workspace', 'W1']);
+        expect(code).toBe(0);
+        expect(vi.mocked(client.listMyPullRequests).mock.calls[0]?.[0]?.workspace).toBe('W1');
+    });
+
+    it('normalizes --state and forwards --limit', async () => {
+        const code = await handleBitbucket(['pr', 'mine', '--state', 'all', '--limit', '5']);
+        expect(code).toBe(0);
+        expect(client.listMyPullRequests).toHaveBeenCalledWith({
+            workspace: undefined,
+            state: 'ALL',
+            limit: 5,
+        });
+    });
+
+    it('rejects an invalid --state without making requests', async () => {
+        const code = await handleBitbucket(['pr', 'mine', '--state', 'BOGUS']);
+        expect(code).toBe(1);
+        expect(client.listMyPullRequests).not.toHaveBeenCalled();
+        expect(stderr()).toContain('invalid --state BOGUS');
+    });
+
+    it('rejects --limit 0 without making requests', async () => {
+        const code = await handleBitbucket(['pr', 'mine', '--limit', '0']);
+        expect(code).toBe(1);
+        expect(client.listMyPullRequests).not.toHaveBeenCalled();
+        expect(stderr()).toContain('--limit must be a positive integer');
+    });
+
+    it('warns about skipped workspaces on stderr and still exits 0', async () => {
+        vi.mocked(client.listMyPullRequests).mockResolvedValue({
+            pullRequests: [mine],
+            skipped: [{ workspace: 'W2', status: 403, message: 'No access' }],
+        } as never);
+        const code = await handleBitbucket(['pr', 'mine']);
+        expect(code).toBe(0);
+        expect(stderr()).toContain('skipped workspace "W2" (HTTP 403): No access');
+        expect(stdout()).not.toContain('W2');
+        expect(stdout()).toContain('w1/api');
+    });
+
+    it('emits a single parseable JSON array on stdout with warnings kept off it', async () => {
+        vi.mocked(client.listMyPullRequests).mockResolvedValue({
+            pullRequests: [mine],
+            skipped: [{ workspace: 'W2', status: 404, message: 'Not found' }],
+        } as never);
+        const code = await handleBitbucket(['pr', 'mine', '--json']);
+        expect(code).toBe(0);
+        const parsed = JSON.parse(stdout());
+        expect(Array.isArray(parsed)).toBe(true);
+        expect(parsed).toHaveLength(1);
+        expect(parsed[0].id).toBe(42);
+        expect(stderr()).toContain('W2');
+    });
+
+    it('renders the empty state', async () => {
+        vi.mocked(client.listMyPullRequests).mockResolvedValue({
+            pullRequests: [],
+            skipped: [],
+        } as never);
+        const code = await handleBitbucket(['pr', 'mine']);
+        expect(code).toBe(0);
+        expect(stdout()).toContain('_No pull requests._');
+    });
+
+    it('exits 1 on an unexpected error with nothing on stdout', async () => {
+        vi.mocked(client.listMyPullRequests).mockRejectedValue(new Error('HTTP 500: boom'));
+        const code = await handleBitbucket(['pr', 'mine', '--json']);
+        expect(code).toBe(1);
+        expect(stderr()).toContain('HTTP 500: boom');
+        expect(logSpy).not.toHaveBeenCalled();
+    });
+});
+
+describe('pr list --state', () => {
+    let logSpy: ReturnType<typeof vi.spyOn>;
+    let errSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+        vi.mocked(client.listPullRequests)
+            .mockReset()
+            .mockResolvedValue([] as never);
+        logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        logSpy.mockRestore();
+        errSpy.mockRestore();
+    });
+
+    const base = ['--workspace', 'ws', '--repo', 'repo'];
+
+    it('passes ALL through so the client requests every state', async () => {
+        const code = await handleBitbucket(['pr', 'list', '--state', 'ALL', ...base]);
+        expect(code).toBe(0);
+        expect(client.listPullRequests).toHaveBeenCalledWith('ws', 'repo', {
+            state: 'ALL',
+            q: undefined,
+        });
+    });
+
+    it('accepts SUPERSEDED', async () => {
+        const code = await handleBitbucket(['pr', 'list', '--state', 'superseded', ...base]);
+        expect(code).toBe(0);
+        expect(client.listPullRequests).toHaveBeenCalledWith('ws', 'repo', {
+            state: 'SUPERSEDED',
+            q: undefined,
+        });
+    });
+
+    it('rejects an invalid state with exit 1', async () => {
+        const code = await handleBitbucket(['pr', 'list', '--state', 'nope', ...base]);
+        expect(code).toBe(1);
+        expect(client.listPullRequests).not.toHaveBeenCalled();
+        expect(errSpy.mock.calls.map(c => String(c[0])).join('\n')).toContain(
+            'invalid --state NOPE',
+        );
     });
 });

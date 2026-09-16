@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AtlassianHttpError } from '../../atlassian/lib/request.ts';
 import * as bbRequestModule from './request.ts';
+import type { BitbucketPullRequest } from './types.ts';
 import {
     buildCommentBody,
     buildTaskBody,
@@ -21,6 +23,11 @@ import {
     browseSource,
     listPullRequestActivity,
     listPullRequestStatuses,
+    listPullRequests,
+    pullRequestStates,
+    listUserWorkspaces,
+    listWorkspacePullRequestsForUser,
+    listMyPullRequests,
 } from './client.ts';
 
 // resolveComment / reopenComment are thin HTTP wrappers with no body-builder to
@@ -333,5 +340,311 @@ describe('read surface client URLs', () => {
         );
         const out = await listCommits('ws', 'repo', { limit: NaN as unknown as number });
         expect(out).toHaveLength(25);
+    });
+});
+
+// --- Pull request state parameters ----------------------------------------
+
+describe('pullRequestStates', () => {
+    it('defaults to OPEN', () => {
+        expect(pullRequestStates()).toEqual(['OPEN']);
+    });
+
+    it('passes a single state through', () => {
+        expect(pullRequestStates('MERGED')).toEqual(['MERGED']);
+    });
+
+    it('expands ALL to every state', () => {
+        expect(pullRequestStates('ALL')).toEqual(['OPEN', 'MERGED', 'DECLINED', 'SUPERSEDED']);
+    });
+});
+
+describe('listPullRequests state params', () => {
+    beforeEach(() => {
+        vi.mocked(bbRequestModule.bbPaginate)
+            .mockReset()
+            .mockImplementation(() => gen([]) as never);
+    });
+
+    function requestedUrl(): URL {
+        return new URL(vi.mocked(bbRequestModule.bbPaginate).mock.calls[0][0] as string);
+    }
+
+    it('sends every state as a repeated param for ALL', async () => {
+        await listPullRequests('ws', 'repo', { state: 'ALL' });
+        const url = requestedUrl();
+        expect(url.pathname).toBe('/2.0/repositories/ws/repo/pullrequests');
+        expect(url.searchParams.getAll('state')).toEqual([
+            'OPEN',
+            'MERGED',
+            'DECLINED',
+            'SUPERSEDED',
+        ]);
+    });
+
+    it('sends a single state param for MERGED', async () => {
+        await listPullRequests('ws', 'repo', { state: 'MERGED' });
+        expect(requestedUrl().searchParams.getAll('state')).toEqual(['MERGED']);
+    });
+
+    it('sends state=OPEN when no state is given', async () => {
+        await listPullRequests('ws', 'repo');
+        expect(requestedUrl().searchParams.getAll('state')).toEqual(['OPEN']);
+    });
+
+    it('still forwards q', async () => {
+        await listPullRequests('ws', 'repo', { state: 'OPEN', q: 'source.branch.name="feat"' });
+        const url = requestedUrl();
+        expect(url.searchParams.get('q')).toBe('source.branch.name="feat"');
+        expect(url.searchParams.getAll('state')).toEqual(['OPEN']);
+    });
+});
+
+// --- My pull requests across workspaces ---------------------------------------
+
+const ME = { account_id: 'acc-1', display_name: 'Me', uuid: '{me-uuid}' };
+
+function pr(id: number, repo: string, updated: string): BitbucketPullRequest {
+    return {
+        id,
+        title: `PR ${id}`,
+        state: 'OPEN',
+        author: { type: 'user', account_id: 'acc-1', display_name: 'Me' },
+        source: { branch: { name: `feature-${id}` } },
+        destination: { branch: { name: 'main' }, repository: { full_name: repo } },
+        created_on: updated,
+        updated_on: updated,
+    };
+}
+
+/** An async iterable whose first page request rejects with `err`. */
+function failing(err: Error): AsyncIterable<never> {
+    return { [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(err) }) };
+}
+
+/** Route bbPaginate by URL: `/user/workspaces` → slugs, `/workspaces/{ws}/…` → handler. */
+function routePaginate(
+    slugs: string[],
+    byWorkspace: Record<string, () => AsyncIterable<unknown>>,
+): void {
+    vi.mocked(bbRequestModule.bbPaginate).mockImplementation(((url: string) => {
+        if (url === `${BASE}/user/workspaces`) {
+            return gen(slugs.map(slug => ({ workspace: { slug } })));
+        }
+        const match = /\/workspaces\/([^/]+)\/pullrequests\//.exec(url);
+        const handler = match ? byWorkspace[decodeURIComponent(match[1] as string)] : undefined;
+        if (!handler) throw new Error(`unexpected URL ${url}`);
+        return handler();
+    }) as never);
+}
+
+function paginatedUrls(): string[] {
+    return vi.mocked(bbRequestModule.bbPaginate).mock.calls.map(c => c[0] as string);
+}
+
+describe('listUserWorkspaces / listWorkspacePullRequestsForUser', () => {
+    beforeEach(() => {
+        vi.mocked(bbRequestModule.bbPaginate)
+            .mockReset()
+            .mockImplementation(() => gen([]) as never);
+    });
+
+    it('listUserWorkspaces paginates /user/workspaces', async () => {
+        vi.mocked(bbRequestModule.bbPaginate).mockImplementation(
+            () => gen([{ workspace: { slug: 'a' } }, { workspace: { slug: 'b' } }]) as never,
+        );
+        const out = await listUserWorkspaces();
+        expect(bbRequestModule.bbPaginate).toHaveBeenCalledWith(`${BASE}/user/workspaces`);
+        expect(out.map(w => w.workspace.slug)).toEqual(['a', 'b']);
+    });
+
+    it('targets the workspace endpoint with encoded uuid, states, and sort', async () => {
+        await listWorkspacePullRequestsForUser('ws', '{me-uuid}', { state: 'ALL' });
+        const raw = paginatedUrls()[0] as string;
+        expect(raw.startsWith(`${BASE}/workspaces/ws/pullrequests/%7Bme-uuid%7D?`)).toBe(true);
+        const url = new URL(raw);
+        expect(url.searchParams.getAll('state')).toEqual([
+            'OPEN',
+            'MERGED',
+            'DECLINED',
+            'SUPERSEDED',
+        ]);
+        expect(url.searchParams.get('sort')).toBe('-updated_on');
+    });
+
+    it('stops paginating once the limit is reached', async () => {
+        let pulled = 0;
+        vi.mocked(bbRequestModule.bbPaginate).mockImplementation(
+            () =>
+                (async function* () {
+                    for (let i = 1; i <= 10; i++) {
+                        pulled++;
+                        yield pr(i, 'ws/r', `2026-01-${String(i).padStart(2, '0')}T00:00:00Z`);
+                    }
+                })() as never,
+        );
+        const out = await listWorkspacePullRequestsForUser('ws', '{me-uuid}', { limit: 3 });
+        expect(out).toHaveLength(3);
+        expect(pulled).toBe(3);
+    });
+});
+
+describe('listMyPullRequests', () => {
+    beforeEach(() => {
+        vi.mocked(bbRequestModule.bbRequest)
+            .mockReset()
+            .mockResolvedValue(ME as never);
+        vi.mocked(bbRequestModule.bbPaginate).mockReset();
+    });
+
+    it('discovers workspaces and queries each for the authenticated uuid', async () => {
+        routePaginate(['w1', 'w2'], {
+            w1: () => gen([pr(1, 'w1/api', '2026-09-01T00:00:00Z')]),
+            w2: () => gen([pr(2, 'w2/web', '2026-09-02T00:00:00Z')]),
+        });
+        const { pullRequests, skipped } = await listMyPullRequests();
+
+        expect(bbRequestModule.bbRequest).toHaveBeenCalledWith(`${BASE}/user`);
+        const urls = paginatedUrls();
+        expect(urls).toContain(`${BASE}/user/workspaces`);
+        expect(
+            urls.some(u => u.startsWith(`${BASE}/workspaces/w1/pullrequests/%7Bme-uuid%7D?`)),
+        ).toBe(true);
+        expect(
+            urls.some(u => u.startsWith(`${BASE}/workspaces/w2/pullrequests/%7Bme-uuid%7D?`)),
+        ).toBe(true);
+        expect(new URL(urls[1] as string).searchParams.getAll('state')).toEqual(['OPEN']);
+        expect(pullRequests.map(p => p.id)).toEqual([2, 1]);
+        expect(skipped).toEqual([]);
+    });
+
+    it('falls back to account_id when the account has no uuid', async () => {
+        vi.mocked(bbRequestModule.bbRequest).mockResolvedValue({
+            account_id: 'acc-1',
+            display_name: 'Me',
+        } as never);
+        routePaginate([], { w1: () => gen([]) });
+        await listMyPullRequests({ workspace: 'w1' });
+        expect(paginatedUrls()[0]?.startsWith(`${BASE}/workspaces/w1/pullrequests/acc-1?`)).toBe(
+            true,
+        );
+    });
+
+    it('an explicit workspace skips /user/workspaces', async () => {
+        routePaginate(['w1', 'w2'], { w1: () => gen([pr(1, 'w1/api', '2026-09-01T00:00:00Z')]) });
+        const { pullRequests } = await listMyPullRequests({ workspace: 'w1' });
+        expect(paginatedUrls()).not.toContain(`${BASE}/user/workspaces`);
+        expect(paginatedUrls()).toHaveLength(1);
+        expect(pullRequests.map(p => p.id)).toEqual([1]);
+    });
+
+    it('merges results across workspaces newest-updated first', async () => {
+        routePaginate(['w1', 'w2'], {
+            w1: () =>
+                gen([
+                    pr(10, 'w1/a', '2026-09-05T00:00:00Z'),
+                    pr(11, 'w1/a', '2026-09-01T00:00:00Z'),
+                ]),
+            w2: () =>
+                gen([
+                    pr(20, 'w2/b', '2026-09-07T00:00:00Z'),
+                    pr(21, 'w2/b', '2026-09-03T00:00:00Z'),
+                ]),
+        });
+        const { pullRequests } = await listMyPullRequests();
+        expect(pullRequests.map(p => p.id)).toEqual([20, 10, 21, 11]);
+    });
+
+    it('a global limit returns the true top-N across workspaces and stops early', async () => {
+        const pulled: Record<string, number> = { w1: 0, w2: 0 };
+        function counted(ws: string, prs: BitbucketPullRequest[]) {
+            return async function* () {
+                for (const p of prs) {
+                    pulled[ws] = (pulled[ws] ?? 0) + 1;
+                    yield p;
+                }
+            };
+        }
+        routePaginate(['w1', 'w2'], {
+            // Each workspace yields newest first, as requested via sort=-updated_on.
+            w1: counted('w1', [
+                pr(10, 'w1/a', '2026-09-09T00:00:00Z'),
+                pr(11, 'w1/a', '2026-09-08T00:00:00Z'),
+                pr(12, 'w1/a', '2026-09-01T00:00:00Z'),
+                pr(13, 'w1/a', '2026-08-01T00:00:00Z'),
+            ]),
+            w2: counted('w2', [
+                pr(20, 'w2/b', '2026-09-10T00:00:00Z'),
+                pr(21, 'w2/b', '2026-09-02T00:00:00Z'),
+                pr(22, 'w2/b', '2026-08-02T00:00:00Z'),
+            ]),
+        });
+        const { pullRequests } = await listMyPullRequests({ limit: 2 });
+        expect(pullRequests.map(p => p.id)).toEqual([20, 10]);
+        expect(pulled).toEqual({ w1: 2, w2: 2 });
+    });
+
+    it.each([403, 404])('skips a workspace answering %i and reports it', async status => {
+        routePaginate(['w1', 'w2'], {
+            w1: () => gen([pr(1, 'w1/api', '2026-09-01T00:00:00Z')]),
+            w2: () => failing(new AtlassianHttpError('You may not have access', status)),
+        });
+        const { pullRequests, skipped } = await listMyPullRequests();
+        expect(pullRequests.map(p => p.id)).toEqual([1]);
+        expect(skipped).toEqual([{ workspace: 'w2', status, message: 'You may not have access' }]);
+    });
+
+    it.each([401, 500])('propagates a %i from a workspace', async status => {
+        routePaginate(['w1', 'w2'], {
+            w1: () => gen([pr(1, 'w1/api', '2026-09-01T00:00:00Z')]),
+            w2: () => failing(new AtlassianHttpError('boom', status)),
+        });
+        await expect(listMyPullRequests()).rejects.toThrow('boom');
+    });
+
+    it('propagates a failure of /user/workspaces itself', async () => {
+        vi.mocked(bbRequestModule.bbPaginate).mockImplementation(
+            () => failing(new AtlassianHttpError('nope', 403)) as never,
+        );
+        await expect(listMyPullRequests()).rejects.toThrow('nope');
+    });
+
+    it('rewrites a 403 on /user into the Account read scope hint', async () => {
+        vi.mocked(bbRequestModule.bbRequest).mockRejectedValue(
+            new AtlassianHttpError(
+                'Your credentials lack one or more required privilege scopes.',
+                403,
+            ),
+        );
+        await expect(listMyPullRequests()).rejects.toThrow(/Account read scope/);
+        expect(bbRequestModule.bbPaginate).not.toHaveBeenCalled();
+    });
+
+    it('queries at most 4 workspaces at once', async () => {
+        let active = 0;
+        let peak = 0;
+        const slow = () =>
+            (async function* () {
+                active++;
+                peak = Math.max(peak, active);
+                await new Promise(resolve => setTimeout(resolve, 5));
+                active--;
+                yield* [];
+            })();
+        const slugs = ['w1', 'w2', 'w3', 'w4', 'w5', 'w6'];
+        routePaginate(slugs, Object.fromEntries(slugs.map(s => [s, slow])));
+        await listMyPullRequests();
+        expect(peak).toBe(4);
+        expect(paginatedUrls()).toHaveLength(7);
+    });
+
+    it('never requests the removed cross-workspace /pullrequests/{user} endpoint', async () => {
+        routePaginate(['w1'], { w1: () => gen([pr(1, 'w1/api', '2026-09-01T00:00:00Z')]) });
+        await listMyPullRequests({ state: 'ALL', limit: 5 });
+        const all = [
+            ...paginatedUrls(),
+            ...vi.mocked(bbRequestModule.bbRequest).mock.calls.map(c => c[0] as string),
+        ];
+        expect(all.some(u => u.startsWith(`${BASE}/pullrequests/`))).toBe(false);
     });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { paginate, request, requestText } from './request.ts';
+import { AtlassianHttpError, paginate, request, requestText } from './request.ts';
 
 describe('atlassian request helpers', () => {
     const originalEnv = process.env;
@@ -133,6 +133,83 @@ describe('atlassian request helpers', () => {
                     headers: { Authorization: 'Basic x' },
                 }),
             ).rejects.toThrow('newstatus: already closed');
+        });
+    });
+
+    describe('AtlassianHttpError', () => {
+        it('request throws AtlassianHttpError carrying status and the envelope message', async () => {
+            vi.stubGlobal(
+                'fetch',
+                vi
+                    .fn()
+                    .mockResolvedValue(
+                        new Response(
+                            JSON.stringify({ type: 'error', error: { message: 'No access' } }),
+                            { status: 403, statusText: 'Forbidden' },
+                        ),
+                    ),
+            );
+            const err = await request<unknown>('https://api.bitbucket.org/2.0/x', {
+                headers: { Authorization: 'Basic x' },
+            }).catch((e: unknown) => e);
+            expect(err).toBeInstanceOf(AtlassianHttpError);
+            expect(err).toBeInstanceOf(Error);
+            expect((err as AtlassianHttpError).status).toBe(403);
+            expect((err as AtlassianHttpError).message).toBe('No access');
+        });
+
+        it('request keeps the HTTP fallback message when the body is not JSON', async () => {
+            vi.stubGlobal(
+                'fetch',
+                vi
+                    .fn()
+                    .mockResolvedValue(
+                        new Response('not json', { status: 404, statusText: 'Not Found' }),
+                    ),
+            );
+            const err = await request<unknown>('https://api.bitbucket.org/2.0/x', {
+                headers: { Authorization: 'Basic x' },
+            }).catch((e: unknown) => e);
+            expect(err).toBeInstanceOf(AtlassianHttpError);
+            expect((err as AtlassianHttpError).status).toBe(404);
+            expect((err as AtlassianHttpError).message).toBe('HTTP 404: Not Found');
+        });
+
+        it('requestText throws AtlassianHttpError carrying status and message', async () => {
+            vi.stubGlobal(
+                'fetch',
+                vi
+                    .fn()
+                    .mockResolvedValue(
+                        new Response(
+                            JSON.stringify({ type: 'error', error: { message: 'gone' } }),
+                            { status: 404 },
+                        ),
+                    ),
+            );
+            const err = await requestText('https://api.bitbucket.org/2.0/foo').catch(
+                (e: unknown) => e,
+            );
+            expect(err).toBeInstanceOf(AtlassianHttpError);
+            expect((err as AtlassianHttpError).status).toBe(404);
+            expect((err as AtlassianHttpError).message).toBe('gone');
+        });
+
+        it('requestText keeps the HTTP fallback message for an empty body', async () => {
+            vi.stubGlobal(
+                'fetch',
+                vi
+                    .fn()
+                    .mockResolvedValue(
+                        new Response('', { status: 500, statusText: 'Internal Server Error' }),
+                    ),
+            );
+            const err = await requestText('https://api.bitbucket.org/2.0/foo').catch(
+                (e: unknown) => e,
+            );
+            expect(err).toBeInstanceOf(AtlassianHttpError);
+            expect((err as AtlassianHttpError).status).toBe(500);
+            expect((err as AtlassianHttpError).message).toBe('HTTP 500: Internal Server Error');
         });
     });
 

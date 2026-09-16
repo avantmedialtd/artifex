@@ -34,6 +34,22 @@ export interface AtlassianApiError {
 }
 
 /**
+ * Error thrown for a non-2xx Atlassian API response. The message is the parsed
+ * API error (unchanged from the plain `Error` this replaced); `status` carries
+ * the HTTP status, which Bitbucket's error envelope usually omits from the
+ * message, so callers can branch on it (e.g. skip a 403/404 workspace).
+ */
+export class AtlassianHttpError extends Error {
+    readonly status: number;
+
+    constructor(message: string, status: number) {
+        super(message);
+        this.name = 'AtlassianHttpError';
+        this.status = status;
+    }
+}
+
+/**
  * Make an authenticated request to an Atlassian API.
  * Accepts a full URL (caller is responsible for constructing the URL with the correct API path).
  *
@@ -55,7 +71,7 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
     });
 
     if (!response.ok) {
-        throw new Error(await parseErrorMessage(response));
+        throw new AtlassianHttpError(await parseErrorMessage(response), response.status);
     }
 
     // Handle 204 No Content
@@ -138,7 +154,7 @@ export async function requestText(url: string, options: RequestInit = {}): Promi
         } catch {
             // Use default error message
         }
-        throw new Error(errorMessage);
+        throw new AtlassianHttpError(errorMessage, response.status);
     }
 
     if (response.status === 204) {

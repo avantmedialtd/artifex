@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import type { BitbucketPullRequestState } from '../bitbucket/lib/types.ts';
 import { error } from '../utils/output.ts';
 import {
     filterCommentsByResolution,
@@ -149,7 +150,10 @@ USAGE:
   af bb <subcommand> [args] [options]              (alias)
 
 PULL REQUESTS:
-  pr list [--state OPEN|MERGED|DECLINED|ALL] [--mine | --author Q]
+  pr list [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--mine | --author Q]
+  pr mine [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--limit N]
+                                                    My authored PRs across all my workspaces
+                                                    (--workspace W narrows; use --limit with ALL)
   pr get <id>
   pr diff <id>
   pr create --title T [--from B] [--to B] [--description / --description-file F]
@@ -213,6 +217,8 @@ OPTIONS:
 
 EXAMPLES:
   af bb pr list --state OPEN
+  af bb pr mine
+  af bb pr mine --state ALL --limit 20
   af bb pr create --title "Fix bug" --reviewers a:abc123,b:def456
   af bb pr comment add 42 --body "Looks good" --reply-to 100
   af bb pr task add 42 --body "Rename this" --on-comment 100
@@ -284,6 +290,15 @@ function checkLimit(options: BitbucketOptions): void {
     if (options.limit !== undefined && (!Number.isFinite(options.limit) || options.limit <= 0)) {
         throw new Error('--limit must be a positive integer');
     }
+}
+
+const PR_STATES = new Set(['OPEN', 'MERGED', 'DECLINED', 'SUPERSEDED', 'ALL']);
+
+/** Normalize `--state` for `pr list` / `pr mine` (default OPEN); throws on an unknown state. */
+function parsePrState(options: BitbucketOptions): BitbucketPullRequestState | 'ALL' {
+    const state = (options.state ?? 'OPEN').toUpperCase();
+    if (!PR_STATES.has(state)) throw new Error(`invalid --state ${state}`);
+    return state as BitbucketPullRequestState | 'ALL';
 }
 
 const TERMINAL_STEP_STATES = new Set(['SUCCESSFUL', 'FAILED', 'STOPPED', 'ERROR']);
@@ -443,22 +458,16 @@ async function handlePr(
         );
     if (action === 'task')
         return await handleTask(args.slice(1), options, json, ensureTarget, ws, repo, client, fmt);
+    // Workspace-wide: needs no repository, so it routes before target resolution.
+    if (action === 'mine') return await handlePrMine(options, json, client, fmt);
 
     if (!ensureTarget()) return 1;
 
     switch (action) {
         case 'list': {
-            const state = (options.state ?? 'OPEN').toUpperCase();
-            const validStates = new Set(['OPEN', 'MERGED', 'DECLINED', 'SUPERSEDED', 'ALL']);
-            if (!validStates.has(state)) {
-                error(`Error: invalid --state ${state}`);
-                return 1;
-            }
+            const state = parsePrState(options);
             const q = options.author ? `author.nickname="${options.author}"` : undefined;
-            const prs = await client.listPullRequests(ws, repo, {
-                state: state === 'ALL' ? 'ALL' : (state as 'OPEN' | 'MERGED' | 'DECLINED'),
-                q,
-            });
+            const prs = await client.listPullRequests(ws, repo, { state, q });
             let filtered = prs;
             if (options.mine) {
                 const { bbRequest } = await import('../bitbucket/lib/request.ts');
@@ -589,6 +598,34 @@ async function handlePr(
             error(`Error: Unknown pr subcommand: ${action}`);
             return 1;
     }
+}
+
+/**
+ * `pr mine`: the caller's authored PRs across every workspace they belong to.
+ * Only an explicit `--workspace` narrows the search — `af.json` and the git
+ * remote are repo-context signals and are deliberately ignored here.
+ */
+async function handlePrMine(
+    options: BitbucketOptions,
+    json: boolean,
+    client: ClientModule,
+    fmt: FmtModule,
+): Promise<number> {
+    const state = parsePrState(options);
+    checkLimit(options);
+    const { pullRequests, skipped } = await client.listMyPullRequests({
+        workspace: options.workspace,
+        state,
+        limit: options.limit,
+    });
+    // stderr, not `warn()` (which writes stdout), so `--json` output stays parseable.
+    for (const s of skipped) {
+        console.error(
+            `Warning: skipped workspace "${s.workspace}" (HTTP ${s.status}): ${s.message}`,
+        );
+    }
+    fmt.output(json ? pullRequests : fmt.formatMyPullRequestList(pullRequests), false);
+    return 0;
 }
 
 async function handleComment(
