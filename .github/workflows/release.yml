@@ -13,7 +13,10 @@ concurrency:
   group: release
   cancel-in-progress: false
 
-# contents: write — create the GitHub Release. id-token: write — npm provenance (OIDC).
+# contents: write — create the GitHub Release. id-token: write — the OIDC identity
+# npm trusted publishing authenticates with, which also produces provenance. There is
+# no long-lived npm token in repository secrets: npm verifies this workflow's identity
+# (repo + workflow file) against the trusted publisher configured on the package.
 permissions:
   contents: write
   id-token: write
@@ -59,8 +62,7 @@ jobs:
             exit 1
           fi
 
-      # Runs BEFORE setup-node writes the token-bearing .npmrc, so this anonymous
-      # read can't trip the empty-NODE_AUTH_TOKEN error.
+      # An anonymous read of the public registry — no auth needed or wanted here.
       - name: Determine whether this version is already on npm
         id: npm_state
         run: |
@@ -98,22 +100,37 @@ jobs:
           bun run spell:check
           bun run test
 
-      - name: Setup Node + npm registry auth
+      # `registry-url` is deliberately NOT set. It makes setup-node write an
+      # `:_authToken=${NODE_AUTH_TOKEN}` line into .npmrc; with trusted publishing
+      # there is no such token, so that line expands to an empty string and the
+      # publish fails with ENEEDAUTH before OIDC is ever tried. registry.npmjs.org
+      # is npm's default anyway, so omitting it costs nothing.
+      - name: Setup Node
         if: steps.npm_state.outputs.published == 'false'
         uses: actions/setup-node@v7
         with:
-          node-version: 24 # bundles npm 11.x (provenance needs npm >= 9.5)
-          registry-url: 'https://registry.npmjs.org'
+          node-version: 24
+
+      # Trusted publishing needs npm >= 11.5.1; older versions never attempt the
+      # OIDC exchange and fail with ENEEDAUTH however correctly the publisher is
+      # configured. Node 24's bundled npm is an image detail that can regress, so
+      # pin the CLI here. The printed version is log-visible proof OIDC is possible.
+      - name: Use an npm with trusted-publishing support
+        if: steps.npm_state.outputs.published == 'false'
+        run: |
+          npm install -g npm@^11.15.0
+          npm --version
 
       - name: Verify package contents (dry run)
         if: steps.npm_state.outputs.published == 'false'
         run: npm publish --dry-run --access public
 
-      - name: Publish to npm (with provenance)
+      # Authentication is the workflow's OIDC identity (see `permissions` above),
+      # exchanged by npm for a short-lived, publish-scoped credential. Nothing to
+      # rotate and nothing to leak.
+      - name: Publish to npm (trusted publishing + provenance)
         if: steps.npm_state.outputs.published == 'false'
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # No `if:` => default success(), which is true even when the steps above were
       # *skipped* on a resume (skips are not failures). action-gh-release is

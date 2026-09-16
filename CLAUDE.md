@@ -601,7 +601,8 @@ Releases are automated and tag-driven (see `.claude/commands/release.md` and `.g
 - **`/release`** (run on `master`) orchestrates a full release: pick the bump, synthesize curated `releases/<tag>.md` notes from archived OpenSpec changes, approval gate, then bump → commit → annotated tag → `git push --follow-tags`.
 - **Pushing a `v*` tag** triggers `.github/workflows/release.yml`: pre-publish guards (tag↔version match, tag on `master`, notes present, not already published) → CI gates → `npm publish --provenance --access public` → GitHub Release. The publish is resumable, so a failed Release step can be recovered by re-running the workflow.
 - **Release infra is dev-only** — `scripts/bump-version.ts`, `releases/`, and the workflow are not in the published tarball (the `files` allowlist excludes them).
-- **One-time**: the `NPM_TOKEN` secret (an npm granular access token scoped to `@avantmedia/af`) must be set via `gh secret set NPM_TOKEN`. A local `npm publish` is blocked by a CI-only `prepublishOnly` guard.
+- **Authentication is npm trusted publishing (OIDC)** — no `NPM_TOKEN` secret. The workflow job carries `id-token: write`, and npm exchanges that identity for a short-lived publish credential, which also produces provenance. Two details make or break it: `actions/setup-node` must **not** set `registry-url` (it writes an empty `_authToken` into `.npmrc` and fails with `ENEEDAUTH` before OIDC is tried), and npm must be **>= 11.5.1** (older CLIs never attempt the exchange), so the workflow installs `npm@^11.15.0` explicitly.
+- **One-time**: on npmjs.com, add a Trusted Publisher to `@avantmedia/af` — GitHub Actions, repo `avantmedialtd/artifex`, workflow `release.yml`, no environment. A local `npm publish` is blocked by a CI-only `prepublishOnly` guard.
 
 **Guardrails**
 

@@ -120,6 +120,7 @@
         "softprops",
         "specforge",
         "Tauri",
-        "scriptable"
+        "scriptable",
+        "ENEEDAUTH"
     ]
 }

@@ -216,6 +216,11 @@ gh run watch "$(gh run list --workflow release.yml --branch <tag> --limit 1 --js
   the workflow's `body_path: releases/${{ github.ref_name }}.md`.
 - **Substitute the real version** into the Install footer and the compare link — no
   `<version>` placeholders in the published body.
-- **One-time prerequisite**: the `NPM_TOKEN` secret must exist
-  (`gh secret set NPM_TOKEN`) or the publish step fails. This is set up once, outside
-  this command.
+- **One-time prerequisite**: the package must have a **trusted publisher** on npmjs.com
+  (GitHub Actions · `avantmedialtd/artifex` · workflow `release.yml`) or the publish step
+  fails with a 404/`ENEEDAUTH`. Authentication is OIDC — there is no `NPM_TOKEN` secret.
+  This is set up once, outside this command.
+- **A re-run uses the workflow file from the tagged commit**, not from `master`. If the
+  fix for a failed publish is a change to `release.yml`, re-running the old run replays
+  the old file — move the tag to the fixed commit instead (safe only while nothing was
+  published).

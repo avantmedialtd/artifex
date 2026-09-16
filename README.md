@@ -304,7 +304,7 @@ Releases are automated and tag-driven. The package publishes as `@avantmedia/af`
 
 `package.json`'s `version` is the source of truth — the workflow refuses to publish a tag whose value disagrees with it. To bump by hand: `bun run bump <patch|minor|major|x.y.z>` (`--dry-run` previews).
 
-**One-time setup:** the workflow authenticates with the `NPM_TOKEN` repository secret — an npm granular access token scoped to `@avantmedia/af` (read + write). Create it at npmjs.com and run `gh secret set NPM_TOKEN -R avantmedialtd/artifex`.
+**One-time setup:** the workflow authenticates by [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) — npm verifies the workflow's OIDC identity and issues a short-lived, publish-scoped credential, so there is no npm token in repository secrets to rotate or leak. On npmjs.com, under the package's **Settings → Trusted Publisher**, add a GitHub Actions publisher for `avantmedialtd/artifex` with workflow `release.yml` (no environment).
 
 The `files` allowlist in `package.json` controls the published tarball; test files, OpenSpec artifacts, the VSCode extension, and release tooling are excluded.
 
