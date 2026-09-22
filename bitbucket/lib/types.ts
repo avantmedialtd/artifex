@@ -48,11 +48,18 @@ export interface BitbucketPullRequest {
     author: BitbucketUser;
     source: BitbucketPullRequestEndpoint;
     destination: BitbucketPullRequestEndpoint;
+    /**
+     * Omitted by the list endpoints unless requested through the `fields`
+     * partial-response parameter (see `REVIEW_FIELDS` in `client.ts`).
+     */
     reviewers?: BitbucketUser[];
     participants?: BitbucketParticipant[];
+    /** Number of open (unresolved) tasks. Included in list responses by default. */
+    task_count?: number;
     created_on: string;
     updated_on: string;
-    links?: { html?: { href: string } };
+    /** `self` is the pull request's canonical API URL; `html` its web page. */
+    links?: { html?: { href: string }; self?: { href: string } };
 }
 
 export interface BitbucketCommentInline {
@@ -230,6 +237,16 @@ export interface BitbucketCommitStatus {
     updated_on?: string;
 }
 
+/**
+ * One merge conflict, as returned by `…/pullrequests/{id}/conflicts` (which
+ * redirects to `…/file-conflicts/{spec}`).
+ */
+export interface BitbucketConflict {
+    path: string;
+    scenario?: string;
+    message?: string;
+}
+
 /** One entry of a `…/src/{ref}/{path}/` directory listing. */
 export interface BitbucketSrcEntry {
     type: 'commit_file' | 'commit_directory';
@@ -262,6 +279,20 @@ export interface BitbucketPaginated<T> {
     page?: number;
     pagelen?: number;
     size?: number;
+}
+
+// --- Merge signals (`pr list` / `pr mine --checks`) ---
+
+/**
+ * The outcome of fetching one signal: the raw data, or the captured failure
+ * (`status` is set for an HTTP error). Failures are recorded, never thrown.
+ */
+export type SignalResult<T> = { value: T } | { error: { status?: number; message: string } };
+
+/** The raw merge signals of one open pull request, as fetched by `listPullRequestSignals`. */
+export interface PullRequestSignals {
+    builds: SignalResult<BitbucketCommitStatus[]>;
+    conflicts: SignalResult<BitbucketPaginated<BitbucketConflict>>;
 }
 
 export interface BitbucketCreatePullRequestRequest {

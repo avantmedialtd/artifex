@@ -28,6 +28,7 @@ import {
     listUserWorkspaces,
     listWorkspacePullRequestsForUser,
     listMyPullRequests,
+    listPullRequestSignals,
 } from './client.ts';
 
 // resolveComment / reopenComment are thin HTTP wrappers with no body-builder to
@@ -400,6 +401,88 @@ describe('listPullRequests state params', () => {
     });
 });
 
+// --- Review data (participants/reviewers) on the list requests ----------------
+
+describe('review fields on the pull request list requests', () => {
+    const FIELDS = '+values.participants,+values.reviewers';
+    const RAW_FIELDS = '%2Bvalues.participants%2C%2Bvalues.reviewers';
+
+    const LIST_CALLS = [
+        {
+            name: 'listPullRequests',
+            list: () => listPullRequests('ws', 'repo', { q: 'source.branch.name="feat"' }),
+            others: { state: ['OPEN'], q: ['source.branch.name="feat"'] },
+            next: `${REPO}/pullrequests?state=OPEN&page=2`,
+        },
+        {
+            name: 'listWorkspacePullRequestsForUser',
+            list: () => listWorkspacePullRequestsForUser('ws', '{me-uuid}', { state: 'MERGED' }),
+            others: { state: ['MERGED'], sort: ['-updated_on'] },
+            next: `${BASE}/workspaces/ws/pullrequests/%7Bme-uuid%7D?state=MERGED&sort=-updated_on&page=2`,
+        },
+    ];
+
+    beforeEach(() => {
+        vi.mocked(bbRequestModule.bbPaginate)
+            .mockReset()
+            .mockImplementation(() => gen([]) as never);
+    });
+
+    function paginateCall() {
+        const call = vi.mocked(bbRequestModule.bbPaginate).mock.calls[0];
+        return { url: call?.[0] as string, mapNext: call?.[1]?.mapNext };
+    }
+
+    /** The still-encoded values of every `fields` parameter in `url`. */
+    function rawFields(url: string): string[] {
+        return [...url.matchAll(/[?&]fields=([^&]*)/g)].map(m => m[1] as string);
+    }
+
+    it.each(LIST_CALLS)(
+        '$name requests the review fields, %2B-encoded',
+        async ({ list, others }) => {
+            await list();
+            const { url } = paginateCall();
+            const parsed = new URL(url);
+            expect(parsed.searchParams.getAll('fields')).toEqual([FIELDS]);
+            expect(rawFields(url)).toEqual([RAW_FIELDS]);
+            expect(rawFields(url)[0]).not.toContain('+');
+            for (const [key, values] of Object.entries(others)) {
+                expect(parsed.searchParams.getAll(key)).toEqual(values);
+            }
+        },
+    );
+
+    it.each(LIST_CALLS)(
+        '$name passes a mapNext that adds fields to a next URL lacking it',
+        async ({ list, next }) => {
+            await list();
+            const { mapNext } = paginateCall();
+            expect(mapNext).toBeTypeOf('function');
+            const mapped = mapNext!(next);
+            const parsed = new URL(mapped);
+            expect(parsed.searchParams.getAll('fields')).toEqual([FIELDS]);
+            expect(rawFields(mapped)).toEqual([RAW_FIELDS]);
+            expect(parsed.searchParams.get('page')).toBe('2');
+            expect(mapped.startsWith(next.split('?')[0] as string)).toBe(true);
+        },
+    );
+
+    it.each(LIST_CALLS)(
+        '$name passes a mapNext that replaces a fields echoed with a literal +',
+        async ({ list, next }) => {
+            await list();
+            const { mapNext } = paginateCall();
+            // A literal `+` decodes as a space, so this echo would match nothing.
+            const mapped = mapNext!(`${next}&fields=+values.participants,+values.reviewers`);
+            const parsed = new URL(mapped);
+            expect(parsed.searchParams.getAll('fields')).toEqual([FIELDS]);
+            expect(rawFields(mapped)).toEqual([RAW_FIELDS]);
+            expect(parsed.searchParams.get('page')).toBe('2');
+        },
+    );
+});
+
 // --- My pull requests across workspaces ---------------------------------------
 
 const ME = { account_id: 'acc-1', display_name: 'Me', uuid: '{me-uuid}' };
@@ -646,5 +729,205 @@ describe('listMyPullRequests', () => {
             ...vi.mocked(bbRequestModule.bbRequest).mock.calls.map(c => c[0] as string),
         ];
         expect(all.some(u => u.startsWith(`${BASE}/pullrequests/`))).toBe(false);
+    });
+});
+
+// --- Per-PR merge signals (--checks) ------------------------------------------
+
+describe('listPullRequestSignals', () => {
+    const selfUrl = (id: number) => `${BASE}/repositories/ws/repo/pullrequests/${id}`;
+
+    /** An OPEN pull request carrying its canonical `links.self`. */
+    function openPr(id: number, overrides: Partial<BitbucketPullRequest> = {}) {
+        return {
+            ...pr(id, 'ws/repo', '2026-09-01T00:00:00Z'),
+            links: { self: { href: selfUrl(id) } },
+            ...overrides,
+        };
+    }
+
+    const idOf = (url: string) => Number(/\/pullrequests\/(\d+)\//.exec(url)?.[1]);
+    const requestUrls = () =>
+        vi.mocked(bbRequestModule.bbRequest).mock.calls.map(c => c[0] as string);
+
+    beforeEach(() => {
+        vi.mocked(bbRequestModule.bbRequest)
+            .mockReset()
+            .mockResolvedValue({ values: [] } as never);
+        vi.mocked(bbRequestModule.bbPaginate)
+            .mockReset()
+            .mockImplementation(() => gen([]) as never);
+    });
+
+    it('requests statuses and conflicts under links.self', async () => {
+        // links.self may point at another repository (pr mine, fork PRs).
+        const other = openPr(7, {
+            links: { self: { href: `${BASE}/repositories/w2/web/pullrequests/7` } },
+        });
+        await listPullRequestSignals([other]);
+        expect(paginatedUrls()).toEqual([
+            `${BASE}/repositories/w2/web/pullrequests/7/statuses?pagelen=100`,
+        ]);
+        expect(requestUrls()).toEqual([`${BASE}/repositories/w2/web/pullrequests/7/conflicts`]);
+    });
+
+    it('falls back to the destination full name, encoding each segment', async () => {
+        const noLinks = pr(7, 'my ws/my repo', '2026-09-01T00:00:00Z');
+        await listPullRequestSignals([noLinks]);
+        const base = `${BASE}/repositories/my%20ws/my%20repo/pullrequests/7`;
+        expect(paginatedUrls()).toEqual([`${base}/statuses?pagelen=100`]);
+        expect(requestUrls()).toEqual([`${base}/conflicts`]);
+    });
+
+    it('records both signals as errors, without a request, when no URL is known', async () => {
+        const noUrl = {
+            ...pr(7, 'ws/repo', '2026-09-01T00:00:00Z'),
+            destination: { branch: { name: 'main' } },
+        };
+        const [signals] = await listPullRequestSignals([noUrl]);
+        expect(signals).toEqual({
+            builds: { error: { message: 'pull request has no API URL' } },
+            conflicts: { error: { message: 'pull request has no API URL' } },
+        });
+        expect(bbRequestModule.bbPaginate).not.toHaveBeenCalled();
+        expect(bbRequestModule.bbRequest).not.toHaveBeenCalled();
+    });
+
+    it('yields null without any request for pull requests that are not OPEN', async () => {
+        const closed = (['MERGED', 'DECLINED', 'SUPERSEDED'] as const).map((state, i) =>
+            openPr(i + 1, { state }),
+        );
+        expect(await listPullRequestSignals(closed)).toEqual([null, null, null]);
+        expect(bbRequestModule.bbPaginate).not.toHaveBeenCalled();
+        expect(bbRequestModule.bbRequest).not.toHaveBeenCalled();
+    });
+
+    it('drains every statuses page and requests a single conflicts page', async () => {
+        const statuses = [
+            { key: 'a', state: 'SUCCESSFUL', commit: { hash: 'h1' } },
+            { key: 'b', state: 'FAILED', commit: { hash: 'h0' } },
+            { key: 'c', state: 'INPROGRESS', commit: { hash: 'h1' } },
+        ];
+        // bbPaginate yields across pages; the client must collect every value.
+        vi.mocked(bbRequestModule.bbPaginate).mockImplementation(() => gen(statuses) as never);
+        const conflictsPage = {
+            values: [{ path: 'a.ts', scenario: 'content' }],
+            next: `${selfUrl(1)}/conflicts?page=2`,
+        };
+        vi.mocked(bbRequestModule.bbRequest).mockResolvedValue(conflictsPage as never);
+
+        const [signals] = await listPullRequestSignals([openPr(1)]);
+
+        expect(signals).toEqual({
+            builds: { value: statuses },
+            conflicts: { value: conflictsPage },
+        });
+        const statusesUrl = new URL(paginatedUrls()[0] as string);
+        expect(statusesUrl.pathname).toBe('/2.0/repositories/ws/repo/pullrequests/1/statuses');
+        expect(statusesUrl.searchParams.get('pagelen')).toBe('100');
+        // Conflicts: one request, its `next` never followed, never paginated.
+        expect(requestUrls()).toEqual([`${selfUrl(1)}/conflicts`]);
+        expect(paginatedUrls().some(u => u.includes('/conflicts'))).toBe(false);
+    });
+
+    it('captures a 403 on conflicts while statuses still resolve', async () => {
+        const statuses = [{ key: 'a', state: 'SUCCESSFUL' }];
+        vi.mocked(bbRequestModule.bbPaginate).mockImplementation(() => gen(statuses) as never);
+        vi.mocked(bbRequestModule.bbRequest).mockRejectedValue(
+            new AtlassianHttpError('Forbidden', 403),
+        );
+
+        const [signals] = await listPullRequestSignals([openPr(1)]);
+
+        expect(signals).toEqual({
+            builds: { value: statuses },
+            conflicts: { error: { status: 403, message: 'Forbidden' } },
+        });
+    });
+
+    it('captures network errors without an HTTP status', async () => {
+        vi.mocked(bbRequestModule.bbPaginate).mockImplementation(
+            () => failing(new TypeError('fetch failed')) as never,
+        );
+        vi.mocked(bbRequestModule.bbRequest).mockRejectedValue(new TypeError('fetch failed'));
+
+        const [signals] = await listPullRequestSignals([openPr(1)]);
+
+        expect(signals).toEqual({
+            builds: { error: { message: 'fetch failed' } },
+            conflicts: { error: { message: 'fetch failed' } },
+        });
+        expect(signals && 'error' in signals.builds && 'status' in signals.builds.error).toBe(
+            false,
+        );
+    });
+
+    it('returns one entry per pull request in input order', async () => {
+        // Earlier pull requests answer later, so completion order is reversed.
+        vi.mocked(bbRequestModule.bbPaginate).mockImplementation(((url: string) =>
+            (async function* () {
+                const id = idOf(url);
+                await new Promise(resolve => setTimeout(resolve, (6 - id) * 3));
+                yield { key: `build-${id}`, state: 'SUCCESSFUL' };
+            })()) as never);
+        const prs = [openPr(1), openPr(2, { state: 'MERGED' }), openPr(3), openPr(4), openPr(5)];
+
+        const out = await listPullRequestSignals(prs);
+
+        expect(out.map(s => (s && 'value' in s.builds ? s.builds.value[0]?.key : s))).toEqual([
+            'build-1',
+            null,
+            'build-3',
+            'build-4',
+            'build-5',
+        ]);
+    });
+
+    it('fetches at most 4 pull requests at once, each with its two requests in parallel', async () => {
+        const inFlight = new Map<number, number>();
+        let peakPrs = 0;
+        let active = 0;
+        let peakRequests = 0;
+        async function track<T>(url: string, value: T): Promise<T> {
+            const id = idOf(url);
+            inFlight.set(id, (inFlight.get(id) ?? 0) + 1);
+            active++;
+            peakPrs = Math.max(peakPrs, inFlight.size);
+            peakRequests = Math.max(peakRequests, active);
+            await new Promise(resolve => setTimeout(resolve, 5));
+            active--;
+            const left = (inFlight.get(id) ?? 1) - 1;
+            if (left === 0) inFlight.delete(id);
+            else inFlight.set(id, left);
+            return value;
+        }
+        vi.mocked(bbRequestModule.bbRequest).mockImplementation(((url: string) =>
+            track(url, { values: [] })) as never);
+        vi.mocked(bbRequestModule.bbPaginate).mockImplementation(((url: string) =>
+            (async function* () {
+                await track(url, undefined);
+                yield* [];
+            })()) as never);
+
+        const out = await listPullRequestSignals(
+            Array.from({ length: 10 }, (_, i) => openPr(i + 1)),
+        );
+
+        expect(out).toHaveLength(10);
+        expect(peakPrs).toBe(4);
+        expect(peakRequests).toBe(8);
+        expect(requestUrls()).toHaveLength(10);
+        expect(paginatedUrls()).toHaveLength(10);
+    });
+
+    it('issues only GET requests', async () => {
+        await listPullRequestSignals([openPr(1), openPr(2)]);
+        const calls = vi.mocked(bbRequestModule.bbRequest).mock.calls;
+        expect(calls).toHaveLength(2);
+        for (const call of calls) expect(call[1]?.method ?? 'GET').toBe('GET');
+        // bbPaginate only ever GETs; it is handed no request options at all.
+        for (const call of vi.mocked(bbRequestModule.bbPaginate).mock.calls) {
+            expect(call).toHaveLength(1);
+        }
     });
 });

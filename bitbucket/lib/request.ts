@@ -78,11 +78,20 @@ export async function bbRequestText(url: string, options: RequestInit = {}): Pro
     return sharedRequestText(url, withBitbucketAuth(options));
 }
 
+export interface BbPaginateOptions {
+    /**
+     * Rewrite every `next` URL before it is followed, e.g. to re-apply a query
+     * parameter the server may drop from (or mis-encode in) its `next` links.
+     * Without it, `next` is followed verbatim.
+     */
+    mapNext?: (next: string) => string;
+}
+
 /**
  * Walk a Bitbucket Cloud cursor-paginated endpoint with Bitbucket auth.
  * Mirrors `paginate` from atlassian/lib but uses Bitbucket credentials.
  */
-export async function* bbPaginate<T>(url: string): AsyncIterable<T> {
+export async function* bbPaginate<T>(url: string, opts: BbPaginateOptions = {}): AsyncIterable<T> {
     let nextUrl: string | undefined = url;
     while (nextUrl) {
         const page: { values?: T[]; next?: string } = await bbRequest<{
@@ -94,7 +103,7 @@ export async function* bbPaginate<T>(url: string): AsyncIterable<T> {
                 yield value;
             }
         }
-        nextUrl = page.next;
+        nextUrl = page.next && opts.mapNext ? opts.mapNext(page.next) : page.next;
     }
 }
 

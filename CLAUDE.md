@@ -411,8 +411,8 @@ Generate a workspace API token at `https://bitbucket.org/<workspace>/workspace/s
 
 ```bash
 # Pull requests
-af bb pr list [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--mine | --author Q]
-af bb pr mine [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--workspace W] [--limit N]
+af bb pr list [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--mine | --author Q] [--checks]
+af bb pr mine [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--workspace W] [--limit N] [--checks]
 af bb pr get <id>                           af bb pr diff <id>
 af bb pr create --title T [--from B] [--to B] [--description / --description-file F]
                 [--reviewers a,b] [--draft]
@@ -467,6 +467,10 @@ af bb members [--query Q]
 Reviewers must be passed as Bitbucket Cloud account IDs (not usernames). Use `af bb members --query <name>` to look them up.
 
 `pr mine` lists the pull requests _authored_ by the authenticated account across **every workspace it belongs to** (`GET /user/workspaces`, then `GET /workspaces/{ws}/pullrequests/{uuid}` per workspace), merged newest-updated first with a Repo column. It needs no repository, and only an explicit `--workspace` narrows it — `af.json` and the git remote are deliberately ignored. A workspace answering 403/404 is skipped with a warning on stderr (exit stays `0`); any other error exits `1`. `--limit N` returns the N most recently updated across workspaces and stops paging early; without it every page is drained, so pair `--state ALL` with `--limit`. It needs the Account read scope (like `whoami`), and a workspace/repository _access token_ authenticates as a bot, so "mine" is then the bot's PRs. `pr list --state ALL` sends every state explicitly (Bitbucket returns only `OPEN` when `state` is omitted).
+
+The `pr list` and `pr mine` tables always show **Review** — `✓n` approvals (the author's own approval excluded), `✗n` changes requested, `○n` reviewers who have neither approved nor requested changes; `—` for none, `?` when the response carried no `participants` — and **Tasks**, the open-task `task_count` (`—` for none). Both cost no extra requests: the PR list endpoints omit `participants`/`reviewers` by default, so the list calls request them with the `fields=+values.participants,+values.reviewers` partial-response parameter (set through `URLSearchParams`, so `+` goes out as `%2B`; a literal `+` decodes as a space and matches nothing), re-applied to every `next` page URL through `bbPaginate`'s `mapNext` hook.
+
+`--checks` on `pr list` and `pr mine` adds **Builds** and **Conflicts** columns for the displayed pull requests (after the `--mine` filter and `--limit`), fetched only for **OPEN** ones — other rows show `—` and cost nothing. Builds summarizes the statuses of the source **head commit** only (`✗ n failed` > `○ n stopped` > `⟳ n running` > `✓ n passed`), and Conflicts reads the first page of `…/pullrequests/{id}/conflicts` (`✗ n`, `✗ n+` when more pages exist without a total, or `✓ none`). At most 4 PRs are fetched at once, each running `…/statuses?pagelen=100` and `…/conflicts` in parallel, so the cost is about three requests per listed open PR (statuses, plus conflicts and its redirect), more when a PR has many build statuses — against the 1,000 requests/hour a personal token gets. A signal that cannot be fetched renders `?` and is reported on stderr as one grouped warning per signal and cause (e.g. `Warning: conflicts unavailable for 12 pull requests (HTTP 401: …)`). Signals are informational: they never change the exit code. `--json` output stays the raw PR array (which now also carries `participants` and `reviewers`); `--checks --json` makes no signal requests and prints a notice on stderr. No merge verdict ("mergeable"/"blocked") is shown, because Bitbucket Cloud has no public merge-check API (BCLOUD-22014) and branch restrictions need repository admin and omit project-level rules; use `pr status <id>` for the full per-commit build breakdown.
 
 `pr comment list` and `pr task list` accept `--resolved` / `--unresolved` (mutually exclusive) to filter by resolution state; the filter also narrows `--json` output. Comment resolution is a _thread_ property, so the filter keeps or drops whole threads by their root comment's state — the replies of a matching thread are retained. Tasks carry per-task state, so their filter is a flat match.
 

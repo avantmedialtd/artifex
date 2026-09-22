@@ -27,6 +27,7 @@ import type {
     BitbucketSrcEntry,
     BitbucketTask,
     BitbucketWorkspaceMember,
+    PullRequestSignals,
 } from './types.ts';
 
 const fakeUser = {
@@ -78,7 +79,7 @@ describe('formatMyPullRequestList', () => {
     it('renders a Repo column instead of Author', () => {
         const out = formatMyPullRequestList([base]);
         const [header, , row] = out.split('\n');
-        expect(header).toBe('| Repo | ID | State | Title | Branches | Updated |');
+        expect(header).toBe('| Repo | ID | State | Title | Branches | Review | Tasks | Updated |');
         expect(header).not.toContain('Author');
         expect(row).toMatch(/^\| acme\/api \| #42 \| OPEN \| Fix bug \| feature\/x → main \| /);
     });
@@ -93,6 +94,218 @@ describe('formatMyPullRequestList', () => {
     it('escapes pipes in titles', () => {
         const out = formatMyPullRequestList([{ ...base, title: 'a | b' }]);
         expect(out).toContain('a \\| b');
+    });
+});
+
+describe('pull request list review and signal columns', () => {
+    const me = { ...fakeUser, account_id: 'me', display_name: 'Me' };
+    const HEAD = 'abc123def456';
+    const HEAD_FULL = `${HEAD}7890abc123def4567890abc123de`;
+
+    const base: BitbucketPullRequest = {
+        id: 42,
+        title: 'Fix bug',
+        state: 'OPEN',
+        author: me,
+        source: { branch: { name: 'feature/x' }, commit: { hash: HEAD } },
+        destination: { branch: { name: 'main' }, repository: { full_name: 'acme/api' } },
+        participants: [],
+        reviewers: [],
+        created_on: '2025-01-01T00:00:00Z',
+        updated_on: '2025-01-02T00:00:00Z',
+    };
+
+    const person = (id: string) => ({ ...fakeUser, account_id: id, display_name: id });
+    const vote = (
+        id: string,
+        state: 'approved' | 'changes_requested' | null,
+        role: BitbucketParticipant['role'] = 'REVIEWER',
+    ): BitbucketParticipant => ({ user: person(id), role, approved: state === 'approved', state });
+
+    const status = (
+        state: BitbucketCommitStatus['state'],
+        hash: string = HEAD_FULL,
+    ): BitbucketCommitStatus => ({ key: state, state, commit: { hash } });
+
+    function signals(
+        builds: PullRequestSignals['builds'] = { value: [] },
+        conflicts: PullRequestSignals['conflicts'] = { value: { values: [] } },
+    ): PullRequestSignals {
+        return { builds, conflicts };
+    }
+
+    /** The cells of row `index`, keyed by column header. Titles must not contain pipes. */
+    function row(out: string, index = 0): Record<string, string> {
+        const lines = out.split('\n');
+        const split = (line: string) => line.slice(2, -2).split(' | ');
+        const header = split(lines[0] as string);
+        const cells = split(lines[2 + index] as string);
+        expect(cells).toHaveLength(header.length);
+        return Object.fromEntries(header.map((h, i) => [h, cells[i] as string]));
+    }
+
+    describe('headers', () => {
+        it('inserts Review and Tasks before Updated', () => {
+            const [header, separator] = formatPullRequestList([base]).split('\n');
+            expect(header).toBe(
+                '| ID | State | Title | Author | Branches | Review | Tasks | Updated |',
+            );
+            expect(separator).toBe(
+                '|----|-------|-------|--------|----------|--------|-------|---------|',
+            );
+            expect(formatMyPullRequestList([base]).split('\n')[1]).toBe(
+                '|------|----|-------|-------|----------|--------|-------|---------|',
+            );
+        });
+
+        it('adds Builds and Conflicts after Tasks when signals are supplied', () => {
+            expect(formatPullRequestList([base], [signals()]).split('\n')[0]).toBe(
+                '| ID | State | Title | Author | Branches | Review | Tasks | Builds | Conflicts | Updated |',
+            );
+            const [header, separator] = formatMyPullRequestList([base], [signals()]).split('\n');
+            expect(header).toBe(
+                '| Repo | ID | State | Title | Branches | Review | Tasks | Builds | Conflicts | Updated |',
+            );
+            expect(separator).toBe(
+                '|------|----|-------|-------|----------|--------|-------|--------|-----------|---------|',
+            );
+        });
+
+        it('keeps the existing leading cells in place', () => {
+            const cells = row(formatPullRequestList([base], [signals()]));
+            expect(cells).toMatchObject({
+                ID: '#42',
+                State: 'OPEN',
+                Title: 'Fix bug',
+                Author: 'Me',
+                Branches: 'feature/x → main',
+            });
+            expect(row(formatMyPullRequestList([base])).Repo).toBe('acme/api');
+        });
+    });
+
+    describe('Review cell', () => {
+        const review = (pr: Partial<BitbucketPullRequest>) =>
+            row(formatMyPullRequestList([{ ...base, ...pr }])).Review;
+
+        it('excludes the author from approvals', () => {
+            const participants = [
+                vote('a', 'approved'),
+                vote('b', 'approved'),
+                { ...vote('x', 'approved', 'PARTICIPANT'), user: me },
+            ];
+            expect(review({ participants })).toBe('✓2');
+        });
+
+        it('shows changes requested after approvals', () => {
+            expect(
+                review({
+                    reviewers: [person('a'), person('b')],
+                    participants: [vote('a', 'approved'), vote('b', 'changes_requested')],
+                }),
+            ).toBe('✓1 ✗1');
+        });
+
+        it('shows reviewers who have not responded as pending', () => {
+            expect(
+                review({
+                    reviewers: [person('a'), person('b'), person('c')],
+                    participants: [vote('a', 'approved')],
+                }),
+            ).toBe('✓1 ○2');
+        });
+
+        it('joins all three parts in the order ✓ ✗ ○', () => {
+            expect(
+                review({
+                    reviewers: [person('a'), person('b'), person('c')],
+                    participants: [vote('a', 'approved'), vote('b', 'changes_requested')],
+                }),
+            ).toBe('✓1 ✗1 ○1');
+        });
+
+        it('does not count a participant who only commented', () => {
+            expect(review({ participants: [vote('c', null, 'PARTICIPANT')] })).toBe('—');
+        });
+
+        it('shows — for no review activity and ? when participants are absent', () => {
+            expect(review({})).toBe('—');
+            expect(review({ participants: undefined })).toBe('?');
+        });
+    });
+
+    describe('Tasks cell', () => {
+        it('shows the open-task count, or — for 0 or an absent field', () => {
+            const out = formatPullRequestList([
+                { ...base, id: 1, task_count: 2 },
+                { ...base, id: 2, task_count: 0 },
+                { ...base, id: 3 },
+            ]);
+            expect([0, 1, 2].map(i => row(out, i).Tasks)).toEqual(['2', '—', '—']);
+        });
+    });
+
+    describe('Builds cell', () => {
+        const builds = (result: PullRequestSignals['builds']) =>
+            row(formatMyPullRequestList([base], [signals(result)])).Builds;
+
+        it('reflects only the head commit', () => {
+            expect(
+                builds({ value: [status('FAILED', 'fedcba987654'), status('SUCCESSFUL')] }),
+            ).toBe('✓ 1 passed');
+        });
+
+        it('renders each state with its symbol', () => {
+            expect(builds({ value: [status('FAILED'), status('SUCCESSFUL')] })).toBe('✗ 1 failed');
+            expect(builds({ value: [status('STOPPED'), status('SUCCESSFUL')] })).toBe(
+                '○ 1 stopped',
+            );
+            expect(builds({ value: [status('INPROGRESS'), status('SUCCESSFUL')] })).toBe(
+                '⟳ 1 running',
+            );
+            expect(builds({ value: [] })).toBe('—');
+        });
+
+        it('shows ? when the statuses could not be fetched', () => {
+            expect(builds({ error: { status: 403, message: 'Forbidden' } })).toBe('?');
+        });
+    });
+
+    describe('Conflicts cell', () => {
+        const conflicts = (result: PullRequestSignals['conflicts']) =>
+            row(formatMyPullRequestList([base], [signals(undefined, result)])).Conflicts;
+        const entry = (path: string) => ({ path });
+
+        it('counts conflicts, or shows ✓ none', () => {
+            expect(conflicts({ value: { values: [entry('a'), entry('b')] } })).toBe('✗ 2');
+            expect(conflicts({ value: { values: [] } })).toBe('✓ none');
+        });
+
+        it('prefers size and marks a lower bound with +', () => {
+            expect(conflicts({ value: { values: [entry('a')], size: 5, next: 'n' } })).toBe('✗ 5');
+            expect(conflicts({ value: { values: [entry('a')], next: 'n' } })).toBe('✗ 1+');
+        });
+
+        it('shows ? when the conflicts could not be fetched', () => {
+            expect(conflicts({ error: { message: 'fetch failed' } })).toBe('?');
+        });
+    });
+
+    it('renders — in Builds and Conflicts for a pull request that was not checked', () => {
+        const merged = { ...base, id: 7, state: 'MERGED' as const };
+        const out = formatPullRequestList(
+            [base, merged],
+            [signals({ value: [status('FAILED')] }), null],
+        );
+        expect(row(out, 0)).toMatchObject({ Builds: '✗ 1 failed', Conflicts: '✓ none' });
+        expect(row(out, 1)).toMatchObject({ ID: '#7', Builds: '—', Conflicts: '—' });
+    });
+
+    it('still escapes pipes in titles', () => {
+        const piped = { ...base, title: 'a | b' };
+        expect(formatPullRequestList([piped])).toContain('| a \\| b |');
+        expect(formatPullRequestList([piped], [signals()])).toContain('| a \\| b |');
+        expect(formatMyPullRequestList([piped], [signals()])).toContain('| a \\| b |');
     });
 });
 

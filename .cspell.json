@@ -121,6 +121,8 @@
         "specforge",
         "Tauri",
         "scriptable",
-        "ENEEDAUTH"
+        "ENEEDAUTH",
+        "INPROGRESS",
+        "Bvalues"
     ]
 }

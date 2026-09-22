@@ -53,11 +53,13 @@ import type {
     BitbucketComment,
     BitbucketCommit,
     BitbucketCommitStatus,
+    BitbucketConflict,
     BitbucketCreateCommentRequest,
     BitbucketCreatePullRequestRequest,
     BitbucketCreateTaskRequest,
     BitbucketDiffStatEntry,
     BitbucketMergeRequest,
+    BitbucketPaginated,
     BitbucketPipeline,
     BitbucketPipelineState,
     BitbucketPipelineStep,
@@ -74,6 +76,8 @@ import type {
     BitbucketUpdateTaskRequest,
     BitbucketWorkspaceAccess,
     BitbucketWorkspaceMember,
+    PullRequestSignals,
+    SignalResult,
 } from './types.ts';
 
 const API_BASE = 'https://api.bitbucket.org/2.0';
@@ -143,6 +147,25 @@ function appendStateParams(
     for (const s of pullRequestStates(state)) params.append('state', s);
 }
 
+/**
+ * Partial-response `fields` value that adds `participants` and `reviewers` back
+ * to pull-request list values; the list endpoints omit both by default.
+ */
+const REVIEW_FIELDS = '+values.participants,+values.reviewers';
+
+/**
+ * Set `fields=REVIEW_FIELDS` on `url`, replacing any `fields` already present.
+ * It goes through `URLSearchParams`, which encodes `+` as `%2B`; an unencoded
+ * `+` decodes as a space and silently matches nothing. The list functions apply
+ * it to their first URL and, as `mapNext`, to every `next` URL, so review data
+ * survives whether Bitbucket drops, echoes, or mis-encodes `fields` there.
+ */
+function withReviewFields(url: string): string {
+    const parsed = new URL(url);
+    parsed.searchParams.set('fields', REVIEW_FIELDS);
+    return parsed.toString();
+}
+
 export interface ListPullRequestsOptions {
     state?: BitbucketPullRequestState | 'ALL';
     q?: string;
@@ -156,9 +179,11 @@ export async function listPullRequests(
     const params = new URLSearchParams();
     appendStateParams(params, opts.state);
     if (opts.q) params.append('q', opts.q);
-    const url = `${repoUrl(workspace, repo)}/pullrequests?${params.toString()}`;
+    const url = withReviewFields(`${repoUrl(workspace, repo)}/pullrequests?${params.toString()}`);
     const out: BitbucketPullRequest[] = [];
-    for await (const pr of paginate<BitbucketPullRequest>(url)) out.push(pr);
+    for await (const pr of paginate<BitbucketPullRequest>(url, { mapNext: withReviewFields })) {
+        out.push(pr);
+    }
     return out;
 }
 
@@ -713,11 +738,12 @@ export async function listWorkspacePullRequestsForUser(
     const params = new URLSearchParams();
     appendStateParams(params, opts.state);
     params.append('sort', '-updated_on');
-    const url =
+    const url = withReviewFields(
         `${API_BASE}/workspaces/${encodeURIComponent(workspace)}` +
-        `/pullrequests/${encodeURIComponent(user)}?${params.toString()}`;
+            `/pullrequests/${encodeURIComponent(user)}?${params.toString()}`,
+    );
     const out: BitbucketPullRequest[] = [];
-    for await (const pr of paginate<BitbucketPullRequest>(url)) {
+    for await (const pr of paginate<BitbucketPullRequest>(url, { mapNext: withReviewFields })) {
         out.push(pr);
         if (opts.limit !== undefined && out.length >= opts.limit) break;
     }
@@ -1098,4 +1124,83 @@ export async function listPullRequestStatuses(
         out.push(s);
     }
     return out;
+}
+
+// --- Merge signals (`pr list` / `pr mine --checks`) -----------------------
+
+/**
+ * The API URL of a pull request, the base of its sub-resources. `links.self` is
+ * canonical, so it is right for `pr mine` across repositories and for fork PRs;
+ * the destination repository's full name is the fallback. `null` when neither
+ * is available.
+ */
+function pullRequestApiUrl(pr: BitbucketPullRequest): string | null {
+    const self = pr.links?.self?.href;
+    if (self) return self;
+    const fullName = pr.destination.repository?.full_name;
+    if (!fullName) return null;
+    const repoPath = fullName.split('/').map(encodeURIComponent).join('/');
+    return `${API_BASE}/repositories/${repoPath}/pullrequests/${pr.id}`;
+}
+
+/** Pull requests whose signals are fetched at once; each runs two requests in parallel. */
+const PR_SIGNAL_CONCURRENCY = 4;
+
+/** `…/statuses` covers every commit on the PR, so a large page keeps most PRs to one. */
+const STATUSES_PAGELEN = 100;
+
+/** Run `fetchValue`, recording a failure (with its HTTP status, if any) instead of throwing. */
+async function captureSignal<T>(fetchValue: () => Promise<T>): Promise<SignalResult<T>> {
+    try {
+        return { value: await fetchValue() };
+    } catch (err) {
+        return {
+            error: {
+                ...(err instanceof AtlassianHttpError ? { status: err.status } : {}),
+                message: err instanceof Error ? err.message : String(err),
+            },
+        };
+    }
+}
+
+/**
+ * The raw merge signals of each pull request, in input order: every page of its
+ * build statuses (`…/statuses`) and the first page of its conflicts
+ * (`…/conflicts`, whose redirect `fetch` follows). Every request is a GET.
+ *
+ * Only OPEN pull requests are checked: any other state yields `null` without a
+ * request, because a closed pull request's builds and conflicts are history, not
+ * merge signals. At most `PR_SIGNAL_CONCURRENCY` pull requests are in flight.
+ * A signal that cannot be fetched is recorded as `{ error }`; this never rejects.
+ */
+export async function listPullRequestSignals(
+    prs: readonly BitbucketPullRequest[],
+): Promise<(PullRequestSignals | null)[]> {
+    return mapWithConcurrency(
+        prs,
+        PR_SIGNAL_CONCURRENCY,
+        async (pr): Promise<PullRequestSignals | null> => {
+            if (pr.state !== 'OPEN') return null;
+            const base = pullRequestApiUrl(pr);
+            if (!base) {
+                const error = { message: 'pull request has no API URL' };
+                return { builds: { error }, conflicts: { error } };
+            }
+            const [builds, conflicts] = await Promise.all([
+                captureSignal(async () => {
+                    const out: BitbucketCommitStatus[] = [];
+                    for await (const s of paginate<BitbucketCommitStatus>(
+                        `${base}/statuses${buildQuery({ pagelen: STATUSES_PAGELEN })}`,
+                    )) {
+                        out.push(s);
+                    }
+                    return out;
+                }),
+                captureSignal(() =>
+                    request<BitbucketPaginated<BitbucketConflict>>(`${base}/conflicts`),
+                ),
+            ]);
+            return { builds, conflicts };
+        },
+    );
 }

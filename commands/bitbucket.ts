@@ -1,11 +1,16 @@
 import { readFileSync } from 'node:fs';
-import type { BitbucketPullRequestState } from '../bitbucket/lib/types.ts';
+import type {
+    BitbucketPullRequest,
+    BitbucketPullRequestState,
+    PullRequestSignals,
+} from '../bitbucket/lib/types.ts';
 import { error } from '../utils/output.ts';
 import {
     filterCommentsByResolution,
     filterTasksByResolution,
     resolutionFilterFromFlags,
 } from '../bitbucket/lib/filters.ts';
+import { groupSignalFailures } from '../bitbucket/lib/signals.ts';
 
 interface BitbucketOptions {
     json?: boolean;
@@ -25,6 +30,8 @@ interface BitbucketOptions {
     state?: string;
     mine?: boolean;
     author?: string;
+    /** `pr list` / `pr mine`: add the Builds and Conflicts columns for open PRs. */
+    checks?: boolean;
 
     // PR merge
     strategy?: string;
@@ -74,6 +81,7 @@ const BOOLEAN_FLAGS = new Set([
     '--json',
     '--draft',
     '--mine',
+    '--checks',
     '--close-source',
     '--resolved',
     '--unresolved',
@@ -150,8 +158,8 @@ USAGE:
   af bb <subcommand> [args] [options]              (alias)
 
 PULL REQUESTS:
-  pr list [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--mine | --author Q]
-  pr mine [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--limit N]
+  pr list [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--mine | --author Q] [--checks]
+  pr mine [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--limit N] [--checks]
                                                     My authored PRs across all my workspaces
                                                     (--workspace W narrows; use --limit with ALL)
   pr get <id>
@@ -167,6 +175,12 @@ PULL REQUESTS:
   pr activity <id> [--limit N]                     Chronological activity feed
   pr status <id>                                    Build/commit statuses (gate view)
   pr reviewers <id> [--pending]                     Reviewers + approval state
+
+  The pr list and pr mine tables show Review (✓ approvals, ✗ changes requested,
+  ○ pending reviewers) and open Tasks, at no extra request cost.
+  --checks adds Builds (head commit) and Conflicts for open PRs, at about three
+  requests per listed open PR (more when a PR has many build statuses). It is
+  informational only and never changes the exit code. It has no effect with --json.
 
 PR COMMENTS:
   pr comment list <pr-id> [--resolved | --unresolved]
@@ -219,6 +233,7 @@ EXAMPLES:
   af bb pr list --state OPEN
   af bb pr mine
   af bb pr mine --state ALL --limit 20
+  af bb pr mine --checks
   af bb pr create --title "Fix bug" --reviewers a:abc123,b:def456
   af bb pr comment add 42 --body "Looks good" --reply-to 100
   af bb pr task add 42 --body "Rename this" --on-comment 100
@@ -476,7 +491,14 @@ async function handlePr(
                 );
                 filtered = prs.filter(p => p.author.account_id === user.account_id);
             }
-            fmt.output(json ? filtered : fmt.formatPullRequestList(filtered), false);
+            await outputPullRequests(
+                filtered,
+                options,
+                json,
+                client,
+                fmt,
+                fmt.formatPullRequestList,
+            );
             return 0;
         }
         case 'get': {
@@ -624,8 +646,41 @@ async function handlePrMine(
             `Warning: skipped workspace "${s.workspace}" (HTTP ${s.status}): ${s.message}`,
         );
     }
-    fmt.output(json ? pullRequests : fmt.formatMyPullRequestList(pullRequests), false);
+    await outputPullRequests(pullRequests, options, json, client, fmt, fmt.formatMyPullRequestList);
     return 0;
+}
+
+const CHECKS_JSON_NOTICE =
+    "Note: --checks has no effect with --json (for build statuses use 'af bb pr status <id> --json')";
+
+/**
+ * Print the pull requests of `pr list` / `pr mine`. With `--checks`, the merge
+ * signals of exactly these (displayed) pull requests are fetched and rendered,
+ * and signals that could not be fetched are reported afterwards as grouped
+ * warnings. Signals are informational: nothing here affects the exit code.
+ * `--json` stays the raw array, so there `--checks` only earns a notice.
+ */
+async function outputPullRequests(
+    prs: BitbucketPullRequest[],
+    options: BitbucketOptions,
+    json: boolean,
+    client: ClientModule,
+    fmt: FmtModule,
+    format: (prs: BitbucketPullRequest[], signals?: (PullRequestSignals | null)[]) => string,
+): Promise<void> {
+    // stderr, not `warn()` (which writes stdout), so `--json` output stays parseable.
+    if (json) {
+        if (options.checks) console.error(CHECKS_JSON_NOTICE);
+        fmt.output(prs, false);
+        return;
+    }
+    if (!options.checks) {
+        fmt.output(format(prs), false);
+        return;
+    }
+    const signals = await client.listPullRequestSignals(prs);
+    fmt.output(format(prs, signals), false);
+    for (const line of groupSignalFailures(signals)) console.error(line);
 }
 
 async function handleComment(

@@ -7,6 +7,12 @@
  */
 
 import { link } from '../../utils/output.ts';
+import {
+    summarizeBuilds,
+    summarizeConflicts,
+    summarizeReview,
+    type BuildState,
+} from './signals.ts';
 import type {
     BitbucketAccount,
     BitbucketActivityEntry,
@@ -24,6 +30,7 @@ import type {
     BitbucketTag,
     BitbucketTask,
     BitbucketWorkspaceMember,
+    PullRequestSignals,
 } from './types.ts';
 
 export function output(data: unknown, asJson: boolean): void {
@@ -66,16 +73,105 @@ function shortDuration(seconds?: number): string {
 
 // --- Pull requests ------------------------------------------------------
 
-export function formatPullRequestList(prs: BitbucketPullRequest[]): string {
+/** Header and separator rows of a markdown table. */
+function tableHeader(columns: string[]): string[] {
+    return [
+        `| ${columns.join(' | ')} |`,
+        `|${columns.map(c => '-'.repeat(c.length + 2)).join('|')}|`,
+    ];
+}
+
+function tableRow(cells: string[]): string {
+    return `| ${cells.join(' | ')} |`;
+}
+
+/** `✓n ✗n ○n` (approvals, changes requested, pending), non-zero parts only. */
+function reviewCell(pr: BitbucketPullRequest): string {
+    const review = summarizeReview(pr);
+    if (!review) return '?';
+    const parts: string[] = [];
+    if (review.approvals > 0) parts.push(`✓${review.approvals}`);
+    if (review.changesRequested > 0) parts.push(`✗${review.changesRequested}`);
+    if (review.pending > 0) parts.push(`○${review.pending}`);
+    return parts.length > 0 ? parts.join(' ') : '—';
+}
+
+function tasksCell(pr: BitbucketPullRequest): string {
+    return pr.task_count !== undefined && pr.task_count > 0 ? String(pr.task_count) : '—';
+}
+
+/** Symbols match `statusState` below. */
+const BUILD_CELL: Record<BuildState, (count: number) => string> = {
+    failed: n => `✗ ${n} failed`,
+    stopped: n => `○ ${n} stopped`,
+    running: n => `⟳ ${n} running`,
+    passed: n => `✓ ${n} passed`,
+    none: () => '—',
+};
+
+/** `—` for a pull request that was not checked (`null`), `?` for a failed fetch. */
+function buildsCell(pr: BitbucketPullRequest, signals: PullRequestSignals | null): string {
+    if (!signals) return '—';
+    if ('error' in signals.builds) return '?';
+    const { state, count } = summarizeBuilds(signals.builds.value, pr.source.commit?.hash);
+    return BUILD_CELL[state](count);
+}
+
+/** `—` for a pull request that was not checked (`null`), `?` for a failed fetch. */
+function conflictsCell(signals: PullRequestSignals | null): string {
+    if (!signals) return '—';
+    if ('error' in signals.conflicts) return '?';
+    const { count, more } = summarizeConflicts(signals.conflicts.value);
+    return count === 0 ? '✓ none' : `✗ ${count}${more ? '+' : ''}`;
+}
+
+/** Review and Tasks, plus Builds and Conflicts when signals were fetched (`--checks`). */
+function reviewColumns(signals: (PullRequestSignals | null)[] | undefined): string[] {
+    return signals ? ['Review', 'Tasks', 'Builds', 'Conflicts'] : ['Review', 'Tasks'];
+}
+
+function reviewCells(
+    pr: BitbucketPullRequest,
+    signals: (PullRequestSignals | null)[] | undefined,
+    index: number,
+): string[] {
+    const cells = [reviewCell(pr), tasksCell(pr)];
+    if (signals) {
+        const entry = signals[index] ?? null;
+        cells.push(buildsCell(pr, entry), conflictsCell(entry));
+    }
+    return cells;
+}
+
+/**
+ * Pull requests of one repository (`pr list`). `signals`, aligned by index with
+ * `prs`, adds the Builds and Conflicts columns.
+ */
+export function formatPullRequestList(
+    prs: BitbucketPullRequest[],
+    signals?: (PullRequestSignals | null)[],
+): string {
     if (prs.length === 0) return '_No pull requests._';
-    const lines: string[] = [];
-    lines.push('| ID | State | Title | Author | Branches | Updated |');
-    lines.push('|----|-------|-------|--------|----------|---------|');
-    for (const pr of prs) {
+    const lines = tableHeader([
+        'ID',
+        'State',
+        'Title',
+        'Author',
+        'Branches',
+        ...reviewColumns(signals),
+        'Updated',
+    ]);
+    for (const [i, pr] of prs.entries()) {
         lines.push(
-            `| ${prLink(pr)} | ${pr.state} | ${escapePipe(pr.title)} | ${pr.author.display_name} ` +
-                `| ${pr.source.branch.name} → ${pr.destination.branch.name} ` +
-                `| ${formatDate(pr.updated_on)} |`,
+            tableRow([
+                prLink(pr),
+                pr.state,
+                escapePipe(pr.title),
+                pr.author.display_name,
+                `${pr.source.branch.name} → ${pr.destination.branch.name}`,
+                ...reviewCells(pr, signals, i),
+                formatDate(pr.updated_on),
+            ]),
         );
     }
     return lines.join('\n');
@@ -84,18 +180,33 @@ export function formatPullRequestList(prs: BitbucketPullRequest[]): string {
 /**
  * The caller's own pull requests across workspaces (`pr mine`). A Repo column
  * replaces Author (always the caller), since ids are only unique per repository.
+ * `signals`, aligned by index with `prs`, adds the Builds and Conflicts columns.
  */
-export function formatMyPullRequestList(prs: BitbucketPullRequest[]): string {
+export function formatMyPullRequestList(
+    prs: BitbucketPullRequest[],
+    signals?: (PullRequestSignals | null)[],
+): string {
     if (prs.length === 0) return '_No pull requests._';
-    const lines: string[] = [];
-    lines.push('| Repo | ID | State | Title | Branches | Updated |');
-    lines.push('|------|----|-------|-------|----------|---------|');
-    for (const pr of prs) {
-        const repo = pr.destination.repository?.full_name ?? '—';
+    const lines = tableHeader([
+        'Repo',
+        'ID',
+        'State',
+        'Title',
+        'Branches',
+        ...reviewColumns(signals),
+        'Updated',
+    ]);
+    for (const [i, pr] of prs.entries()) {
         lines.push(
-            `| ${repo} | ${prLink(pr)} | ${pr.state} | ${escapePipe(pr.title)} ` +
-                `| ${pr.source.branch.name} → ${pr.destination.branch.name} ` +
-                `| ${formatDate(pr.updated_on)} |`,
+            tableRow([
+                pr.destination.repository?.full_name ?? '—',
+                prLink(pr),
+                pr.state,
+                escapePipe(pr.title),
+                `${pr.source.branch.name} → ${pr.destination.branch.name}`,
+                ...reviewCells(pr, signals, i),
+                formatDate(pr.updated_on),
+            ]),
         );
     }
     return lines.join('\n');

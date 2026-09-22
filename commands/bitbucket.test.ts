@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { parseArgs, handleBitbucket } from './bitbucket.ts';
 import * as client from '../bitbucket/lib/client.ts';
 import * as bbConfig from '../bitbucket/lib/config.ts';
+import { bbRequest } from '../bitbucket/lib/request.ts';
 
 vi.mock('../bitbucket/lib/client.ts', () => ({
     resolveComment: vi.fn(),
@@ -10,7 +11,11 @@ vi.mock('../bitbucket/lib/client.ts', () => ({
     listTasks: vi.fn(),
     listPullRequests: vi.fn(),
     listMyPullRequests: vi.fn(),
+    listPullRequestSignals: vi.fn(),
 }));
+
+// `pr list --mine` resolves `/user` through `bbRequest` directly, not the client.
+vi.mock('../bitbucket/lib/request.ts', () => ({ bbRequest: vi.fn() }));
 
 // Pass through to the real resolver by default; individual tests override it to
 // simulate "no Bitbucket context" or "af.json names a workspace" without
@@ -535,5 +540,215 @@ describe('pr list --state', () => {
         expect(errSpy.mock.calls.map(c => String(c[0])).join('\n')).toContain(
             'invalid --state NOPE',
         );
+    });
+});
+
+// Review/Tasks columns are always rendered; `--checks` adds Builds/Conflicts for
+// exactly the displayed pull requests. Signals never change the exit code.
+describe('pr list / pr mine --checks', () => {
+    let logSpy: ReturnType<typeof vi.spyOn>;
+    let errSpy: ReturnType<typeof vi.spyOn>;
+
+    const user = (id: string) => ({ type: 'user', account_id: id, display_name: id });
+    const openPr = (id: number, authorId = 'acc-1') => ({
+        id,
+        title: `PR ${id}`,
+        state: 'OPEN',
+        author: user(authorId),
+        source: { branch: { name: `feature/${id}` }, commit: { hash: 'abc123def456' } },
+        destination: { branch: { name: 'main' }, repository: { full_name: 'w1/api' } },
+        participants: [],
+        reviewers: [],
+        created_on: '2026-09-01T00:00:00Z',
+        updated_on: '2026-09-02T00:00:00Z',
+    });
+    const ok = { builds: { value: [] }, conflicts: { value: { values: [] } } };
+
+    const base = ['--workspace', 'ws', '--repo', 'repo'];
+    const stdout = (): string => logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    const stderr = (): string => errSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    /** Table rows (header and separator dropped). */
+    const rows = (): string[] => stdout().split('\n').slice(2);
+
+    beforeEach(() => {
+        vi.mocked(client.listPullRequests)
+            .mockReset()
+            .mockResolvedValue([openPr(1)] as never);
+        vi.mocked(client.listMyPullRequests)
+            .mockReset()
+            .mockResolvedValue({ pullRequests: [openPr(1)], skipped: [] } as never);
+        vi.mocked(client.listPullRequestSignals)
+            .mockReset()
+            .mockImplementation(async prs => prs.map(() => ok) as never);
+        vi.mocked(bbRequest).mockReset();
+        logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        logSpy.mockRestore();
+        errSpy.mockRestore();
+    });
+
+    it.each([
+        ['pr list', ['pr', 'list', ...base]],
+        ['pr mine', ['pr', 'mine']],
+    ])('%s without --checks fetches no signals and renders Review and Tasks', async (_, argv) => {
+        const code = await handleBitbucket(argv);
+        expect(code).toBe(0);
+        expect(client.listPullRequestSignals).not.toHaveBeenCalled();
+        expect(stdout()).toContain('| Review | Tasks | Updated |');
+        expect(stdout()).not.toContain('Builds');
+        expect(stdout()).not.toContain('Conflicts');
+    });
+
+    it('pr list --mine --checks fetches signals only for the caller’s pull requests', async () => {
+        const mine = openPr(1, 'acc-1');
+        const theirs = openPr(2, 'acc-2');
+        const mineToo = openPr(3, 'acc-1');
+        vi.mocked(client.listPullRequests).mockResolvedValue([mine, theirs, mineToo] as never);
+        vi.mocked(bbRequest).mockResolvedValue({ account_id: 'acc-1' } as never);
+
+        const code = await handleBitbucket(['pr', 'list', '--mine', '--checks', ...base]);
+
+        expect(code).toBe(0);
+        expect(bbRequest).toHaveBeenCalledWith('https://api.bitbucket.org/2.0/user');
+        expect(client.listPullRequestSignals).toHaveBeenCalledTimes(1);
+        expect(client.listPullRequestSignals).toHaveBeenCalledWith([mine, mineToo]);
+        expect(stdout()).toContain('| Review | Tasks | Builds | Conflicts | Updated |');
+        expect(rows()).toHaveLength(2);
+    });
+
+    it('pr mine --limit 5 --checks fetches signals for exactly the listed pull requests', async () => {
+        const listed = [1, 2, 3, 4, 5].map(id => openPr(id));
+        vi.mocked(client.listMyPullRequests).mockResolvedValue({
+            pullRequests: listed,
+            skipped: [],
+        } as never);
+
+        const code = await handleBitbucket(['pr', 'mine', '--limit', '5', '--checks']);
+
+        expect(code).toBe(0);
+        expect(client.listMyPullRequests).toHaveBeenCalledWith({
+            workspace: undefined,
+            state: 'OPEN',
+            limit: 5,
+        });
+        expect(client.listPullRequestSignals).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(client.listPullRequestSignals).mock.calls[0]?.[0]).toBe(listed);
+        expect(rows()).toHaveLength(5);
+    });
+
+    it.each([
+        ['pr mine', ['pr', 'mine', '--checks', '--json']],
+        ['pr list', ['pr', 'list', '--checks', '--json', ...base]],
+    ])('%s --checks --json prints the raw array and a notice on stderr', async (_, argv) => {
+        const code = await handleBitbucket(argv);
+        expect(code).toBe(0);
+        expect(client.listPullRequestSignals).not.toHaveBeenCalled();
+        expect(JSON.parse(stdout())).toEqual([openPr(1)]);
+        expect(stderr()).toContain('--checks has no effect with --json');
+        expect(errSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports repeated signal failures as one stderr line and exits 0', async () => {
+        const listed = Array.from({ length: 12 }, (_, i) => openPr(i + 1));
+        vi.mocked(client.listMyPullRequests).mockResolvedValue({
+            pullRequests: listed,
+            skipped: [],
+        } as never);
+        vi.mocked(client.listPullRequestSignals).mockResolvedValue(
+            listed.map(() => ({
+                builds: { value: [] },
+                conflicts: { error: { status: 401, message: 'Unauthorized' } },
+            })) as never,
+        );
+
+        const code = await handleBitbucket(['pr', 'mine', '--checks']);
+
+        expect(code).toBe(0);
+        expect(errSpy).toHaveBeenCalledTimes(1);
+        expect(stderr()).toBe(
+            'Warning: conflicts unavailable for 12 pull requests (HTTP 401: Unauthorized)',
+        );
+        expect(rows()).toHaveLength(12);
+        // Builds — (no statuses), Conflicts ? (unavailable), then Updated.
+        expect(rows().every(row => /\| — \| \? \| [^|]+ \|$/.test(row))).toBe(true);
+    });
+
+    it('renders an unavailable signal as ? and keeps every other row intact', async () => {
+        vi.mocked(client.listMyPullRequests).mockResolvedValue({
+            pullRequests: [openPr(1), openPr(2)],
+            skipped: [],
+        } as never);
+        vi.mocked(client.listPullRequestSignals).mockResolvedValue([
+            { builds: { value: [] }, conflicts: { error: { status: 403, message: 'Forbidden' } } },
+            ok,
+        ] as never);
+
+        const code = await handleBitbucket(['pr', 'mine', '--checks']);
+
+        expect(code).toBe(0);
+        const [first, second] = rows();
+        expect(first).toMatch(/^\| w1\/api \| #1 \| OPEN \| PR 1 \| .* \| — \| \? \| /);
+        expect(second).toMatch(/^\| w1\/api \| #2 \| OPEN \| PR 2 \| .* \| — \| ✓ none \| /);
+        expect(stderr()).toBe(
+            'Warning: conflicts unavailable for 1 pull request (HTTP 403: Forbidden)',
+        );
+    });
+
+    it('renders — without a warning for a pull request that was not checked', async () => {
+        const merged = { ...openPr(2), state: 'MERGED' };
+        vi.mocked(client.listMyPullRequests).mockResolvedValue({
+            pullRequests: [openPr(1), merged],
+            skipped: [],
+        } as never);
+        vi.mocked(client.listPullRequestSignals).mockResolvedValue([ok, null] as never);
+
+        const code = await handleBitbucket(['pr', 'mine', '--state', 'ALL', '--checks']);
+
+        expect(code).toBe(0);
+        expect(rows()[1]).toMatch(/^\| w1\/api \| #2 \| MERGED \| .* \| — \| — \| [^|]+ \|$/);
+        expect(errSpy).not.toHaveBeenCalled();
+    });
+
+    it('still exits 0 when the signals are adverse, rendering them', async () => {
+        const adverse = {
+            ...openPr(1),
+            task_count: 3,
+            reviewers: [user('r1')],
+            participants: [
+                { user: user('r1'), role: 'REVIEWER', approved: false, state: 'changes_requested' },
+            ],
+        };
+        vi.mocked(client.listMyPullRequests).mockResolvedValue({
+            pullRequests: [adverse],
+            skipped: [],
+        } as never);
+        vi.mocked(client.listPullRequestSignals).mockResolvedValue([
+            {
+                builds: {
+                    value: [{ key: 'ci', state: 'FAILED', commit: { hash: 'abc123def456' } }],
+                },
+                conflicts: { value: { values: [{ path: 'a.ts' }, { path: 'b.ts' }] } },
+            },
+        ] as never);
+
+        const code = await handleBitbucket(['pr', 'mine', '--checks']);
+
+        expect(code).toBe(0);
+        expect(rows()[0]).toContain('| ✗1 | 3 | ✗ 1 failed | ✗ 2 |');
+        expect(errSpy).not.toHaveBeenCalled();
+    });
+
+    it('a failing list request with --checks exits 1 without fetching signals', async () => {
+        vi.mocked(client.listPullRequests).mockRejectedValue(new Error('HTTP 500: boom'));
+
+        const code = await handleBitbucket(['pr', 'list', '--checks', ...base]);
+
+        expect(code).toBe(1);
+        expect(client.listPullRequestSignals).not.toHaveBeenCalled();
+        expect(stderr()).toContain('HTTP 500: boom');
+        expect(logSpy).not.toHaveBeenCalled();
     });
 });
