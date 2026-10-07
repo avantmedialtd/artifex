@@ -36,6 +36,15 @@ function parseJsonFlag(value: string | undefined): Record<string, unknown> {
     return parsed as Record<string, unknown>;
 }
 
+/**
+ * Checks the shape of --field pairs and --field-json without touching the
+ * network, so a malformed flag is reported before any prose input is read.
+ */
+export function validateFieldFlags(inputs: FieldFlagInputs): void {
+    inputs.fieldPairs?.forEach(parsePair);
+    parseJsonFlag(inputs.fieldJson);
+}
+
 export async function resolveFieldFlags(
     inputs: FieldFlagInputs,
 ): Promise<ResolvedFieldFlags | undefined> {

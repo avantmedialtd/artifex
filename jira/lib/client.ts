@@ -300,7 +300,9 @@ export async function deleteComment(issueKey: string, commentId: string): Promis
 /**
  * Add a Jira Service Management request comment, choosing public vs internal.
  * The platform comment API's `jsdPublic` flag is read-only, so internal/public
- * notes go through the JSM API (a different base path). The body is plain text.
+ * notes go through the JSM API (a different base path). The body is sent as
+ * typed, not converted to ADF, and JSM renders it as Jira wiki markup, so
+ * markdown headings, bold, code and links do not render as markdown.
  */
 export async function addServiceDeskComment(
     issueKey: string,

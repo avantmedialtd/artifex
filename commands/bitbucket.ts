@@ -1,10 +1,11 @@
-import { readFileSync } from 'node:fs';
 import type {
     BitbucketPullRequest,
     BitbucketPullRequestState,
     PullRequestSignals,
 } from '../bitbucket/lib/types.ts';
+import { checkStrictArgs, splitOptionToken, type StrictRule } from '../utils/cli-args.ts';
 import { error } from '../utils/output.ts';
+import { assertSingleSource, readProse, type ProseSource } from '../utils/text-input.ts';
 import {
     filterCommentsByResolution,
     filterTasksByResolution,
@@ -108,6 +109,88 @@ const FLAG_ALIASES = new Map<string, string>([
     ['--dest', '--to'],
 ]);
 
+// The pull request commands that take prose reject unknown options and extra
+// positional arguments, so a mistyped flag or an unquoted body fails instead of
+// being ignored. Every action of `pr comment` and `pr task` is covered.
+// `maxPositionals` counts the arguments after `pr`; options are listed as typed,
+// so `pr create` lists the branch aliases. Any other subcommand or action
+// matches no rule and stays lenient.
+const GLOBAL_OPTIONS = ['--json', '--workspace', '--repo'];
+const BODY_PROSE = { inline: '--body', file: '--body-file' };
+const DESCRIPTION_PROSE = { inline: '--description', file: '--description-file' };
+
+function prRule(
+    words: string,
+    options: string[],
+    maxPositionals: number,
+    prose?: StrictRule['prose'],
+): [string, StrictRule] {
+    const command = `pr ${words}`;
+    const rule: StrictRule = {
+        command: `af bitbucket ${command}`,
+        options: [...options, ...GLOBAL_OPTIONS],
+        maxPositionals,
+    };
+    if (prose) rule.prose = prose;
+    return [command, rule];
+}
+
+const STRICT_RULES = new Map<string, StrictRule>([
+    prRule(
+        'create',
+        [
+            '--title',
+            '--description',
+            '--description-file',
+            '--from',
+            '--source',
+            '--src',
+            '--to',
+            '--destination',
+            '--dest',
+            '--reviewers',
+            '--draft',
+        ],
+        1,
+        DESCRIPTION_PROSE,
+    ),
+    prRule(
+        'update',
+        ['--title', '--description', '--description-file', '--reviewers'],
+        2,
+        DESCRIPTION_PROSE,
+    ),
+    prRule('comment list', ['--resolved', '--unresolved'], 3),
+    prRule(
+        'comment add',
+        ['--body', '--body-file', '--file', '--line', '--reply-to'],
+        3,
+        BODY_PROSE,
+    ),
+    prRule('comment update', ['--body', '--body-file'], 4, BODY_PROSE),
+    prRule('comment get', [], 4),
+    prRule('comment delete', [], 4),
+    prRule('comment resolve', [], 4),
+    prRule('comment reopen', [], 4),
+    prRule('task list', ['--resolved', '--unresolved'], 3),
+    prRule('task add', ['--body', '--body-file', '--on-comment'], 3, BODY_PROSE),
+    prRule('task update', ['--body', '--body-file', '--resolved', '--unresolved'], 4, BODY_PROSE),
+    prRule('task delete', [], 4),
+]);
+
+/** The strict rule for `<subcommand> <args…>`, or undefined when the command is lenient. */
+function findStrictRule(subcommand: string, args: string[]): StrictRule | undefined {
+    if (subcommand !== 'pr') return undefined;
+    const nested = args[0] === 'comment' || args[0] === 'task';
+    return STRICT_RULES.get(['pr', ...args.slice(0, nested ? 2 : 1)].join(' '));
+}
+
+/**
+ * Parses argv into the subcommand, its positional arguments and the options.
+ * `--name=value` is split at the first `=` (the value may be empty or contain
+ * `=`) before the alias lookup; a boolean flag written with `=` is an error.
+ * The pull request prose commands are then checked against `STRICT_RULES`.
+ */
 export function parseArgs(argv: string[]): {
     subcommand: string;
     args: string[];
@@ -115,40 +198,59 @@ export function parseArgs(argv: string[]): {
 } {
     const args: string[] = [];
     const options: BitbucketOptions = {};
+    // Option names as typed (before alias normalization, without `=value`),
+    // for the strict check.
+    const typedOptions: string[] = [];
+    // The last argument when it is an option that needs a value. Reported
+    // after the strict check: on a strict command a trailing `--resolve` is an
+    // unknown option (with a suggestion), not an option missing its value.
+    let missingValue: string | undefined;
 
     let i = 0;
     while (i < argv.length) {
-        const rawArg = argv[i];
-        const arg = FLAG_ALIASES.get(rawArg) ?? rawArg;
-        if (BOOLEAN_FLAGS.has(arg)) {
-            const key = arg.slice(2) as keyof BitbucketOptions;
-            (options as Record<string, boolean>)[key] = true;
-        } else if (REPEATABLE_FLAGS.has(arg)) {
-            const value = argv[++i];
-            if (value === undefined) throw new Error(`Option ${rawArg} requires a value`);
-            const key = arg.slice(2);
-            const rec = options as Record<string, string[] | undefined>;
-            (rec[key] ??= []).push(value);
-        } else if (arg.startsWith('--')) {
-            const key = arg.slice(2) as keyof BitbucketOptions;
-            const value = argv[++i];
-            if (value === undefined) throw new Error(`Option ${rawArg} requires a value`);
-            if (NUMBER_FLAGS.has(arg)) {
-                (options as Record<string, number>)[key] = parseInt(value, 10);
+        const token = splitOptionToken(argv[i]);
+        if (token) {
+            const typed = token.flag;
+            typedOptions.push(typed);
+            const flag = FLAG_ALIASES.get(typed) ?? typed;
+            const key = flag.slice(2);
+            if (BOOLEAN_FLAGS.has(flag)) {
+                if (token.inlineValue !== undefined) {
+                    throw new Error(`Option ${typed} does not take a value`);
+                }
+                (options as Record<string, boolean>)[key] = true;
             } else {
-                (options as Record<string, string>)[key] = value;
+                const value = token.inlineValue ?? argv[++i];
+                if (value === undefined) {
+                    // Only the last argument can lack a value, so the loop ends here.
+                    missingValue = typed;
+                    break;
+                }
+                if (REPEATABLE_FLAGS.has(flag)) {
+                    const rec = options as Record<string, string[] | undefined>;
+                    (rec[key] ??= []).push(value);
+                } else if (NUMBER_FLAGS.has(flag)) {
+                    (options as Record<string, number>)[key] = parseInt(value, 10);
+                } else {
+                    (options as Record<string, string>)[key] = value;
+                }
             }
         } else {
-            args.push(arg);
+            args.push(argv[i]);
         }
         i++;
     }
 
     const subcommand = args[0] ?? '';
-    return { subcommand, args: args.slice(1), options };
+    const subArgs = args.slice(1);
+    const rule = findStrictRule(subcommand, subArgs);
+    if (rule) checkStrictArgs(rule, typedOptions, subArgs);
+    if (missingValue !== undefined) throw new Error(`Option ${missingValue} requires a value`);
+    return { subcommand, args: subArgs, options };
 }
 
-function showHelp(): void {
+/** Prints the full `af bitbucket` reference (also shown for `af bb` and `af help bb`). */
+export function showBitbucketHelp(): void {
     console.log(`
 Bitbucket CLI - Manage Bitbucket Cloud pull requests, comments, tasks, pipelines,
 and inspect repos, refs, commits, and source (read-only)
@@ -164,10 +266,12 @@ PULL REQUESTS:
                                                     (--workspace W narrows; use --limit with ALL)
   pr get <id>
   pr diff <id>
-  pr create --title T [--from B] [--to B] [--description / --description-file F]
+  pr create --title T [--from B] [--to B]
+            [--description TEXT / --description-file <path|->]
             [--reviewers a,b] [--draft]
             (--from also accepts --source, --src; --to also accepts --destination, --dest)
-  pr update <id> [--title T] [--description / --description-file F] [--reviewers a,b]
+  pr update <id> [--title T] [--description TEXT / --description-file <path|->]
+                 [--reviewers a,b]
   pr approve <id>           pr unapprove <id>
   pr request-changes <id>
   pr merge <id> [--strategy merge_commit|squash|fast_forward] [--close-source]
@@ -185,19 +289,24 @@ PULL REQUESTS:
 PR COMMENTS:
   pr comment list <pr-id> [--resolved | --unresolved]
   pr comment get <pr-id> <comment-id>
-  pr comment add <pr-id> --body / --body-file
+  pr comment add <pr-id> --body TEXT / --body-file <path|->
                          [--file PATH --line N]
                          [--reply-to COMMENT-ID]
-  pr comment update <pr-id> <comment-id> --body / --body-file
+  pr comment update <pr-id> <comment-id> --body TEXT / --body-file <path|->
   pr comment delete <pr-id> <comment-id>
   pr comment resolve <pr-id> <comment-id>          Resolve a comment thread
   pr comment reopen <pr-id> <comment-id>           Reopen a resolved thread
 
 PR TASKS:
   pr task list <pr-id> [--resolved | --unresolved]
-  pr task add <pr-id> --body / --body-file [--on-comment COMMENT-ID]
-  pr task update <pr-id> <task-id> [--body / --body-file] [--resolved | --unresolved]
+  pr task add <pr-id> --body TEXT / --body-file <path|-> [--on-comment COMMENT-ID]
+  pr task update <pr-id> <task-id> [--body TEXT / --body-file <path|->]
+                 [--resolved | --unresolved]
   pr task delete <pr-id> <task-id>
+
+  Comment and task bodies and PR descriptions are sent as typed; Bitbucket renders
+  them as markdown. --body-file and --description-file take a file path, or - to
+  read the text from standard input (see MULTI-LINE TEXT).
 
 PIPELINES:
   pipeline list [--branch B] [--status PENDING|IN_PROGRESS|SUCCESSFUL|FAILED|...]
@@ -229,6 +338,21 @@ OPTIONS:
   --repo R        Override resolved repository
   --json          Emit raw JSON instead of human-formatted output
 
+  Options that take a value also accept --name=value. pr create, pr update,
+  pr comment and pr task reject options they do not know and extra arguments.
+
+MULTI-LINE TEXT:
+  Inside "double" or 'single' quotes, \\n stays a backslash and an n; it is never
+  a newline. Double quotes also run \`commands\` and expand $VARS. For multi-line
+  text, use a -file flag: pass a path, or - and a quoted heredoc (keep AF_BODY
+  at the start of its line):
+
+af bb pr comment add 42 --body-file - <<'AF_BODY'
+## Summary
+
+- First point
+AF_BODY
+
 EXAMPLES:
   af bb pr list --state OPEN
   af bb pr mine
@@ -249,23 +373,27 @@ EXAMPLES:
 `);
 }
 
-function readBody(opts: BitbucketOptions): string | undefined {
-    if (opts.body !== undefined && opts['body-file'] !== undefined) {
-        throw new Error('Cannot use both --body and --body-file');
-    }
-    if (opts.body !== undefined) return opts.body;
-    if (opts['body-file'] !== undefined) return readFileSync(opts['body-file'], 'utf-8');
-    return undefined;
+// Comment and task bodies and PR descriptions are prose: inline, from a file,
+// or from stdin with `-`, resolved by `readProse` only after every argument
+// check and before any request. The text is sent as typed (Bitbucket renders
+// markdown). A body is required to be non-empty; a description may be `""`.
+
+function bodySource(opts: BitbucketOptions): ProseSource {
+    return {
+        flag: '--body',
+        value: opts.body,
+        fileFlag: '--body-file',
+        file: opts['body-file'],
+    };
 }
 
-function readDescription(opts: BitbucketOptions): string | undefined {
-    if (opts.description !== undefined && opts['description-file'] !== undefined) {
-        throw new Error('Cannot use both --description and --description-file');
-    }
-    if (opts.description !== undefined) return opts.description;
-    if (opts['description-file'] !== undefined)
-        return readFileSync(opts['description-file'], 'utf-8');
-    return undefined;
+function descriptionSource(opts: BitbucketOptions): ProseSource {
+    return {
+        flag: '--description',
+        value: opts.description,
+        fileFlag: '--description-file',
+        file: opts['description-file'],
+    };
 }
 
 function parseReviewers(flag: string | undefined): string[] | undefined {
@@ -320,7 +448,7 @@ const TERMINAL_STEP_STATES = new Set(['SUCCESSFUL', 'FAILED', 'STOPPED', 'ERROR'
 
 export async function handleBitbucket(args: string[]): Promise<number> {
     if (args.includes('--help') || args.includes('-h')) {
-        showHelp();
+        showBitbucketHelp();
         return 0;
     }
 
@@ -336,7 +464,7 @@ export async function handleBitbucket(args: string[]): Promise<number> {
     const json = options.json ?? false;
 
     if (!subcommand || subcommand === 'help') {
-        showHelp();
+        showBitbucketHelp();
         return 0;
     }
 
@@ -515,13 +643,17 @@ async function handlePr(
         }
         case 'create': {
             const title = requireArg(options.title, '--title');
-            const description = readDescription(options);
+            const descriptionInput = descriptionSource(options);
+            assertSingleSource(descriptionInput);
             let source = options.from;
             if (!source) source = client.getCurrentBranch() ?? undefined;
             if (!source) {
                 error('Error: --from required (could not detect current branch)');
                 return 1;
             }
+            // Read the description after the argument checks, before the main
+            // branch lookup below, so a bad input sends no request at all.
+            const description = readProse(descriptionInput);
             let destination = options.to;
             if (!destination) {
                 const repoInfo = await client.getRepository(ws, repo);
@@ -540,7 +672,8 @@ async function handlePr(
         }
         case 'update': {
             const id = requireIdArg(args[1], 'pr id');
-            const description = readDescription(options);
+            // `--description ""` is sent as is, which clears the description.
+            const description = readProse(descriptionSource(options));
             const pr = await client.updatePullRequest(ws, repo, id, {
                 title: options.title,
                 description,
@@ -720,11 +853,8 @@ async function handleComment(
         }
         case 'add': {
             const prId = requireIdArg(args[1], 'pr id');
-            const body = readBody(options);
-            if (body === undefined) {
-                error('Error: --body or --body-file required');
-                return 1;
-            }
+            const bodyInput = bodySource(options);
+            assertSingleSource(bodyInput);
             const inlineFile = options.file;
             const inlineLine = options.line;
             if (
@@ -732,6 +862,13 @@ async function handleComment(
                 (!inlineFile && inlineLine !== undefined)
             ) {
                 error('Error: --file and --line must be supplied together');
+                return 1;
+            }
+            // Read the body only after the argument checks above. Without a
+            // body flag nothing is read and `readProse` returns undefined.
+            const body = readProse(bodyInput, { required: true });
+            if (body === undefined) {
+                error('Error: --body or --body-file required');
                 return 1;
             }
             const c = await client.addComment(ws, repo, prId, {
@@ -745,7 +882,7 @@ async function handleComment(
         case 'update': {
             const prId = requireIdArg(args[1], 'pr id');
             const cid = requireIdArg(args[2], 'comment id');
-            const body = readBody(options);
+            const body = readProse(bodySource(options), { required: true });
             if (body === undefined) {
                 error('Error: --body or --body-file required');
                 return 1;
@@ -810,7 +947,7 @@ async function handleTask(
         }
         case 'add': {
             const prId = requireIdArg(args[1], 'pr id');
-            const body = readBody(options);
+            const body = readProse(bodySource(options), { required: true });
             if (body === undefined) {
                 error('Error: --body or --body-file required');
                 return 1;
@@ -829,7 +966,9 @@ async function handleTask(
                 error('Error: --resolved and --unresolved are mutually exclusive');
                 return 1;
             }
-            const body = readBody(options);
+            // No body flag means "leave the body alone": `readProse` then
+            // returns undefined, while an empty inline `--body ""` is an error.
+            const body = readProse(bodySource(options), { required: true });
             const state = options.resolved
                 ? 'RESOLVED'
                 : options.unresolved

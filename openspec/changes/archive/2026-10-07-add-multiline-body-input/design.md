@@ -433,7 +433,7 @@ Fixtures with CRLF, a BOM or only whitespace are generated in the test, never co
     - Confluence `--body` + `--body-file` fails;
     - `-` on `-file` flags means stdin;
     - empty file or stdin input fails, so an empty `--body-file` no longer creates an empty Confluence page or posts an empty Bitbucket comment;
-    - an empty inline body fails on Jira `comment edit` and on Bitbucket comment and task bodies (D5);
+    - an empty or whitespace-only inline body fails on every comment and task body (D5): Jira `comment <key>` (platform and JSM; `--add ""` used to list the comments), Jira `comment edit`, Confluence `comment` (`--add " "` used to post an empty comment), and Bitbucket comment and task bodies;
     - `--add` together with `--body` fails on Jira `comment edit`, where `--body` used to win.
 3. No data or configuration migration. Rollback is a revert.
 

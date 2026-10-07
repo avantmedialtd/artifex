@@ -1,5 +1,19 @@
 import { header, section, listItem, error } from '../utils/output.ts';
 import { getVersion } from '../utils/version.ts';
+import { showBitbucketHelp } from './bitbucket.ts';
+import { showConfluenceHelp } from './confluence.ts';
+import { showJiraHelp } from './jira.ts';
+
+/**
+ * Products whose full reference lives with their command handler, so that
+ * `af help <product>` and `af <product> --help` print the same text.
+ */
+const PRODUCT_HELP: Record<string, () => void> = {
+    jira: showJiraHelp,
+    confluence: showConfluenceHelp,
+    bitbucket: showBitbucketHelp,
+    bb: showBitbucketHelp,
+};
 
 /**
  * Help content for all commands
@@ -67,76 +81,6 @@ const HELP_CONTENT: Record<string, { description: string; usage: string; example
             'af jenkins stage-log my-app/main "Test"      # Log for a specific stage',
             'af jenkins queue                             # Show build queue',
         ],
-    },
-    jira: {
-        description: 'Manage Jira issues from the command line',
-        usage: 'af jira <subcommand> [args] [options]',
-        examples: [
-            'af jira get PROJ-123              # Get issue details',
-            'af jira list PROJ --limit 20     # List project issues',
-            'af jira search "status = Open"   # Search with JQL',
-            'af jira create --project PROJ --type Bug --summary "Title"',
-            'af jira transition PROJ-123 --to Done --resolution Fixed --comment "Shipped"',
-            'af jira update PROJ-123 --parent PROJ-100   # Reparent / set epic',
-            'af jira editmeta PROJ-123                    # Editable fields for an issue',
-            'af jira move PROJ-123 --to-project NEWPROJ --type Story   # Async move',
-            'af jira bulk transition --jql "project = PROJ AND status = Backlog" --to "To Do"',
-            'af jira worklog add PROJ-123 --time 2h --comment "Investigated"',
-            'af jira rank PROJ-123 --above PROJ-99   # Reorder in the backlog',
-            'af jira sprint add PROJ-123 --sprint 42',
-            'af jira boards                          # List boards',
-            'af jira watch PROJ-123                  # Watch / vote',
-            'af jira link PROJ-123 --to PROJ-456 --type "Blocks"',
-            'af jira unlink PROJ-123 --from PROJ-456',
-            'af jira remote-link PROJ-123     # List remote links',
-            'af jira remote-link PROJ-123 --url "https://..." --title "Doc"',
-            'af jira projects                  # List all projects',
-        ],
-    },
-    confluence: {
-        description: 'Manage Confluence pages from the command line',
-        usage: 'af confluence <subcommand> [args] [options]',
-        examples: [
-            'af confluence get 12345                        # Get page content',
-            'af confluence list MYSPACE --limit 20         # List pages in space',
-            'af confluence search "title = \'My Page\'"      # Search with CQL',
-            'af confluence create --space MYSPACE --title "New Page" --body "Content"',
-            'af confluence spaces                           # List all spaces',
-        ],
-    },
-    bitbucket: {
-        description:
-            'Manage Bitbucket Cloud pull requests, comments, tasks, and pipelines (alias: af bb)',
-        usage: 'af bitbucket <subcommand> [args] [options]',
-        examples: [
-            'af bb pr list --state OPEN',
-            'af bb pr mine                             # My PRs across all my workspaces',
-            'af bb pr mine --checks                    # + builds/conflicts of my open PRs',
-            'af bb pr get 42',
-            'af bb pr create --title "Fix bug" --reviewers abc123,def456',
-            'af bb pr comment add 42 --body "LGTM" --reply-to 100',
-            'af bb pr task add 42 --body "Rename" --on-comment 100',
-            'af bb pr task update 42 7 --resolved',
-            'af bb pipeline list --branch main',
-            'af bb pipeline trigger --branch main --custom nightly --var FOO=bar',
-            'af bb pipeline logs {uuid} {step-uuid} --follow',
-            'af bb members --query alice               # Look up account IDs',
-            'af bb whoami                              # Authenticated account + id',
-            'af bb repo list --sort -updated_on        # Workspace repositories',
-            'af bb branch list                         # Remote branches + heads',
-            'af bb commit list --branch main --limit 5',
-            'af bb commit get <sha> --diff             # Raw diff for a commit',
-            'af bb src read README.md --ref main       # File content at a ref',
-            'af bb src ls src --recursive              # Browse a directory',
-            'af bb diff main..feature --stat           # Diffstat between refs',
-            'af bb pr status 42                        # PR build/gate statuses',
-            'af bb pr reviewers 42 --pending           # Who still needs to approve',
-        ],
-    },
-    bb: {
-        description: 'Alias for `af bitbucket`',
-        usage: 'af bb <subcommand> [args] [options]',
-        examples: ['af bb --help                                  # See bitbucket help'],
     },
     sonar: {
         description:
@@ -209,7 +153,13 @@ function showGeneralHelp(): void {
  * @param command - The command to show help for
  */
 function showCommandHelp(command: string): void {
-    const helpInfo = HELP_CONTENT[command];
+    // Own keys only, so names like __proto__ or valueOf are unknown commands.
+    if (Object.hasOwn(PRODUCT_HELP, command)) {
+        PRODUCT_HELP[command]();
+        return;
+    }
+
+    const helpInfo = Object.hasOwn(HELP_CONTENT, command) ? HELP_CONTENT[command] : undefined;
 
     if (!helpInfo) {
         error(`Unknown command: ${command}`);

@@ -158,7 +158,12 @@ Explicitly **not** part of this change (decided during exploration):
     - Confluence `--body` combined with `--body-file` now fails.
     - A body value of exactly `-` on a `-file` flag now means stdin.
     - Empty file or stdin input now fails. An empty `--body-file` used to create an empty Confluence page or post an empty Bitbucket comment.
-    - An empty inline body now fails on Jira `comment edit` and on Bitbucket comment and task bodies. `--add` together with `--body` now fails on `comment edit`, where `--body` used to win.
+    - An empty or whitespace-only inline body now fails on every comment and task body:
+        - Jira `comment <KEY>`, including `--internal` / `--public`, where `--add ""` used to list the comments and `--add " "` posted an empty comment;
+        - Jira `comment edit`;
+        - Confluence `comment`, where `--add " "` posted an empty comment;
+        - Bitbucket comment and task bodies.
+    - `--add` together with `--body` now fails on `comment edit`, where `--body` used to win.
 - **Packaging:** no new runtime dependencies. `utils/` is already in the `package.json` `files` allowlist.
 
 ## Open Questions

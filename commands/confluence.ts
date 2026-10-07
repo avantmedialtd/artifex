@@ -1,4 +1,11 @@
+import { checkStrictArgs, splitOptionToken, type StrictRule } from '../utils/cli-args.ts';
 import { error } from '../utils/output.ts';
+import {
+    aliasedSource,
+    assertSingleSource,
+    readProse,
+    type ProseSource,
+} from '../utils/text-input.ts';
 
 /**
  * Command options for Confluence CLI
@@ -17,66 +24,144 @@ interface ConfluenceOptions {
     message?: string;
 }
 
+// Global options, accepted by every subcommand. `--limit` is not one: only the
+// listing subcommands read it.
+const GLOBAL_OPTIONS = ['--json'];
+
+// Every strict subcommand takes its prose from `--body` or `--body-file`.
+const BODY_PROSE = { inline: '--body', file: '--body-file' };
+
+// The subcommands that take prose reject unknown options and extra positional
+// arguments, so a mistyped flag or an unquoted body fails instead of being
+// ignored. Other subcommands keep the lenient parsing. `maxPositionals` counts
+// the arguments after the subcommand.
+const STRICT_RULES = new Map<string, StrictRule>([
+    [
+        'create',
+        {
+            command: 'af confluence create',
+            options: [
+                '--space',
+                '--title',
+                '--body',
+                '--body-file',
+                '--parent',
+                '--status',
+                ...GLOBAL_OPTIONS,
+            ],
+            maxPositionals: 0,
+            prose: BODY_PROSE,
+        },
+    ],
+    [
+        'update',
+        {
+            command: 'af confluence update',
+            options: [
+                '--title',
+                '--body',
+                '--body-file',
+                '--status',
+                '--message',
+                ...GLOBAL_OPTIONS,
+            ],
+            maxPositionals: 1,
+            prose: BODY_PROSE,
+        },
+    ],
+    [
+        'comment',
+        {
+            command: 'af confluence comment',
+            // `--add` is an alias of `--body` on `comment` only; on `label` it
+            // names labels, so it is resolved in the handler, not here.
+            options: ['--body', '--body-file', '--add', ...GLOBAL_OPTIONS],
+            maxPositionals: 1,
+            prose: BODY_PROSE,
+        },
+    ],
+]);
+
 /**
  * Parse command-line arguments into subcommand, args, and options.
+ *
+ * Options take their value from the next argument or, written as
+ * `--name=value`, from the text after the first `=`. `--json` takes no value.
+ * The subcommands in STRICT_RULES then reject options they do not accept and
+ * extra positional arguments; the error message has no `Error: ` prefix.
+ * An option such a subcommand does not take is reported as unknown even when
+ * it is the last argument and has no value.
  */
-function parseArgs(argv: string[]): {
+export function parseArgs(argv: string[]): {
     subcommand: string;
     args: string[];
     options: ConfluenceOptions;
 } {
     const args: string[] = [];
     const options: ConfluenceOptions = {};
+    // Option names as typed, without `=value`, for the strict check.
+    const typedOptions: string[] = [];
+    // The last argument when it is an option that needs a value. Reported
+    // after the strict check: on a strict subcommand `--internal` at the end is
+    // an unknown option, not an option missing its value.
+    let missingValue: string | undefined;
 
     let i = 0;
     while (i < argv.length) {
-        const arg = argv[i];
+        const token = splitOptionToken(argv[i]);
 
-        if (arg === '--json') {
-            options.json = true;
-        } else if (arg.startsWith('--')) {
-            const key = arg.slice(2) as keyof ConfluenceOptions;
-            const value = argv[++i];
-            if (value === undefined) {
-                throw new Error(`Option ${arg} requires a value`);
+        if (!token) {
+            args.push(argv[i]);
+        } else if (token.flag === '--json') {
+            if (token.inlineValue !== undefined) {
+                throw new Error(`Option ${token.flag} does not take a value`);
             }
+            typedOptions.push(token.flag);
+            options.json = true;
+        } else {
+            typedOptions.push(token.flag);
+            const value = token.inlineValue ?? argv[++i];
+            if (value === undefined) {
+                // Only the last argument can lack a value, so the loop ends here.
+                missingValue = token.flag;
+                break;
+            }
+            const key = token.flag.slice(2);
             if (key === 'limit') {
                 options.limit = parseInt(value, 10);
             } else {
                 (options as Record<string, string>)[key] = value;
             }
-        } else {
-            args.push(arg);
         }
         i++;
     }
 
     const subcommand = args[0] ?? '';
-    return { subcommand, args: args.slice(1), options };
+    const positionals = args.slice(1);
+    const rule = STRICT_RULES.get(subcommand);
+    if (rule) {
+        checkStrictArgs(rule, typedOptions, positionals);
+    }
+    if (missingValue !== undefined) {
+        throw new Error(`Option ${missingValue} requires a value`);
+    }
+    return { subcommand, args: positionals, options };
 }
 
-/**
- * Read body content from --body or --body-file options.
- */
-async function getBodyContent(options: ConfluenceOptions): Promise<string | undefined> {
-    if (options.body) {
-        return options.body;
-    }
-    if (options['body-file']) {
-        const fs = await import('fs');
-        const filePath = options['body-file'];
-        if (!fs.existsSync(filePath)) {
-            throw new Error(`File not found: ${filePath}`);
-        }
-        return fs.readFileSync(filePath, 'utf-8');
-    }
-    return undefined;
+/** The page body of `create` and `update`: `--body`, or `--body-file` (a path, or `-` for stdin). */
+function pageBodySource(options: ConfluenceOptions): ProseSource {
+    return {
+        flag: '--body',
+        value: options.body,
+        fileFlag: '--body-file',
+        file: options['body-file'],
+    };
 }
 
 /**
  * Display Confluence-specific help.
  */
-function showConfluenceHelp(): void {
+export function showConfluenceHelp(): void {
     console.log(`
 Confluence CLI - Manage Confluence pages from the command line
 
@@ -110,29 +195,51 @@ SPACE COMMANDS:
 
 OPTIONS:
   --json                     Output as JSON instead of markdown
+
+  Options that take a value also accept --name=value. create, update and
+  comment reject options they do not know and extra arguments.
+
+LIST OPTIONS (list, search, tree, comments, labels, attachments, spaces):
   --limit <n>                Limit results (default: 50)
 
 CREATE OPTIONS:
   --space <key>              Space key (required)
   --title "<text>"           Page title (required)
-  --body "<text>"            Page body (markdown)
-  --body-file <path>         Page body from a file (markdown)
+  --body "<text>"            Page body (markdown, converted to ADF)
+  --body-file <path|->       Page body from a file, or - for stdin
+                             (markdown, converted to ADF)
   --parent <page-id>         Parent page ID
   --status <draft|current>   Page status (default: current)
 
 UPDATE OPTIONS:
   --title "<text>"           New page title
-  --body "<text>"            New page body (markdown)
-  --body-file <path>         New page body from a file (markdown)
+  --body "<text>"            New page body (markdown, converted to ADF)
+  --body-file <path|->       New page body from a file, or - for stdin
+                             (markdown, converted to ADF)
   --status <draft|current>   New page status
   --message "<text>"         Version message
 
 COMMENT OPTIONS:
-  --add "<text>"             Add a comment (omit to list comments)
+  --body "<text>"            Comment text (markdown, converted to ADF)
+  --body-file <path|->       Comment text from a file, or - for stdin
+                             (markdown, converted to ADF)
+  --add "<text>"             Alias of --body
 
 LABEL OPTIONS:
   --add "<name>"             Add a label
   --remove "<name>"          Remove a label
+
+MULTI-LINE TEXT:
+  Inside "double" or 'single' quotes, \\n stays a backslash and an n; it is never
+  a newline. Double quotes also run \`commands\` and expand $VARS. For multi-line
+  text, use a -file flag: pass a path, or - and a quoted heredoc (keep AF_BODY
+  at the start of its line):
+
+af confluence comment 12345 --body-file - <<'AF_BODY'
+## Summary
+
+- First point
+AF_BODY
 
 EXAMPLES:
   af confluence get 12345
@@ -144,7 +251,7 @@ EXAMPLES:
   af confluence update 12345 --body-file ./updated.md --message "Revised content"
   af confluence delete 12345
   af confluence tree 12345
-  af confluence comment 12345 --add "Great page!"
+  af confluence comment 12345 --body "Great page!"
   af confluence label 12345 --add "important"
   af confluence label 12345 --remove "draft"
   af confluence attach 12345 ./diagram.png
@@ -229,19 +336,14 @@ export async function handleConfluence(args: string[]): Promise<number> {
                 if (!space || !title) {
                     error('Error: --space and --title are required');
                     console.error(
-                        'Usage: af confluence create --space MYSPACE --title "Page Title" [--body "content"]',
+                        'Usage: af confluence create --space MYSPACE --title "Page Title" [--body "content" | --body-file <path|->]',
                     );
                     return 1;
                 }
-                const bodyContent = await getBodyContent(options);
+                // `--body ""` and no body at all both create an empty-bodied page.
+                const body = readProse(pageBodySource(options));
                 const pageStatus = status === 'draft' ? 'draft' : 'current';
-                const page = await client.createPage(
-                    space,
-                    title,
-                    bodyContent ?? '',
-                    parent,
-                    pageStatus,
-                );
+                const page = await client.createPage(space, title, body ?? '', parent, pageStatus);
                 fmt.output(
                     json
                         ? page
@@ -261,24 +363,25 @@ export async function handleConfluence(args: string[]): Promise<number> {
                     );
                     return 1;
                 }
-                const bodyContent = await getBodyContent(options);
-                const updates: Parameters<typeof client.updatePage>[1] = {};
-                if (options.title !== undefined) updates.title = options.title;
-                if (bodyContent !== undefined) updates.bodyMarkdown = bodyContent;
-                if (options.status !== undefined)
-                    updates.status = options.status as 'current' | 'draft';
-                if (options.message !== undefined) updates.versionMessage = options.message;
-
-                if (
-                    !updates.title &&
-                    updates.bodyMarkdown === undefined &&
-                    !updates.status &&
-                    !updates.versionMessage
-                ) {
+                const bodySource = pageBodySource(options);
+                assertSingleSource(bodySource);
+                // An inline `--body ""` leaves the page body unchanged, so it is
+                // not an update option. `--body-file` is one as soon as it is
+                // given: it is read only after this check.
+                const bodyGiven = Boolean(options.body) || options['body-file'] !== undefined;
+                if (!options.title && !bodyGiven && !options.status && !options.message) {
                     error('Error: No update options provided');
                     console.error('Use --title, --body, --body-file, --status, or --message');
                     return 1;
                 }
+
+                const body = readProse(bodySource);
+                const updates: Parameters<typeof client.updatePage>[1] = {};
+                if (options.title !== undefined) updates.title = options.title;
+                if (body) updates.bodyMarkdown = body;
+                if (options.status !== undefined)
+                    updates.status = options.status as 'current' | 'draft';
+                if (options.message !== undefined) updates.versionMessage = options.message;
 
                 const page = await client.updatePage(pageId, updates);
                 fmt.output(
@@ -340,17 +443,24 @@ export async function handleConfluence(args: string[]): Promise<number> {
                 const pageId = subArgs[0];
                 if (!pageId) {
                     error(
-                        'Error: Page ID required. Usage: af confluence comment <page-id> --add "text"',
+                        'Error: Page ID required. Usage: af confluence comment <page-id> --body "text"',
                     );
                     return 1;
                 }
-                if (!options.add) {
+                // `--add` is an alias of `--body` here; on `label` it names labels.
+                const bodySource = aliasedSource(
+                    { flag: '--body', value: options.body },
+                    { flag: '--add', value: options.add },
+                    { flag: '--body-file', value: options['body-file'] },
+                );
+                const body = readProse(bodySource, { required: true });
+                if (body === undefined) {
                     error(
-                        'Error: --add is required. Usage: af confluence comment <page-id> --add "text"',
+                        'Error: --body or --body-file required. Usage: af confluence comment <page-id> --body "text"',
                     );
                     return 1;
                 }
-                const comment = await client.addComment(pageId, options.add);
+                const comment = await client.addComment(pageId, body);
                 fmt.output(
                     json ? comment : fmt.formatSuccess(`Added comment to page ${pageId}`),
                     json,

@@ -9,6 +9,7 @@ import {
     addComment,
     updateComment,
     deleteComment,
+    addServiceDeskComment,
     getEditMeta,
     moveIssue,
     pollBulkTask,
@@ -28,6 +29,8 @@ import {
     watchIssue,
     unwatchIssue,
     voteIssue,
+    createVersion,
+    updateVersion,
 } from './client.ts';
 
 const BASE_URL = 'https://test.atlassian.net';
@@ -328,6 +331,25 @@ describe('jira client', () => {
             expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/comment/9`);
             expect((init as RequestInit).method).toBe('DELETE');
         });
+
+        // JSM renders the body as wiki markup, so it is sent as typed, never as ADF.
+        it.each([
+            ['an internal note', false],
+            ['a public reply', true],
+        ])('addServiceDeskComment posts %s with the text as typed', async (_kind, isPublic) => {
+            const text = '## Summary\n\n- First point\n';
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '10002' }, 201));
+
+            await addServiceDeskComment('PROJ-1', text, isPublic);
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/servicedeskapi/request/PROJ-1/comment`);
+            expect((init as RequestInit).method).toBe('POST');
+            expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+                body: text,
+                public: isPublic,
+            });
+        });
     });
 
     describe('getEditMeta', () => {
@@ -590,6 +612,98 @@ describe('jira client', () => {
             expect(sprints).toHaveLength(1);
             const [url] = fetchMock.mock.calls[0]!;
             expect(String(url)).toBe(`${BASE_URL}/rest/agile/1.0/board/7/sprint?state=active`);
+        });
+    });
+
+    // An empty inline value keeps its meaning per command; the CLI passes ""
+    // through, and these pin what each request then carries.
+    describe('empty description and comment values', () => {
+        function bodyOfCall(index: number): Record<string, unknown> {
+            const [, init] = fetchMock.mock.calls[index]!;
+            return JSON.parse((init as RequestInit).body as string);
+        }
+
+        it('createIssue sends no description for an empty one', async () => {
+            fetchMock.mockResolvedValueOnce(
+                mockJsonResponse({ id: '1', key: 'PROJ-1', self: '', fields: {} }),
+            );
+
+            await createIssue('PROJ', 'Task', 'Title', '');
+
+            expect(bodyOfCall(0)).toEqual({
+                fields: { project: { key: 'PROJ' }, issuetype: { name: 'Task' }, summary: 'Title' },
+            });
+        });
+
+        it('addWorklog sends no comment for an empty one', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '100' }, 201));
+
+            await addWorklog('PROJ-1', {
+                timeSpent: '1h',
+                started: '2026-01-01T09:00:00.000+0000',
+                comment: '',
+            });
+
+            expect(bodyOfCall(0)).toEqual({
+                timeSpent: '1h',
+                started: '2026-01-01T09:00:00.000+0000',
+            });
+        });
+
+        it('updateIssue clears the description with null', async () => {
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await updateIssue('PROJ-1', { description: '' });
+
+            expect(bodyOfCall(0)).toEqual({ fields: { description: null } });
+        });
+
+        it('transitionIssue sends no update for an empty comment', async () => {
+            fetchMock.mockResolvedValueOnce(
+                mockJsonResponse({
+                    transitions: [{ id: '5', name: 'Done', to: { name: 'Done' } }],
+                }),
+            );
+            fetchMock.mockResolvedValueOnce(mockEmpty());
+
+            await transitionIssue('PROJ-1', 'Done', { comment: '' });
+
+            const body = bodyOfCall(1);
+            expect(body).not.toHaveProperty('update');
+            expect(body).toEqual({ transition: { id: '5' } });
+        });
+
+        it('updateWorklog sends an empty ADF document, clearing the comment', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '9' }));
+
+            await updateWorklog('PROJ-1', '9', { comment: '' });
+
+            expect(bodyOfCall(0)).toEqual({ comment: { type: 'doc', version: 1, content: [] } });
+        });
+
+        it('updateVersion sends the empty description, clearing it', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '5', name: 'v1.0.0' }));
+
+            await updateVersion('5', { description: '' });
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/version/5`);
+            expect((init as RequestInit).method).toBe('PUT');
+            expect(bodyOfCall(0)).toEqual({ description: '' });
+        });
+
+        it('createVersion sends no description for an empty one', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '10000' }));
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '6', name: 'v1.0.0' }, 201));
+
+            await createVersion('PROJ', 'v1.0.0', { description: '' });
+
+            const [url, init] = fetchMock.mock.calls[1]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/version`);
+            expect((init as RequestInit).method).toBe('POST');
+            const body = bodyOfCall(1);
+            expect(body).not.toHaveProperty('description');
+            expect(body).toEqual({ name: 'v1.0.0', projectId: 10000 });
         });
     });
 

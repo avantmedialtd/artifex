@@ -141,13 +141,46 @@ af jira transition PROJ-123 --to Done --resolution Fixed --comment "Shipped in v
 **Comments, worklogs, watching, voting:**
 
 ```bash
-af jira comment PROJ-123 --add "Note" --visibility "Administrators"
+af jira comment PROJ-123 --body "Note" --visibility "Administrators"   # --add is an alias of --body
 af jira comment edit PROJ-123 10042 --body "Edited"
 af jira comment delete PROJ-123 10042
 af jira worklog add PROJ-123 --time 2h --comment "Investigated root cause"
 af jira worklog list PROJ-123
 af jira watch PROJ-123      # unwatch / vote likewise
 ```
+
+**Multi-line text.** Comment and description bodies are markdown, converted to
+Jira's document format. Every prose flag has a `-file` twin that takes a path,
+or `-` to read standard input: `--body-file`, `--description-file` and
+`--comment-file`. For anything longer than a line, feed a quoted heredoc to the
+`-file` flag:
+
+```bash
+af jira comment PROJ-123 --body-file - <<'AF_BODY'
+## Summary
+
+- First point
+AF_BODY
+```
+
+- Inside `"double"` or `'single'` quotes, `\n` stays a backslash and an `n`: the
+  shell never turns it into a newline, so the comment shows `\n` literally. Double
+  quotes also run `` `backticks` `` as commands and expand `$VARS` before af sees
+  the text. A quoted heredoc (`<<'AF_BODY'`) passes the text through unchanged.
+- Keep the closing `AF_BODY` at the start of its line; an indented one never ends
+  the heredoc.
+- If your shell or agent harness rejects multi-line commands, write the text to a
+  file and pass the path instead: `--body-file notes.md`.
+- Avoid `echo "…\n…" |`, whose result depends on the shell, and `printf "$text"`,
+  which treats `%` as a format directive. `"$(cat <<'EOF' …)"` breaks in macOS
+  `/bin/bash` 3.2 when the text contains an apostrophe or an unmatched `)`.
+- `comment --internal` / `--public` send the text as typed; Jira Service Management
+  renders it as wiki markup, not markdown. Version descriptions are plain text.
+
+**Option checking.** Commands that take prose (`comment`, `create`, `update`,
+`transition`, `worklog`, `version-create`, `version-update`) reject options they
+do not recognize and stray words, and suggest the flag you probably meant. Every
+`af jira`, `af confluence` and `af bb` subcommand also accepts `--flag=value`.
 
 **Move** an issue across projects/types (asynchronous bulk API — polled to
 completion), and **bulk** operate over a JQL selection:
@@ -181,10 +214,25 @@ af confluence search "title ~ 'Runbook'"   # CQL search
 af confluence create --space MYSPACE --title "New Page" --body-file ./doc.md
 af confluence update 12345 --body-file ./updated.md
 af confluence tree 12345                   # Page hierarchy
-af confluence comment 12345 --add "Looks good"
+af confluence comment 12345 --body "Looks good"   # --add is an alias of --body
 af confluence attach 12345 ./diagram.png
 af confluence spaces                        # List all spaces
 ```
+
+Page and comment bodies are markdown. `--body-file` takes a path, or `-` to read
+standard input, on `create`, `update` and `comment`; feed it a quoted heredoc for
+multi-line text (see Jira's **Multi-line text** above):
+
+```bash
+af confluence comment 12345 --body-file - <<'AF_BODY'
+## Summary
+
+- First point
+AF_BODY
+```
+
+`create`, `update` and `comment` reject options they do not recognize and stray
+words, and suggest the flag you probably meant.
 
 ### Bitbucket (`af bb`)
 
@@ -227,6 +275,21 @@ af bb diff main..feature --stat            # diff/diffstat for any revspec
 # Reviewers must be account IDs — look them up:
 af bb members --query alice
 ```
+
+`--body-file` and `--description-file` take a path, or `-` to read standard
+input. Bitbucket renders the text as markdown, exactly as typed. For multi-line
+text, feed a quoted heredoc to the `-file` flag:
+
+```bash
+af bb pr comment add 42 --body-file - <<'AF_BODY'
+## Summary
+
+- First point
+AF_BODY
+```
+
+`pr create`, `pr update`, `pr comment` and `pr task` reject options they do not
+recognize and stray words, and suggest the flag you probably meant.
 
 ### SonarQube
 

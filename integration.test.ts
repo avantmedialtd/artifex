@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn } from 'child_process';
 import { promises as fs } from 'fs';
+import http from 'http';
+import type { AddressInfo } from 'net';
 import path from 'path';
 import os from 'os';
 
@@ -397,4 +399,161 @@ describe('Sonar Command', () => {
         expect(result.stdout).toContain('af sonar');
         expect(result.stdout).toContain('SonarQube');
     });
+});
+
+// The real stdin path, end to end: a spawned af reads `--body-file -` and posts
+// to a fake Jira on 127.0.0.1. No live system is contacted and no .env file is
+// loaded (`--no-env-file` for Bun, and a fresh temp cwd for af's own loader).
+describe('Jira comment from stdin', () => {
+    interface RecordedRequest {
+        method: string;
+        url: string;
+        body: string;
+    }
+
+    interface FakeJira {
+        baseUrl: string;
+        requests: RecordedRequest[];
+        close: () => Promise<void>;
+    }
+
+    // Records every request and answers each one with a minimal comment.
+    async function startFakeJira(): Promise<FakeJira> {
+        const requests: RecordedRequest[] = [];
+        const server = http.createServer((req, res) => {
+            let body = '';
+            req.setEncoding('utf8');
+            req.on('data', chunk => {
+                body += chunk;
+            });
+            req.on('end', () => {
+                requests.push({ method: req.method ?? '', url: req.url ?? '', body });
+                res.writeHead(201, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ id: '10001' }));
+            });
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const { port } = server.address() as AddressInfo;
+        return {
+            baseUrl: `http://127.0.0.1:${port}`,
+            requests,
+            close: () =>
+                new Promise<void>(resolve => {
+                    server.closeAllConnections();
+                    server.close(() => resolve());
+                }),
+        };
+    }
+
+    // Runs `af jira …` with an env holding only PATH, HOME and fake credentials.
+    // With `stdin`, the child's stdin is a pipe (a UNIX socket under Node) that
+    // is always ended: Bun reads fd 0 until end-of-file, so a pipe left open
+    // would hang the test exactly like an agent shell's socket. Without
+    // `stdin`, the child's stdin is /dev/null.
+    function runJira(
+        args: string[],
+        jira: FakeJira,
+        cwd: string,
+        stdin?: string,
+    ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+        return new Promise((resolve, reject) => {
+            const child = spawn(
+                'bun',
+                ['--no-env-file', path.join(process.cwd(), 'main.ts'), 'jira', ...args],
+                {
+                    cwd,
+                    env: {
+                        PATH: process.env.PATH ?? '',
+                        HOME: process.env.HOME ?? '',
+                        ATLASSIAN_BASE_URL: jira.baseUrl,
+                        ATLASSIAN_EMAIL: 'stdin-test@example.invalid',
+                        ATLASSIAN_API_TOKEN: 'not-a-real-token',
+                    },
+                    stdio: [stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+                },
+            );
+            let stdout = '';
+            let stderr = '';
+            child.stdout?.on('data', data => {
+                stdout += data.toString();
+            });
+            child.stderr?.on('data', data => {
+                stderr += data.toString();
+            });
+            child.on('error', reject);
+            child.on('close', exitCode => resolve({ stdout, stderr, exitCode }));
+            if (stdin !== undefined && child.stdin) {
+                // The child may exit before reading its stdin; ignore EPIPE then.
+                child.stdin.on('error', () => {});
+                child.stdin.end(stdin);
+            }
+        });
+    }
+
+    let jira: FakeJira;
+
+    beforeAll(async () => {
+        jira = await startFakeJira();
+    });
+
+    afterAll(async () => {
+        await jira.close();
+    });
+
+    // Runs fn in a fresh temp directory, with the recorded requests cleared.
+    async function inTempDir(fn: (cwd: string) => Promise<void>): Promise<void> {
+        jira.requests.length = 0;
+        const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'af-stdin-'));
+        try {
+            await fn(cwd);
+        } finally {
+            await fs.rm(cwd, { recursive: true, force: true });
+        }
+    }
+
+    it('posts markdown piped to --body-file - as ADF', async () => {
+        await inTempDir(async cwd => {
+            const markdown = ['## Summary', '', '- First point'].join('\n');
+            const result = await runJira(
+                ['comment', 'PROJ-1', '--body-file', '-'],
+                jira,
+                cwd,
+                markdown,
+            );
+
+            expect(result.exitCode, result.stderr).toBe(0);
+            expect(jira.requests.map(r => `${r.method} ${r.url}`)).toEqual([
+                'POST /rest/api/3/issue/PROJ-1/comment',
+            ]);
+            const adf = JSON.parse(jira.requests[0]!.body).body;
+            expect(adf.content).toHaveLength(2);
+            expect(adf.content[0]).toMatchObject({
+                type: 'heading',
+                attrs: { level: 2 },
+                content: [{ type: 'text', text: 'Summary' }],
+            });
+            expect(adf.content[1]).toMatchObject({
+                type: 'bulletList',
+                content: [
+                    {
+                        type: 'listItem',
+                        content: [
+                            { type: 'paragraph', content: [{ type: 'text', text: 'First point' }] },
+                        ],
+                    },
+                ],
+            });
+        });
+    }, 30000);
+
+    it('exits 1 without a request when stdin is /dev/null', async () => {
+        await inTempDir(async cwd => {
+            const result = await runJira(['comment', 'PROJ-1', '--body-file', '-'], jira, cwd);
+
+            expect(result.exitCode).toBe(1);
+            expect(result.stderr).toContain('--body-file');
+            expect(result.stderr).toContain('no text on stdin');
+            expect(jira.requests).toEqual([]);
+        });
+    }, 30000);
 });

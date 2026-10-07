@@ -37,7 +37,9 @@ jira/lib/            - Jira API client and formatters
 confluence/lib/      - Confluence API client and formatters
 utils/               - Utility modules
 ├── output.ts        - Terminal output formatting with ANSI colors
-└── claude.ts        - Claude Code CLI availability check
+├── claude.ts        - Claude Code CLI availability check
+├── text-input.ts    - Prose input from an inline flag, a -file twin, or stdin (readProse)
+└── cli-args.ts      - --name=value splitting and strict option checks (checkStrictArgs)
 ```
 
 ### Key Files
@@ -385,7 +387,9 @@ Beyond CRUD, `af jira` covers transitions-with-screens, issue moves, worklogs, b
 
 - **Transitions carry screens.** `af jira transition KEY --to Done --resolution Fixed --comment "…" --field name=value` sends `fields` + `update` to `POST /issue/{key}/transitions`; the comment is ADF in `update.comment`; a 409 (concurrent transition) retries with backoff. `af jira transitions KEY` requests `?expand=transitions.fields` and shows which transitions present a screen and what they require. (A field goes in either `fields` or `update`, never both.)
 - **Reparent.** `af jira update KEY --parent PARENT` sets the canonical `parent` field (it replaced Epic Link); `--clear-parent` attempts `parent: null` (provisional — Jira's clearing behavior is undocumented and varies by project type).
-- **Comments.** `af jira comment edit KEY <id> --body …` / `comment delete KEY <id>`; `--visibility "Role"` (or `group:Name`) restricts the platform comment; `--internal` / `--public` route through the JSM Service Desk API (`/rest/servicedeskapi/...`), since the platform `jsdPublic` flag is read-only.
+- **Comments.** `af jira comment KEY --body …` adds a comment (`--add` is an alias of `--body`; with no body flag the comments are listed), and `--body-file <path>` or `--body-file -` (stdin) takes the body from a file. `comment edit KEY <id>` takes the same flags; `comment delete KEY <id>`. `--visibility "Role"` (or `group:Name`) restricts the platform comment. `--internal` / `--public` route through the JSM Service Desk API (`/rest/servicedeskapi/...`), since the platform `jsdPublic` flag is read-only; that text is sent as typed and JSM renders it as wiki markup, not markdown.
+- **Multi-line text.** Every prose flag has a `-file` twin taking a path or `-` for stdin: `--body-file`, `--description-file` (issue and version descriptions) and `--comment-file` (transition and worklog comments). Inside quotes the shell passes `\n` through as a backslash and an `n`, and double quotes also run backticks and expand `$`, so send multi-line markdown with a quoted heredoc, flush-left: `af jira comment KEY --body-file - <<'AF_BODY'` … `AF_BODY`. Stdin is read only on an explicit `-`. The resolver is `readProse` in `utils/text-input.ts`; it never unescapes `\n`.
+- **Strict parsing.** The prose subcommands (`comment`, `create`, `update`, `transition`, `worklog`, `version-create`, `version-update`) reject unknown options and extra positionals with a suggestion (`checkStrictArgs` in `utils/cli-args.ts`); other subcommands stay lenient. Every subcommand accepts `--name=value`.
 - **editmeta.** `af jira editmeta KEY` reports editable fields + allowed values (the edit-context twin of `fields`/createmeta).
 - **Move + bulk (async).** `af jira move KEY --to-project P [--type T]` and `af jira bulk <delete|transition|edit> --jql "…"` use the asynchronous bulk endpoints (`POST /bulk/issues/*` → poll `GET /bulk/queue/{taskId}`). Selections chunk to ≤1000 issues and run serially (within the global 5-concurrent ceiling). Bulk transition refuses screen/field-requiring transitions and points at single-issue `transition`. Move infers status/field defaults so cross-workflow moves don't need a hand-built mapping.
 - **Worklogs.** `af jira worklog add/list/update/delete`; comments render as ADF; `started` defaults to now in Jira's timestamp format.
@@ -493,6 +497,8 @@ The target workspace and repo are resolved in this order:
 
 Every subcommand supports `--json` to emit raw API responses.
 
+`--body-file` and `--description-file` take a path, or `-` to read stdin (`af bb pr comment add 42 --body-file - <<'AF_BODY'`); the text is sent as typed and Bitbucket renders it as markdown. Comment and task bodies must not be empty. The PR prose commands (`pr create`, `pr update`, `pr comment …`, `pr task …`) reject unknown options and extra positionals, and every subcommand accepts `--name=value`.
+
 ### SonarQube Command
 
 The `af sonar` command provides read-only inspection of a self-hosted SonarQube instance, focused on PR quality-gate visibility. It is intentionally companion-shaped to `af bb pr`: the same numeric PR id identifies both sides.
@@ -547,13 +553,15 @@ af confluence create --space KEY --title "Title" --body-file ./doc.md
 af confluence update <page-id> --body-file ./updated.md
 af confluence delete <page-id>
 af confluence tree <page-id>             # Show page hierarchy
-af confluence comment <page-id> --add "Comment text"
+af confluence comment <page-id> --body "Comment text"   # --add is an alias of --body
 af confluence label <page-id> --add "label-name"
 af confluence attach <page-id> ./file.pdf
 af confluence spaces                     # List all spaces
 ```
 
 The Confluence client uses the v2 API (`/wiki/api/v2/`) for most operations and falls back to v1 (`/wiki/rest/api/`) for search (CQL), label management, and attachment uploads. Page content is stored as ADF (Atlassian Document Format), with automatic markdown conversion.
+
+`--body-file` takes a path, or `-` to read stdin, on `create`, `update` and `comment` (`af confluence comment <page-id> --body-file - <<'AF_BODY'`). `--body` with `--body-file` is an error. `create`, `update` and `comment` reject unknown options and extra positionals; every subcommand accepts `--name=value`.
 
 ### Adding New Commands
 
@@ -564,6 +572,8 @@ To add a new command:
 3. Add routing logic to `router.ts`
 4. Update help content in `commands/help.ts`
 5. Add tests for the new command
+
+If the command takes prose (a body, description or comment), give each prose flag a `-file` twin and resolve it with `readProse` from `utils/text-input.ts` (a path, or `-` for stdin; never unescape `\n`). Declare a `StrictRule` for it and call `checkStrictArgs` from `utils/cli-args.ts` at the end of argument parsing, so unknown options and unquoted words fail instead of being ignored.
 
 Example:
 

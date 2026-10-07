@@ -1,4 +1,11 @@
 import { error } from '../utils/output.ts';
+import { checkStrictArgs, splitOptionToken, type StrictRule } from '../utils/cli-args.ts';
+import {
+    aliasedSource,
+    assertSingleSource,
+    readProse,
+    type ProseSource,
+} from '../utils/text-input.ts';
 import type { CustomFieldDef } from '../jira/lib/fields/codec-types.ts';
 
 /**
@@ -64,12 +71,14 @@ interface JiraOptions {
     type?: string;
     summary?: string;
     description?: string;
+    'description-file'?: string;
     priority?: string;
     labels?: string;
     to?: string;
     'to-project'?: string;
     resolution?: string;
     comment?: string;
+    'comment-file'?: string;
     add?: string;
     limit?: number;
     parent?: string;
@@ -94,6 +103,7 @@ interface JiraOptions {
     refresh?: boolean;
     verbose?: boolean;
     body?: string;
+    'body-file'?: string;
     visibility?: string;
     'clear-parent'?: boolean;
     internal?: boolean;
@@ -108,68 +118,267 @@ interface JiraOptions {
     state?: string;
 }
 
+// Options that take no value. Written with `=` (`--json=true`) they are an error.
+const BOOLEAN_OPTIONS = new Set([
+    '--json',
+    '--released',
+    '--unreleased',
+    '--refresh',
+    '--verbose',
+    '--clear-parent',
+    '--internal',
+    '--public',
+]);
+
+// Each prose flag and its `-file` twin, which takes a path or `-` for stdin.
+const BODY_PROSE = { inline: '--body', file: '--body-file' };
+const DESCRIPTION_PROSE = { inline: '--description', file: '--description-file' };
+const COMMENT_PROSE = { inline: '--comment', file: '--comment-file' };
+
+function strictRule(
+    command: string,
+    options: string[],
+    maxPositionals: number,
+    prose?: StrictRule['prose'],
+): StrictRule {
+    // --json is the only global option.
+    return {
+        command: `af jira ${command}`,
+        options: [...options, '--json'],
+        maxPositionals,
+        prose,
+    };
+}
+
+/**
+ * The subcommands that take prose reject unknown options and extra positional
+ * arguments, which used to be ignored silently. `comment` and `worklog` rules
+ * are keyed by their action; `maxPositionals` counts the arguments after the
+ * subcommand (`comment edit KEY ID` has 3). Other subcommands stay lenient.
+ */
+const STRICT_RULES = new Map<string, StrictRule>(
+    [
+        strictRule(
+            'comment',
+            ['--body', '--body-file', '--add', '--visibility', '--internal', '--public'],
+            1,
+            BODY_PROSE,
+        ),
+        strictRule(
+            'comment edit',
+            ['--body', '--body-file', '--add', '--visibility'],
+            3,
+            BODY_PROSE,
+        ),
+        strictRule('comment delete', [], 3),
+        strictRule(
+            'create',
+            [
+                '--project',
+                '--type',
+                '--summary',
+                '--description',
+                '--description-file',
+                '--priority',
+                '--labels',
+                '--parent',
+                '--estimate',
+                '--fix-version',
+                '--affected-version',
+                '--field',
+                '--field-json',
+            ],
+            0,
+            DESCRIPTION_PROSE,
+        ),
+        strictRule(
+            'update',
+            [
+                '--summary',
+                '--description',
+                '--description-file',
+                '--priority',
+                '--labels',
+                '--estimate',
+                '--remaining',
+                '--fix-version',
+                '--affected-version',
+                '--parent',
+                '--clear-parent',
+                '--field',
+                '--field-json',
+            ],
+            1,
+            DESCRIPTION_PROSE,
+        ),
+        strictRule(
+            'transition',
+            ['--to', '--resolution', '--comment', '--comment-file', '--field'],
+            1,
+            COMMENT_PROSE,
+        ),
+        strictRule('worklog list', [], 2),
+        strictRule(
+            'worklog add',
+            ['--time', '--started', '--comment', '--comment-file'],
+            2,
+            COMMENT_PROSE,
+        ),
+        strictRule(
+            'worklog update',
+            ['--time', '--started', '--comment', '--comment-file'],
+            3,
+            COMMENT_PROSE,
+        ),
+        strictRule('worklog delete', [], 3),
+        strictRule(
+            'version-create',
+            [
+                '--project',
+                '--name',
+                '--description',
+                '--description-file',
+                '--start-date',
+                '--release-date',
+                '--released',
+            ],
+            0,
+            DESCRIPTION_PROSE,
+        ),
+        strictRule(
+            'version-update',
+            [
+                '--name',
+                '--description',
+                '--description-file',
+                '--start-date',
+                '--release-date',
+                '--released',
+                '--unreleased',
+            ],
+            1,
+            DESCRIPTION_PROSE,
+        ),
+    ].map(rule => [rule.command, rule]),
+);
+
+/** The strict rule for a subcommand and its first positional argument, if any. */
+function findStrictRule(subcommand: string, action: string | undefined): StrictRule | undefined {
+    let key = subcommand;
+    if (subcommand === 'comment') {
+        // Anything other than edit or delete is an issue key: list or add.
+        if (action === 'edit' || action === 'delete') key = `comment ${action}`;
+    } else if (subcommand === 'worklog') {
+        // Only the known actions have a rule, so an unknown action still gets
+        // the handler's "requires an action" error.
+        key = `worklog ${action}`;
+    }
+    return STRICT_RULES.get(`af jira ${key}`);
+}
+
 /**
  * Parse command-line arguments into subcommand, args, and options.
+ *
+ * An option takes its value from `--name=value` (split at the first `=`) or
+ * from the next argument, whatever that argument looks like. `typedOptions`
+ * lists the options as typed, without `=value`. Subcommands that take prose
+ * are checked strictly at the end (see STRICT_RULES).
  */
-function parseArgs(argv: string[]): {
+export function parseArgs(argv: string[]): {
     subcommand: string;
     args: string[];
     options: JiraOptions;
+    typedOptions: string[];
 } {
     const args: string[] = [];
     const options: JiraOptions = {};
+    const values = options as Record<string, unknown>;
+    const typedOptions: string[] = [];
+    // The last argument when it is an option that needs a value. Reported
+    // after the strict check: on a strict subcommand an unknown option at the
+    // end is an unknown option, not an option missing its value.
+    let missingValue: string | undefined;
 
     let i = 0;
     while (i < argv.length) {
-        const arg = argv[i];
+        const token = splitOptionToken(argv[i]);
 
-        if (arg === '--json') {
-            options.json = true;
-        } else if (arg === '--released') {
-            options.released = true;
-        } else if (arg === '--unreleased') {
-            options.unreleased = true;
-        } else if (arg === '--refresh') {
-            options.refresh = true;
-        } else if (arg === '--verbose') {
-            options.verbose = true;
-        } else if (arg === '--clear-parent') {
-            options['clear-parent'] = true;
-        } else if (arg === '--internal') {
-            options.internal = true;
-        } else if (arg === '--public') {
-            options.public = true;
-        } else if (arg === '--field') {
-            const value = argv[++i];
-            if (value === undefined) {
-                throw new Error(`Option ${arg} requires a value`);
+        if (!token) {
+            args.push(argv[i]);
+        } else if (BOOLEAN_OPTIONS.has(token.flag)) {
+            if (token.inlineValue !== undefined) {
+                throw new Error(`Option ${token.flag} does not take a value`);
             }
-            (options.field ??= []).push(value);
-        } else if (arg.startsWith('--')) {
-            const key = arg.slice(2) as keyof JiraOptions;
-            const value = argv[++i];
+            typedOptions.push(token.flag);
+            values[token.flag.slice(2)] = true;
+        } else {
+            typedOptions.push(token.flag);
+            const value = token.inlineValue ?? argv[++i];
             if (value === undefined) {
-                throw new Error(`Option ${arg} requires a value`);
+                // Only the last argument can lack a value, so the loop ends here.
+                missingValue = token.flag;
+                break;
             }
-            if (key === 'limit') {
+            const key = token.flag.slice(2);
+            if (key === 'field') {
+                (options.field ??= []).push(value);
+            } else if (key === 'limit') {
                 options.limit = parseInt(value, 10);
             } else {
-                (options as Record<string, string>)[key] = value;
+                values[key] = value;
             }
-        } else {
-            args.push(arg);
         }
         i++;
     }
 
     const subcommand = args[0] ?? '';
-    return { subcommand, args: args.slice(1), options };
+    const subArgs = args.slice(1);
+    const rule = findStrictRule(subcommand, subArgs[0]);
+    if (rule) {
+        checkStrictArgs(rule, typedOptions, subArgs);
+    }
+    if (missingValue !== undefined) {
+        throw new Error(`Option ${missingValue} requires a value`);
+    }
+    return { subcommand, args: subArgs, options, typedOptions };
+}
+
+/** The comment body: `--body`, its alias `--add`, or `--body-file`. Throws on a conflict. */
+function bodySource(options: JiraOptions): ProseSource {
+    return aliasedSource(
+        { flag: '--body', value: options.body },
+        { flag: '--add', value: options.add },
+        { flag: '--body-file', value: options['body-file'] },
+    );
+}
+
+function descriptionSource(options: JiraOptions): ProseSource {
+    return {
+        flag: '--description',
+        value: options.description,
+        fileFlag: '--description-file',
+        file: options['description-file'],
+    };
+}
+
+function commentSource(options: JiraOptions): ProseSource {
+    return {
+        flag: '--comment',
+        value: options.comment,
+        fileFlag: '--comment-file',
+        file: options['comment-file'],
+    };
+}
+
+/** True when the inline flag or its file twin was given, even with an empty value. */
+function isGiven(source: ProseSource): boolean {
+    return source.value !== undefined || source.file !== undefined;
 }
 
 /**
- * Display Jira-specific help.
+ * Display the full Jira reference. `af jira --help` and `af help jira` print it too.
  */
-function showJiraHelp(): void {
+export function showJiraHelp(): void {
     console.log(`
 Jira CLI - Manage Jira issues from the command line
 
@@ -183,8 +392,8 @@ COMMANDS:
   create                    Create a new issue
   update <issue-key>        Update an issue
   delete <issue-key>        Delete an issue
-  comment <issue-key>       List or add comments
-  comment edit <key> <id>   Edit a comment
+  comment <issue-key>       List comments, or add one with --body / --body-file
+  comment edit <key> <id>   Replace a comment's text (--body / --body-file)
   comment delete <key> <id> Delete a comment
   attach <issue-key> <file> Attach a file to an issue
   transition <issue-key>    Change issue status
@@ -219,9 +428,13 @@ VERSION COMMANDS:
 
 OPTIONS:
   --json                    Output as JSON instead of markdown
-  --limit <n>               Limit results (default: 50)
+
+  Options that take a value also accept --name=value. comment, create, update,
+  transition, worklog, version-create and version-update reject options they
+  do not know and extra arguments.
 
 LIST / SEARCH OPTIONS:
+  --limit <n>               Limit results (default: 50)
   --show-field <a,b,c>      Include named custom fields as extra columns
                             (names resolve like --field: alias / display name / id)
 
@@ -236,7 +449,8 @@ CREATE OPTIONS:
   --project <key>           Project key (required)
   --type <name>             Issue type (required)
   --summary "<text>"        Summary (required)
-  --description "<text>"    Description
+  --description "<text>"    Description (markdown, converted to ADF)
+  --description-file <path|-> Read the description from a file, or from stdin with -
   --priority <name>         Priority (e.g., High, Medium, Low)
   --labels <a,b,c>          Comma-separated labels
   --parent <issue-key>      Parent issue (for subtasks)
@@ -250,7 +464,8 @@ CREATE OPTIONS:
 
 UPDATE OPTIONS:
   --summary "<text>"        New summary
-  --description "<text>"    New description
+  --description "<text>"    New description (markdown, converted to ADF; "" clears it)
+  --description-file <path|-> Read the new description from a file, or from stdin with -
   --priority <name>         New priority
   --labels <a,b,c>          New labels (replaces existing)
   --estimate <time>         Original estimate (e.g., "2h", "1d", "30m")
@@ -265,14 +480,16 @@ UPDATE OPTIONS:
 VERSION-CREATE OPTIONS:
   --project <key>           Project key (required)
   --name "<text>"           Version name (required)
-  --description "<text>"    Description
+  --description "<text>"    Description (plain text, sent as typed)
+  --description-file <path|-> Read the description from a file, or from stdin with -
   --start-date <YYYY-MM-DD> Start date
   --release-date <YYYY-MM-DD> Release date
   --released                Mark as released
 
 VERSION-UPDATE OPTIONS:
   --name "<text>"           New version name
-  --description "<text>"    New description
+  --description "<text>"    New description (plain text, sent as typed; "" clears it)
+  --description-file <path|-> Read the new description from a file, or from stdin with -
   --start-date <YYYY-MM-DD> New start date
   --release-date <YYYY-MM-DD> New release date
   --released                Mark as released
@@ -295,16 +512,22 @@ REMOTE-LINK OPTIONS:
   --remove <link-id>        Remove a remote link by ID
 
 COMMENT OPTIONS:
-  --add "<text>"            Add a comment (omit to list comments)
-  --body "<text>"           Comment body for the 'comment edit' action
+  --body "<text>"           Comment text, markdown converted to ADF (add and edit).
+                            Without --body, --body-file or --add, 'comment <issue-key>'
+                            lists the comments
+  --body-file <path|->      Read the comment text from a file, or from stdin with -
+  --add "<text>"            Alias of --body
   --visibility <name>       Restrict visibility (role by default; "group:Name" for a group)
   --internal                Add as a JSM internal note (Service Desk API)
   --public                  Add as a JSM public reply (Service Desk API)
+                            With --internal or --public the text is sent as typed, and
+                            Jira Service Management renders it as wiki markup, not markdown
 
 TRANSITION OPTIONS:
   --to "<status>"           Target status name (required)
   --resolution <name>       Set the resolution (e.g., Fixed, "Won't Do")
-  --comment "<text>"        Add a comment as part of the transition
+  --comment "<text>"        Comment added with the transition (markdown, converted to ADF)
+  --comment-file <path|->   Read the transition comment from a file, or from stdin with -
   --field <name>=<value>    Set a transition-screen field (repeatable; value may be JSON)
 
 ASSIGN OPTIONS:
@@ -321,7 +544,8 @@ BULK OPTIONS:
 
 WORKLOG OPTIONS:
   --time <duration>         Time spent, e.g. "2h", "30m" (required for add)
-  --comment "<text>"        Worklog comment (rendered as ADF)
+  --comment "<text>"        Worklog comment (markdown, converted to ADF)
+  --comment-file <path|->   Read the worklog comment from a file, or from stdin with -
   --started "<timestamp>"   Start time (yyyy-MM-ddTHH:mm:ss.SSS+0000; defaults to now)
 
 AGILE OPTIONS (Jira Software):
@@ -331,6 +555,18 @@ AGILE OPTIONS (Jira Software):
   --board <id>              Board id (sprints)
   --project <key>           Restrict boards to a project (boards)
   --state <s>               Sprint states, e.g. future,active,closed (sprints)
+
+MULTI-LINE TEXT:
+  Inside "double" or 'single' quotes, \\n stays a backslash and an n; it is never
+  a newline. Double quotes also run \`commands\` and expand $VARS. For multi-line
+  text, use a -file flag: pass a path, or - and a quoted heredoc (keep AF_BODY
+  at the start of its line):
+
+af jira comment PROJ-123 --body-file - <<'AF_BODY'
+## Summary
+
+- First point
+AF_BODY
 
 EXAMPLES:
   af jira get PROJ-123
@@ -348,7 +584,10 @@ EXAMPLES:
   af jira update PROJ-123 --summary "Updated title" --priority High
   af jira update PROJ-123 --estimate "8h" --remaining "2h"
   af jira update PROJ-123 --fix-version "v2.0.0" --affected-version "v1.0.0"
-  af jira comment PROJ-123 --add "Working on this"
+  af jira update PROJ-123 --description-file description.md
+  af jira comment PROJ-123 --body "Working on this"
+  af jira comment PROJ-123 --body-file notes.md
+  af jira comment PROJ-123 --internal --body "Checked with the customer"
   af jira transition PROJ-123 --to "In Progress"
   af jira transition PROJ-123 --to Done --resolution Fixed --comment "Shipped in v1.2"
   af jira transitions PROJ-123
@@ -467,8 +706,7 @@ export async function handleJira(args: string[]): Promise<number> {
             }
 
             case 'create': {
-                const { project, type, summary, description, priority, labels, parent, estimate } =
-                    options;
+                const { project, type, summary, priority, labels, parent, estimate } = options;
                 if (!project || !type || !summary) {
                     error('Error: --project, --type, and --summary are required');
                     console.error(
@@ -476,6 +714,13 @@ export async function handleJira(args: string[]): Promise<number> {
                     );
                     return 1;
                 }
+                // Command-line errors first, then the input, then any request.
+                // An inline "" still means no description.
+                const fieldFlags = { fieldPairs: options.field, fieldJson: options['field-json'] };
+                const { resolveFieldFlags, validateFieldFlags } =
+                    await import('../jira/lib/fields/resolve-flags.ts');
+                validateFieldFlags(fieldFlags);
+                const description = readProse(descriptionSource(options));
                 const labelList = labels?.split(',').map(l => l.trim());
                 const fixVersionList = options['fix-version']
                     ?.split(',')
@@ -485,11 +730,7 @@ export async function handleJira(args: string[]): Promise<number> {
                     ?.split(',')
                     .map(v => v.trim())
                     .filter(v => v);
-                const { resolveFieldFlags } = await import('../jira/lib/fields/resolve-flags.ts');
-                const resolved = await resolveFieldFlags({
-                    fieldPairs: options.field,
-                    fieldJson: options['field-json'],
-                });
+                const resolved = await resolveFieldFlags(fieldFlags);
                 const issue = await client.createIssue(
                     project,
                     type,
@@ -516,9 +757,10 @@ export async function handleJira(args: string[]): Promise<number> {
                     error('Error: Issue key required. Usage: af jira update <issue-key> [options]');
                     return 1;
                 }
+                const description = descriptionSource(options);
+                assertSingleSource(description);
                 const updates: Parameters<typeof client.updateIssue>[1] = {};
                 if (options.summary !== undefined) updates.summary = options.summary;
-                if (options.description !== undefined) updates.description = options.description;
                 if (options.priority !== undefined) updates.priority = options.priority;
                 if (options.labels !== undefined) {
                     updates.labels = options.labels.split(',').map(l => l.trim());
@@ -541,22 +783,33 @@ export async function handleJira(args: string[]): Promise<number> {
                     updates.parent = options.parent;
                 }
 
-                const { resolveFieldFlags: resolveUpdateFlags } =
-                    await import('../jira/lib/fields/resolve-flags.ts');
-                const resolvedUpdate = await resolveUpdateFlags({
-                    fieldPairs: options.field,
-                    fieldJson: options['field-json'],
-                });
-                if (resolvedUpdate) {
-                    updates.customFields = resolvedUpdate.customFields;
-                }
-
-                if (Object.keys(updates).length === 0) {
+                // Decided by presence, before the description is read or the
+                // custom fields are resolved over the network.
+                const hasFieldFlags =
+                    options.field !== undefined || options['field-json'] !== undefined;
+                if (Object.keys(updates).length === 0 && !isGiven(description) && !hasFieldFlags) {
                     error('Error: No update options provided');
                     console.error(
-                        'Use --summary, --description, --priority, --labels, --estimate, --remaining, --fix-version, --affected-version, --parent, --clear-parent, --field, or --field-json',
+                        'Use --summary, --description, --description-file, --priority, --labels, --estimate, --remaining, --fix-version, --affected-version, --parent, --clear-parent, --field, or --field-json',
                     );
                     return 1;
+                }
+
+                // A malformed --field or --field-json is reported before the
+                // description is read. An inline "" is kept: it clears it.
+                const updateFieldFlags = {
+                    fieldPairs: options.field,
+                    fieldJson: options['field-json'],
+                };
+                const { resolveFieldFlags: resolveUpdateFlags, validateFieldFlags } =
+                    await import('../jira/lib/fields/resolve-flags.ts');
+                validateFieldFlags(updateFieldFlags);
+                const descriptionText = readProse(description);
+                if (descriptionText !== undefined) updates.description = descriptionText;
+
+                const resolvedUpdate = await resolveUpdateFlags(updateFieldFlags);
+                if (resolvedUpdate) {
+                    updates.customFields = resolvedUpdate.customFields;
                 }
 
                 await client.updateIssue(issueKey, updates);
@@ -590,14 +843,16 @@ export async function handleJira(args: string[]): Promise<number> {
                 if (action === 'edit') {
                     const issueKey = subArgs[1];
                     const commentId = subArgs[2];
-                    const text = options.body ?? options.add;
-                    if (!issueKey || !commentId || text === undefined) {
-                        error('Error: Issue key, comment id, and --body required');
+                    const body = bodySource(options);
+                    if (!issueKey || !commentId || !isGiven(body)) {
+                        error('Error: Issue key, comment id, and --body or --body-file required');
                         console.error(
-                            'Usage: af jira comment edit <issue-key> <comment-id> --body "text"',
+                            'Usage: af jira comment edit <issue-key> <comment-id> --body "text" | --body-file -',
                         );
                         return 1;
                     }
+                    // Given, so never undefined; an empty or blank body is an error.
+                    const text = readProse(body, { required: true }) as string;
                     const comment = await client.updateComment(
                         issueKey,
                         commentId,
@@ -637,35 +892,39 @@ export async function handleJira(args: string[]): Promise<number> {
                 const issueKey = action;
                 if (!issueKey) {
                     error(
-                        'Error: Issue key required. Usage: af jira comment <issue-key> [--add "text"]',
+                        'Error: Issue key required. Usage: af jira comment <issue-key> [--body "text" | --body-file <path|->]',
                     );
                     return 1;
                 }
-                if (options.add) {
-                    // JSM internal/public notes must go through the Service Desk API,
-                    // since the platform comment endpoint's public flag is read-only.
-                    const comment =
-                        options.internal || options.public
-                            ? await client.addServiceDeskComment(
-                                  issueKey,
-                                  options.add,
-                                  Boolean(options.public),
-                              )
-                            : await client.addComment(
-                                  issueKey,
-                                  options.add,
-                                  parseVisibility(options.visibility),
-                              );
-                    fmt.output(
-                        json
-                            ? comment
-                            : fmt.formatSuccess(`Added comment to ${fmt.issueLink(issueKey)}`),
-                        json,
-                    );
-                } else {
+                // Without a body flag the comments are listed. A given body must
+                // not be empty, so `--add ""` fails instead of listing.
+                const text = readProse(bodySource(options), { required: true });
+                if (text === undefined) {
                     const comments = await client.getComments(issueKey);
                     fmt.output(json ? comments : fmt.formatComments(issueKey, comments), json);
+                    break;
                 }
+                // JSM internal/public notes must go through the Service Desk API,
+                // since the platform comment endpoint's public flag is read-only.
+                // That API takes the text as typed and renders it as wiki markup.
+                const comment =
+                    options.internal || options.public
+                        ? await client.addServiceDeskComment(
+                              issueKey,
+                              text,
+                              Boolean(options.public),
+                          )
+                        : await client.addComment(
+                              issueKey,
+                              text,
+                              parseVisibility(options.visibility),
+                          );
+                fmt.output(
+                    json
+                        ? comment
+                        : fmt.formatSuccess(`Added comment to ${fmt.issueLink(issueKey)}`),
+                    json,
+                );
                 break;
             }
 
@@ -676,10 +935,13 @@ export async function handleJira(args: string[]): Promise<number> {
                     console.error('Usage: af jira transition <issue-key> --to "Status Name"');
                     return 1;
                 }
+                const fields = parseTransitionFields(options.field);
+                // An inline "" still means no comment.
+                const comment = readProse(commentSource(options));
                 await client.transitionIssue(issueKey, options.to, {
                     resolution: options.resolution,
-                    comment: options.comment,
-                    fields: parseTransitionFields(options.field),
+                    comment,
+                    fields,
                 });
                 fmt.output(
                     json
@@ -788,12 +1050,14 @@ export async function handleJira(args: string[]): Promise<number> {
             }
 
             case 'version-create': {
-                const { project, name, description } = options;
+                const { project, name } = options;
                 if (!project || !name) {
                     error('Error: --project and --name are required');
                     console.error('Usage: af jira version-create --project PROJ --name "v1.0.0"');
                     return 1;
                 }
+                // Version descriptions are plain text, sent as typed (no ADF).
+                const description = readProse(descriptionSource(options));
                 const version = await client.createVersion(project, name, {
                     description,
                     startDate: options['start-date'],
@@ -817,10 +1081,10 @@ export async function handleJira(args: string[]): Promise<number> {
                     );
                     return 1;
                 }
+                const versionDescription = descriptionSource(options);
+                assertSingleSource(versionDescription);
                 const versionUpdates: Parameters<typeof client.updateVersion>[1] = {};
                 if (options.name !== undefined) versionUpdates.name = options.name;
-                if (options.description !== undefined)
-                    versionUpdates.description = options.description;
                 if (options['start-date'] !== undefined)
                     versionUpdates.startDate = options['start-date'];
                 if (options['release-date'] !== undefined)
@@ -828,13 +1092,17 @@ export async function handleJira(args: string[]): Promise<number> {
                 if (options.released) versionUpdates.released = true;
                 if (options.unreleased) versionUpdates.released = false;
 
-                if (Object.keys(versionUpdates).length === 0) {
+                if (Object.keys(versionUpdates).length === 0 && !isGiven(versionDescription)) {
                     error('Error: No update options provided');
                     console.error(
-                        'Use --name, --description, --start-date, --release-date, --released, or --unreleased',
+                        'Use --name, --description, --description-file, --start-date, --release-date, --released, or --unreleased',
                     );
                     return 1;
                 }
+
+                // Plain text, sent as typed; an inline "" clears the description.
+                const descriptionText = readProse(versionDescription);
+                if (descriptionText !== undefined) versionUpdates.description = descriptionText;
 
                 const updatedVersion = await client.updateVersion(versionId, versionUpdates);
                 fmt.output(
@@ -1134,14 +1402,16 @@ export async function handleJira(args: string[]): Promise<number> {
                     if (!issueKey || !options.time) {
                         error('Error: Issue key and --time required');
                         console.error(
-                            'Usage: af jira worklog add <issue-key> --time 2h [--comment "..."]',
+                            'Usage: af jira worklog add <issue-key> --time 2h [--comment "..." | --comment-file <path|->]',
                         );
                         return 1;
                     }
+                    // An inline "" still means no comment.
+                    const comment = readProse(commentSource(options));
                     const wl = await client.addWorklog(issueKey, {
                         timeSpent: options.time,
                         started: options.started,
-                        comment: options.comment,
+                        comment,
                     });
                     fmt.output(
                         json
@@ -1156,14 +1426,16 @@ export async function handleJira(args: string[]): Promise<number> {
                     if (!issueKey || !worklogId) {
                         error('Error: Issue key and worklog id required');
                         console.error(
-                            'Usage: af jira worklog update <issue-key> <worklog-id> [--time 1h] [--comment "..."]',
+                            'Usage: af jira worklog update <issue-key> <worklog-id> [--time 1h] [--comment "..." | --comment-file <path|->]',
                         );
                         return 1;
                     }
+                    // An inline "" is sent and clears the comment.
+                    const comment = readProse(commentSource(options));
                     const wl = await client.updateWorklog(issueKey, worklogId, {
                         timeSpent: options.time,
                         started: options.started,
-                        comment: options.comment,
+                        comment,
                     });
                     fmt.output(
                         json
