@@ -3,13 +3,49 @@
 
 import type { AdfDocument, AdfNode } from './adf-types.ts';
 
+// Normalize CommonMark line endings (CRLF and lone CR become LF) and drop one
+// leading byte-order mark. Every other character, including U+2028 and U+2029,
+// is kept: CommonMark does not treat those as line endings.
+function normalizeMarkdownInput(text: string): string {
+    return text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+}
+
+// CommonMark ATX heading: 1-6 `#` followed by a space, a tab or the end of the
+// line. The heading branch and the paragraph guard both use this predicate, so
+// they cannot disagree about a line and leave it unconsumed. The text drops
+// surrounding spaces and tabs only (not trim()), so U+2028 and U+2029 survive.
+// It is stripped with an index scan, because a trailing `[ \t]+$` regex
+// backtracks quadratically on a long run of spaces inside the text.
+function matchAtxHeading(line: string): { level: number; text: string } | null {
+    const opening = line.match(/^(#{1,6})(?=[ \t]|$)/);
+    if (!opening) return null;
+    const isSpaceOrTab = (char: string) => char === ' ' || char === '\t';
+    let start = opening[1].length;
+    let end = line.length;
+    while (start < end && isSpaceOrTab(line[start])) start++;
+    while (end > start && isSpaceOrTab(line[end - 1])) end--;
+    return { level: opening[1].length, text: line.slice(start, end) };
+}
+
+// Appends nodes one at a time. Spreading a very long array into push() can
+// exceed the engine's argument limit and throw a RangeError.
+function appendAll(target: AdfNode[], nodes: AdfNode[]): void {
+    for (const node of nodes) target.push(node);
+}
+
 // Markdown to ADF conversion
 export function textToAdf(text: string): AdfDocument {
-    const lines = text.split('\n');
+    const lines = normalizeMarkdownInput(text).split('\n');
     const content: AdfNode[] = [];
     let i = 0;
+    let previousStart = -1;
 
     while (i < lines.length) {
+        // Unreachable while the heading branch and paragraph guard share matchAtxHeading.
+        if (i === previousStart) {
+            throw new Error(`textToAdf: no block consumed line ${i + 1} (converter bug)`);
+        }
+        previousStart = i;
         const line = lines[i];
 
         // Skip empty lines
@@ -41,24 +77,39 @@ export function textToAdf(text: string): AdfDocument {
             continue;
         }
 
-        // Blockquote (> text). Consecutive `> ` lines collapse into a single
-        // blockquote containing one paragraph; line breaks become hardBreaks.
+        // Blockquote (> text). Consecutive quoted lines with text collapse into
+        // one paragraph whose line breaks become hardBreaks. A bare `>` line ends
+        // the current paragraph, as in CommonMark; runs of bare lines and bare
+        // lines at either end add no paragraph.
         if (/^>\s?/.test(line)) {
-            const quoteLines: string[] = [];
+            const paragraphs: AdfNode[] = [];
+            let quoteLines: string[] = [];
+            const closeParagraph = () => {
+                if (quoteLines.length === 0) return;
+                const paragraphContent: AdfNode[] = [];
+                quoteLines.forEach((qLine, idx) => {
+                    appendAll(paragraphContent, parseInlineMarkdown(qLine));
+                    if (idx < quoteLines.length - 1) {
+                        paragraphContent.push({ type: 'hardBreak' });
+                    }
+                });
+                paragraphs.push({ type: 'paragraph', content: paragraphContent });
+                quoteLines = [];
+            };
             while (i < lines.length && /^>\s?/.test(lines[i])) {
-                quoteLines.push(lines[i].replace(/^>\s?/, ''));
+                if (/^>\s*$/.test(lines[i])) {
+                    closeParagraph();
+                } else {
+                    quoteLines.push(lines[i].replace(/^>\s?/, ''));
+                }
                 i++;
             }
-            const paragraphContent: AdfNode[] = [];
-            quoteLines.forEach((qLine, idx) => {
-                paragraphContent.push(...parseInlineMarkdown(qLine));
-                if (idx < quoteLines.length - 1) {
-                    paragraphContent.push({ type: 'hardBreak' });
-                }
-            });
+            closeParagraph();
             content.push({
                 type: 'blockquote',
-                content: [{ type: 'paragraph', content: paragraphContent }],
+                // ADF requires at least one child, so a quote of only bare lines
+                // keeps one empty paragraph.
+                content: paragraphs.length > 0 ? paragraphs : [{ type: 'paragraph', content: [] }],
             });
             continue;
         }
@@ -71,13 +122,12 @@ export function textToAdf(text: string): AdfDocument {
         }
 
         // Headings (## Heading)
-        const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-        if (headingMatch) {
-            const level = headingMatch[1].length;
+        const heading = matchAtxHeading(line);
+        if (heading) {
             content.push({
                 type: 'heading',
-                attrs: { level },
-                content: parseInlineMarkdown(headingMatch[2]),
+                attrs: { level: heading.level },
+                content: parseInlineMarkdown(heading.text),
             });
             i++;
             continue;
@@ -134,7 +184,7 @@ export function textToAdf(text: string): AdfDocument {
         while (
             i < lines.length &&
             lines[i].trim() !== '' &&
-            !/^#{1,6}\s+/.test(lines[i]) &&
+            matchAtxHeading(lines[i]) === null &&
             !/^[-*]\s+/.test(lines[i]) &&
             !/^\d+\.\s+/.test(lines[i])
         ) {
@@ -145,7 +195,7 @@ export function textToAdf(text: string): AdfDocument {
         if (paragraphLines.length > 0) {
             const paragraphContent: AdfNode[] = [];
             paragraphLines.forEach((pLine, idx) => {
-                paragraphContent.push(...parseInlineMarkdown(pLine));
+                appendAll(paragraphContent, parseInlineMarkdown(pLine));
                 if (idx < paragraphLines.length - 1) {
                     paragraphContent.push({ type: 'hardBreak' });
                 }
@@ -212,14 +262,10 @@ export function parseInlineMarkdown(text: string): AdfNode[] {
         lastIndex = match.index + match[0].length;
     }
 
-    // Add remaining text
+    // Add remaining text. Empty input yields no nodes, since ADF forbids empty
+    // text nodes; the caller's block then gets `content: []`.
     if (lastIndex < text.length) {
         nodes.push({ type: 'text', text: text.slice(lastIndex) });
-    }
-
-    // If no matches, return the whole text as a single node
-    if (nodes.length === 0) {
-        nodes.push({ type: 'text', text });
     }
 
     return nodes;

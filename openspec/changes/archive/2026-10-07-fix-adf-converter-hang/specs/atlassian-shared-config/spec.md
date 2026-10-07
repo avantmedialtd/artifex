@@ -60,6 +60,20 @@ In the scenarios below:
 - **WHEN** `textToAdf()` is called
 - **THEN** the result is a level-2 heading `Title` followed by a paragraph `body`
 
+#### Scenario: Only the first leading byte-order mark is removed
+
+- **GIVEN** the input `<U+FEFF><U+FEFF>## Title`, or `a<U+FEFF>b`
+- **WHEN** `textToAdf()` is called
+- **THEN** every other byte-order mark is kept as text:
+    - the first input gives a paragraph whose text is `<U+FEFF>## Title`;
+    - the second gives a paragraph whose text is `a<U+FEFF>b`
+
+#### Scenario: Very long lines still return a document
+
+- **GIVEN** a single paragraph or quote line holding hundreds of thousands of inline marks, such as `*a* ` repeated 200,000 times
+- **WHEN** `textToAdf()` is called
+- **THEN** it returns an ADF document instead of throwing
+
 #### Scenario: U+2028 and U+2029 are not line endings
 
 - **GIVEN** a heading line whose text contains U+2028 or U+2029, such as `## a<U+2028>b` or `## Title<U+2029>`

@@ -81,6 +81,8 @@ A module-level `matchAtxHeading(line)` returns `{ level, text }` or `null`:
 
 - **Opening:** `/^(#{1,6})(?=[ \t]|$)/`, that is 1-6 `#` at column 0 followed by a space, a tab or the end of the line. Normalization has already removed every line terminator from a line.
 - **Text:** the rest of the line with leading and trailing spaces and tabs removed. It may be empty, and it may contain U+2028 / U+2029 anywhere.
+    - The strip is an index scan over spaces and tabs.
+    - The first implementation used `/^[ \t]+|[ \t]+$/g`. Verification found it backtracks quadratically: `[ \t]+$` re-scans a long internal run of spaces from every start position, so `# a` + 200,000 spaces + `b` took about 35 s, against 1 ms before this change (task 7.1).
 - **Scope in the requirement:** the rule applies outside code blocks and HTML blocks. A converter that recognizes CommonMark closing sequences (`## Title ##`) also drops them from the text.
     - This converter has no HTML blocks and does not strip closing sequences, so for it only fence bodies are excluded.
     - Both clauses keep the requirement true under `replace-markdown-adf-converter`. There, markdown inside an HTML block stays literal, and closing sequences are stripped.
@@ -108,6 +110,7 @@ Alternatives considered:
 
 - **Keep JS `\s` after the marker (today's semantics).** Rejected: `#<U+2028>` and `#<NBSP>` would become headings, while CommonMark and micromark make them paragraphs. The proposal promises CommonMark.
 - **Use JS `trim()` on the heading text.** Rejected: it also strips U+2028, U+2029, NBSP and U+FEFF at the ends, which CommonMark keeps.
+- **Strip with a regex such as `/^[ \t]+|[ \t]+$/g`, `/[ \t]*$/` or `/^[ \t]*(.*?)[ \t]*$/`.** Rejected: each backtracks quadratically on a long internal run of spaces or tabs.
 - **Relax the heading regex (`(.*)` with the `s` flag) and keep two regexes.** Rejected: two patterns can drift apart again.
 - **Force `i++` when the paragraph loop collects nothing.** Rejected: it silently drops the line and hides the bug.
 
@@ -237,9 +240,20 @@ Alternatives considered:
 - **One child for the whole batch:** one hang hides which input caused it.
 - **Running hang inputs in-process:** freezes the suite.
 
+### D9. Inline nodes are appended one at a time
+
+The paragraph branch and the quote branch add each line's inline nodes with a small `appendAll` loop, not `push(...nodes)`.
+
+- Spreading an array into `push()` passes every element as an argument. Past an engine limit this throws `RangeError: Maximum call stack size exceeded`.
+- Under Node that happened at about 250 KB of inline marks on one line (about 520,000 nodes). Under Bun it happened at about 1.3 MB.
+- The defect predates this change. It is fixed here because the requirement promises a document for every input string (task 7.2).
+- Headings and list items assign the parsed array directly, so they never had the problem.
+
 ## Risks / Trade-offs
 
 - **[`#<NBSP>Title` changes from heading to paragraph]** A macOS Option+Space typo can produce this. → It now matches CommonMark and GitHub rendering, so what an author previews is what Jira shows. It is rare in agent output. The proposal's Impact lists it, and a requirement scenario pins it, so `replace-markdown-adf-converter`, whose ATX override already does the same, cannot flip it back.
+    - One interaction is worse than before. Paragraphs do not yet stop at fences, quotes or rules (a gap left to `replace-markdown-adf-converter`). A `##<NBSP>Title` line directly followed by a fence therefore now absorbs the fence into one paragraph, and the code is inline-parsed. Before, the line was a heading and the fence stayed a code block.
+    - It needs both a non-ASCII space after `#` and no blank line before the fence. The converter rewrite removes it.
 - **[Heading text loses trailing spaces and tabs, and `###   ` loses its `' '` text node]** → Both are invisible, and both match CommonMark and `marked`.
 - **[`adfToText` prints a multi-paragraph quote as consecutive `> ` lines without a separator, and an empty heading as `## `]** `af jira get` shows the quoted paragraphs run together. → No content is lost. Upgrading `adfToText` is in `replace-markdown-adf-converter`.
 - **[Jira's live validator is untested for `heading` / `paragraph` with `content: []`]** No live writes were allowed during planning. → The shapes are valid against the JSON schema. They also match the ProseMirror node specs in `@atlaskit/adf-schema` 57.7.1, whose default and Jira schemas both give `heading` and `paragraph` the content expression `inline*` (empty allowed). Today's empty text node is schema-invalid. See Open Questions.
