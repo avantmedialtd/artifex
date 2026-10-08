@@ -186,8 +186,8 @@ These steps run in order:
     - ATX headings do not need the swap: the D3 override already makes `## a<U+2028>b` a heading. Plain marked, without the override, lexes that line as the paragraph `## a<U+2028>b`.
     - The mapper therefore swaps them before lexing for two sentinels. They are the first two noncharacters in U+FDD0–U+FDEF that the input contains neither literally nor as a numeric character reference (decimal or hex, any case, with or without leading zeros).
     - It swaps back in every string it emits: text, code body, language, `href` and `title`.
-    - The swap always runs. U+2028 / U+2029 therefore never act as line endings, as `fix-adf-converter-hang` requires, and no decoded reference is rewritten.
-    - If fewer than two candidates are free, the mapper throws an explicit error rather than skipping the swap. An input would need to use 31 of the 32 to trigger this.
+    - The swap runs whenever the input contains U+2028 or U+2029. They therefore never act as line endings, as `fix-adf-converter-hang` requires, and no decoded reference is rewritten. Sentinels are picked only then, so an input without either separator never fails for lack of a free noncharacter.
+    - If fewer than two candidates are free, the mapper throws an explicit error rather than skipping the swap. An input would need to contain a separator and use 31 of the 32 to trigger this.
 
 Nothing else is altered. In particular, `\n` escape sequences are never interpreted.
 
@@ -199,7 +199,7 @@ Nothing else is altered. In particular, `\n` escape sequences are never interpre
 | `paragraph`; block-level `text` in tight items | `paragraph`                                                                                                                                                                                                                                                            |
 | `code` (fenced or indented)                    | `codeBlock`. `attrs.language` is the first word of the info string, omitted when empty and for indented code. The body is one text node, or `content: []` when empty.                                                                                                  |
 | `hr`                                           | `rule`                                                                                                                                                                                                                                                                 |
-| `blockquote`                                   | `blockquote`, children mapped in quote context. With no children, it holds one empty paragraph.                                                                                                                                                                        |
+| `blockquote`                                   | `blockquote`, children mapped in quote context. With no children, it holds one empty paragraph. A line quoted more than 10 deep is lexed as quoted 10 deep (D15).                                                                                                          |
 | `list`                                         | `bulletList` / `orderedList`. `attrs.order` = start when start ≠ 1.                                                                                                                                                                                                    |
 | `list_item`                                    | `listItem`. With no children, it holds one empty paragraph. Task items: D10.                                                                                                                                                                                           |
 | `table`                                        | `table` with `attrs: { isNumberColumnEnabled: false, layout: 'default' }`, as Atlassian's own markdown transformer emits. Header cells are `tableHeader` and body cells are `tableCell`; each holds one paragraph, empty when the cell is empty. Alignment is dropped. |
@@ -303,7 +303,7 @@ marked puts the checkbox in a separate `checkbox` token:
 - in a tight list, as the item's first block token;
 - in a loose list, as the first inline token of the first paragraph.
 
-The mapper handles both placements. `- [ ]` with no text is not a task item and stays literal.
+The mapper handles both placements, and its `list` override makes sure only the item's own first paragraph loses its box (D15). `- [ ]` with no text is not a task item and stays literal.
 
 **Why not `taskList`:**
 
@@ -329,11 +329,11 @@ The glyphs render everywhere, read as checkboxes, are distinguishable from liter
 | `rule`                                    | `---`                                                                                                                                                                                                                                 |
 | `table`                                   | GFM pipe table; detailed below                                                                                                                                                                                                        |
 | marks                                     | `**`, `*`, `~~`, code spans, and `[text](href "title")`; detailed below                                                                                                                                                               |
-| `hardBreak`                               | A newline; a space inside a table cell and inside a level 3–6 heading                                                                                                                                                                 |
+| `hardBreak`                               | A newline; an empty line between two is a line holding only `\` (D15). A space inside a table cell and inside a level 3–6 heading                                                                                                     |
 | `mention`                                 | `attrs.text` (an `@` is added when missing), else `@` and `attrs.id`                                                                                                                                                                  |
 | `emoji`                                   | `attrs.text`, else `attrs.shortName`                                                                                                                                                                                                  |
 | `date`                                    | `attrs.timestamp` (milliseconds) as a UTC `YYYY-MM-DD` date; it carries no `attrs.text`, so the fallback below would drop it                                                                                                          |
-| `inlineCard`; `blockCard` / `embedCard`   | `attrs.url` (or `attrs.data.url`); for the block cards, on its own line                                                                                                                                                               |
+| `inlineCard`; `blockCard` / `embedCard`   | `attrs.url` (or `attrs.data.url`); for the block cards, on its own line. An inline card is written `<url>` when what follows would extend its bare URL (D15)                                                                          |
 | any other node                            | Its `attrs.text` if it is inline; otherwise its children, inline children inline and block children joined by blank lines                                                                                                             |
 
 **Lists:** a list directly after a sibling list of the same type switches to `* ` or `N) `, alternating. Markdown merges two adjacent lists that share a marker, so `- a` followed by `+ b`, which `textToAdf` reads as two lists, would otherwise come back as one.
@@ -348,7 +348,7 @@ The glyphs render everywhere, read as checkboxes, are distinguishable from liter
 
 - The first row is the header row, followed by a `| --- |` delimiter row.
 - Rows are padded to the widest row.
-- A cell is its blocks rendered inline and joined by spaces, with `|` escaped as `\|`.
+- A cell is its blocks rendered inline and joined by spaces, with each `|` escaped so that it follows an odd run of backslashes (D15).
 
 **Marks:**
 
@@ -380,12 +380,19 @@ The glyphs render everywhere, read as checkboxes, are distinguishable from liter
 
     A later line in the same paragraph is escaped only for constructs that can interrupt a paragraph, and for a `-` or `=` line, which would turn the paragraph into a setext heading. For ordered markers that means only `1.` / `1)`. So `2024. It affects…` after a hard break stays unescaped, while a paragraph whose text is `1. not a list` renders as `1\. not a list`.
 
-- **Running text is not escaped.** Inline `*`, `_`, `~`, `[`, `<` and `&` are left alone, keeping `af jira get` readable.
+- **Running text is not escaped.** Inline `*`, `_`, `~`, `[`, `<` and `&` are left alone, keeping `af jira get` readable. The exceptions are characters that would pair with a delimiter the renderer writes next to them, and link text made from its URL (D15).
     - The price: text that originally needed a backslash escape can parse differently when fed back. For example, Jira-UI text `*not emphasis*` would come back as emphasis.
     - Alternative: escape every markdown-significant character, as prosemirror-markdown does. Rejected: it produces noisy output such as `snake\_case` and `2 \* 3` for the agents that read it.
 - **Known gaps.** Line-start escaping covers converter output, with one exception, and most Jira-UI text:
     - A paragraph that `textToAdf` built from an HTML block, such as `<details>` directly followed by `# Title`, reads back as an HTML block, where the backslash added to `\# Title` stays literal. No corpus input does this, and GitHub shows such lines literally too.
-    - In Jira-UI text, a line that starts with spaces is not escaped, so `   # x` reads back as a heading, and a first line indented by four spaces as indented code. A later line that opens an HTML block (`<div>`) ends the paragraph, and two lines shaped like a table header and delimiter row become a table.
+    - In Jira-UI text, a line that starts with spaces is not escaped, so `   # x` reads back as a heading, and a first line indented by four spaces as indented code. A later line that opens an HTML block (`<div>`) ends the paragraph.
+    - Emphasis that marked cannot express keeps a form that reads back differently:
+        - bold whose italic ends touch a letter or digit outside keeps `***a* b *c***`;
+        - emphasis whose text starts or ends with punctuation next to a letter outside (`ü**=**42`);
+        - adjacent emphasis stretches with no space between can merge;
+        - a literal `*` or `_` in Jira-UI running text can still pair with another at a distance;
+        - a literal `*` that ends emphasis text next to other emphasis can keep the stretch from closing (`**[*a*a\***`);
+        - strike that meets emphasis right after punctuation (`~~` against `*` or `_` runs) can render differently on a second pass, with the same text.
 
 ### D13. Escape `|` in the worklog table cell
 
@@ -399,7 +406,11 @@ The glyphs render everywhere, read as checkboxes, are distinguishable from liter
 - It is vendored rather than installed as `@atlaskit/adf-schema`, because that package pulls in feature-gate, statsig, react-ufo, opentelemetry and lodash for one JSON file. A pinned snapshot is reproducible offline.
 - It is added to `.prettierignore` and to `.cspell.json` `ignorePaths`, keeping it byte-identical to upstream. Verified in scratch: `prettier --check` flags its 2-space formatting, and cspell flags `subsup`, `rowspan` and `colwidth`.
 
-**Corpus fixture: `test/fixtures/adf-corpus.json`.** It is the JSON array from `audit-corpus.md`, copied unchanged. It is prettier-formatted and listed in `.cspell.json` `ignorePaths`, because its inputs deliberately hold identifiers and non-words.
+**Corpus fixture: `test/fixtures/adf-corpus.json`.**
+
+- It starts with the 66 cases of the JSON array from `audit-corpus.md`, copied unchanged.
+- Cases for defects found in the implementation review follow them: tab-indented code in numbered steps, a loose task list whose later paragraph starts with `[x]`, and a descending e-mail quote ladder.
+- It is prettier-formatted and listed in `.cspell.json` `ignorePaths`, because its inputs deliberately hold identifiers and non-words.
 
 **Dev dependencies**: `ajv@^8.20.0` and `ajv-draft-04@^1.0.0`. The schema is draft-04, and ajv 8 needs the draft-04 class. `ajv-draft-04`'s peer dependency on `ajv` is optional, so `ajv` is listed explicitly. Usage, verified in scratch:
 
@@ -429,6 +440,52 @@ It lives outside the published `atlassian/**` glob, so test-only code never ship
 
 `fix-adf-converter-hang`'s deadline-based hang tests and empty-node tests keep running unchanged against the new converter.
 
+### D15. Implementation notes
+
+Implementation and three rounds of adversarial review added the following to the decisions above. Each has regression tests, and the review's realistic cases are corpus cases.
+
+- **Five more `marked` tokenizer overrides** beside D3's `def` and `heading`, seven in all:
+    - `inlineText`: marked's GFM-with-breaks inline text rule is quadratic on runs of spaces. `# a` + 200,000 spaces + `b` took over 5 s under Bun, breaking `fix-adf-converter-hang`'s deadline test. The override is a linear scanner, fuzz-checked against marked's own regex. It also applies D8's carriage-return rule while decoding numeric references.
+    - `blockquote`: marked reads a quote line of `>` plus a tab or several spaces as paragraph text, so a bare quote line did not end the paragraph, as the Robust requirement says it must. The override ends the quote there. It also:
+        - caps quote depth. marked lexes a nested quote twice when lazy lines follow it, so a quote whose depth drops one level per line took time exponential in its depth: 22 levels in 296 characters took seconds, and 8,659 levels overflowed the stack. A line quoted more than 10 deep is lexed as quoted 10 deep. Nested quotes are flattened anyway (D5), so no text changes. Where the cut would join a line to the block above it, a bare quote line is added, and the token's `raw` is mapped back to the source lines so marked advances over exactly the original text. Nothing is cut from the first line that may open a fenced code block, an HTML block or a definition on, because that block's `>` characters can be text. A `<` counts only before a tag name, `/`, `!` or `?`, and a `[` only when its label ends in `]:` or runs past the line, so a link, an `<https://…>` autolink or a `[cid:…]` placeholder does not stop the cut. Directly under paragraph text, a definition or an inline tag cannot open a block, so its line is cut like other text. Markers after spaces count toward a line's depth, as marked counts them, but are never cut, because one can open a quote in a list item; nothing is cut from a line that they alone take past the bound;
+        - rebuilds the quote's `raw` from the text it lexed. When lines follow a list in the quote, marked splices the list's raw, without its quote markers, into the quote's raw: the length stays right, the text does not, and a quote around it lexes that raw again with its lazy lines. A reply quoted one level less than the list above it, then an unquoted line, lost whole lines (`> > 1. a`, `> > 2. b`, `> reply`, `thanks`);
+        - drops the inline text queued for tokens that marked lexed and then discarded. marked lexes a nested quote again with the lazy lines after it, so the deepest paragraph of a ten-level ladder was inline-lexed hundreds of times: 3 KB of unclosable emphasis there took 8 s;
+        - runs marked's quote rule on a doubling window of the source, so a quote cut at a bare line costs time in proportion to itself rather than to the quote lines after it.
+    - `code`: marked keeps one trailing newline on indented code, which turned continuation lines indented four or more spaces inside a list item into an extra hard break.
+    - `lheading`: inside a list item, marked tries the setext rule before every line and scans to the end of the item each time, which ran far worse than quadratic under Bun on long items. The override checks cheaply for a possible underline first. The check stops where marked's rule stops: at blank lines (JavaScript whitespace included), quotes, ATX headings, fences, list items, thematic breaks, tag-only lines and delimiter-row-shaped lines.
+    - `list`: marked removes a task item's box from the last queued paragraph that starts with one, not from the item's own first paragraph. So `- [ ] a`, a blank line and `  [ ] b` showed `☐ [ ] a` and lost the second `[ ]`. The override resets the queued inline text so only the item's first paragraph loses its box. It also puts back the leading tabs that marked turns into spaces in code inside list items: a Makefile recipe or tab-indented Go in a numbered step was corrupted. A tab that the item's indentation only partly consumes keeps marked's four-column spaces.
+    - The heading override trims and strips closing `#` runs with index scans: D3's regexes backtrack quadratically on long space runs.
+- **D3's `def` override** also declines a definition whose label or double-quoted title spans a blank line, which CommonMark forbids. marked's rule took everything from an unclosed `[` to a later `X]: y` line as one definition, and the text vanished.
+- **Nesting limits.** Every level of quote or list nesting is a recursive call, in marked and in the mapper, and stack depth varies by platform (about 1,250 nested lists in a Node worker, about 6,000 under Bun). So:
+    - a quote or list nested more than 100 levels deep, or quotes that exhaust a deterministic quote work limit (1,000,000 + 1,024 × input length; each quote rule call costs its length + 400), make `textToAdf` return the literal document: the text as written, a paragraph per run of non-blank lines, lines joined by `hardBreak`;
+    - any `RangeError` (a stack overflow, such as absurdly deep inline emphasis) returns the literal document too.
+- **Rendering additions to D11:**
+    - an `expand` / `nestedExpand` title is rendered as a paragraph before its body, in table cells too, so `af jira get` no longer hides it;
+    - a link whose text equals its URL is written as an autolink `<url>`;
+    - emphasis that ends or starts with a code span stays open around it, so the round trip keeps it;
+    - a leading byte-order mark in text is doubled, because the mapper strips one;
+    - non-task children of a `taskList` keep their text;
+    - among marks that open and close on the same text, links open innermost. The exception is a letter or other non-punctuation character touching the emphasis delimiters outside, as in CJK prose. There the delimiters could neither open nor close, so the emphasis goes inside the link text (`请看[**文档**](url)了解`);
+    - emphasis delimiters are chosen per stretch: `*` and `**` by default.
+        - A strong stretch that starts and ends with separate em stretches writes those with `_` (`**_a_ b _c_**`), or itself with `__`. The merged `***a* b *c***` reads back as one em+strong span with literal asterisks.
+        - A stretch whose text holds a `*` keeps `*` delimiters, and its `*` characters get backslashes (`*Matches \*.ts files*`). Writing it with `_` read better, but a `_` run inside the `*` run of a stretch around it kept that run from opening or closing next to a letter, as in CJK prose. The exception is a stretch that ends in punctuation right before a `~` or another delimiter. A `*` run cannot close there, because marked does not count `~` as punctuation, but a `_` run can (`__Note: 2\*3=6.__~~old~~`). It applies only when no stretch written with `*` encloses it.
+        - Among em and strong that open and close together, em opens first, as the mapper orders them, so the output does not depend on the order of the ADF marks.
+    - an empty line between two hard breaks is written as a line holding only `\`, itself a hard break. This applies in paragraphs, list items, quotes and setext headings, so consecutive hard breaks no longer read back as a paragraph break. Breaks at either end of a block are still dropped. A backslash that ends a line unpaired gets a partner, since marked would read it and the line ending as a hard break (`C:\temp\`);
+    - a level-1 or level-2 heading with a hard break falls back to ATX form, hard breaks as spaces, when one of its lines would start with three or more backticks or tildes. No backslash can escape that inside a code span, and marked's setext rule stops there;
+    - a code block writes CR and CRLF as LF, so every line gets its list indent or quote prefix. A link title writes a line ending as a space, and a destination percent-encodes it. An empty destination before a title is written `<>`;
+    - an `inlineCard` is written `<url>` when GFM autolinking would read its bare URL longer or shorter: extended over what follows, such as an apostrophe, a letter or a mention, or cut short before trailing punctuation or an unbalanced `(`. The text of `<url>` is literal, so a backslash that ends it gets no partner, and neither does one that ends a bare URL before a hard break;
+    - a plain paragraph in a list item or quote that marked reads back as a table, its header indented at most three spaces, is written verbatim. textToAdf keeps such a table as a paragraph of its source (D5), whose cells hold markdown as text; escaping the delimiter row made that markdown live on the next read. A paragraph holding an inline card, whose URL reads back as a link only inline, is not written verbatim, nor is the first paragraph of a block task item, which follows the task box;
+    - in a table cell every `|` ends up after an odd run of backslashes: text doubles the backslashes before a `|`. A code span in a cell cannot hold an odd run of backslashes before `|`, because GFM unescapes `\|` before reading the cell, so one backslash of such a run is lost. The cell and its code mark survive.
+- **Escaping additions to D12:**
+    - a paragraph whose first line opens an HTML block covering all its lines is written verbatim;
+    - a line that would read as a link reference definition (`[label]:`) gets `\[`, and so does an opening line whose `[` nothing closes on that line, since marked's definition label runs on over line endings;
+    - a list-item line, or an inline task item's text, starting with a task box (`[ ]`, `[x]`) gets `\[`;
+    - the rule and setext-underline escape applies only to a thematic break (three or more of one of `-`, `*`, `_`) or a line of only `=` or only `-`;
+    - list-item paragraph lines, and setext heading lines, get the first-line escapes, because marked lexes them line by line;
+    - a later line shaped like a GFM delimiter row holding a `|` or `:` (`|---|`, `-|-`, `:-:`) gets a backslash, so the line above it does not become a table header. A setext heading line of only `|`, `:`, `-` and spaces that holds a `|` gets one too;
+    - a literal `*`, `_` or `~` next to a delimiter of the same character, and a literal `*` or `_` right before an emphasis delimiter, get backslashes. The latter not right after an e-mail address or a URL that GFM would autolink there, where the backslash would change what it autolinks; in link text, where nothing autolinks, it stays. So do an unpaired backslash right before a delimiter, and a `!` right before a link's `[`;
+    - link text made from its URL (a `www.` host, an e-mail address, or a URL written `[url](url)`) escapes `` \ ` * _ ~ [ ] < ! & ( ``, so `www.github.com/x/__init__.py` keeps its underscores.
+
 ## Risks / Trade-offs
 
 - **[Visible behaviour changes]** These now follow GitHub rendering:
@@ -446,7 +503,7 @@ It lives outside the published `atlassian/**` glob, so test-only code never ship
 - **[Jira or Confluence may reject or misrender shapes the schema allows]** These are table `attrs`, lists and code inside quotes, link `title`, headings with no content, headings that contain a `hardBreak` (D6), and `orderedList.attrs.order`. → Schema validation catches structural errors offline, and the live smoke test (task 9.4) covers each shape. Every fallback is local: drop the `title`, flatten quote content, omit the table `attrs`, or join a heading's lines with a space.
 - **[marked majors change token shapes]** → The caret pin is on major 18, and the corpus and schema tests fail on drift. The mapper isolates its assumptions in one place: checkbox placement, block-level `text` tokens, and `start` being `''` for bullet lists.
 - **[marked is not fully CommonMark-strict]** The audit's reference was micromark. → `audit-corpus.md` pins the expected outlines. Any discrepancy found later becomes a new corpus case.
-- **[Pathological input]** marked uses regexes. → It has guards against known backtracking, including an inline link-parenthesis pre-check. Instead of spinning, its loop guard throws `Infinite loop on byte: N`. `textToAdf` lets that propagate, and every call site converts before sending, so nothing is written. `fix-adf-converter-hang`'s deadline tests run against the new code.
+- **[Pathological input]** marked uses regexes. → It has guards against known backtracking, including an inline link-parenthesis pre-check. Instead of spinning, its loop guard throws `Infinite loop on byte: N`. `textToAdf` lets that propagate, and every call site converts before sending, so nothing is written. Nesting past the limits in D15, and any stack overflow, return the literal document instead of throwing. `fix-adf-converter-hang`'s deadline tests run against the new code, and the review's exponential and deep-nesting inputs have deadline tests of their own.
 - **[Backslash-escaped text round-trips imperfectly]** → Documented in D12, with its known gaps. Line-start escaping covers the cases that change the structure of converter output.
 - **[Named character references stay literal]** `&lt;ISSUE-KEY&gt;` shows as typed. → Rare in agent text; recorded in D8.
 - **[marked ends a paragraph or list item at more `#` lines than CommonMark does]** Verified with 18.1.0 and the D3 override:
@@ -457,6 +514,14 @@ It lives outside the published `atlassian/**` glob, so test-only code never ship
     → Both cases are rare and lose no text. Only the heading rule is part of a requirement, and D3 enforces it.
 
 - **[Dependency footprint]** → One runtime package with no dependencies. ajv (4 transitive packages) and ajv-draft-04 are dev-only.
+- **[Very large inputs under Bun]** Measured with marked 18.1.0, the first two without any override involved:
+    - a single paragraph or blockquote of about 86,000 lines or more effectively hangs, because Bun's regex engine gives up on marked's paragraph rule and the lexer falls back to one line at a time (100,000 lines run past a minute; Node takes about 0.1 s);
+    - about 30 KB of unclosable emphasis openers (`*a ` repeated) takes about 3 s, and a 30 KB run of e-mail characters before `@` about 0.7 s. Unclosable `~a ` openers and balanced nested emphasis cost about the same;
+    - in af's own code, the `lheading` pre-check (D15) still rescans from every line of one list item to the next stop or blank line: 15,000 two-character lines in one item (30 KB) take about 0.55 s, while realistic 30-character lines take milliseconds.
+
+    → Jira's field size limits keep comments and descriptions far below these sizes. A Confluence page that large is the realistic exposure. Possible follow-up: split very long paragraphs before lexing.
+- **[Round-trip limits for Jira-UI text]** → The corpus and typical agent text round-trip exactly. Documented limits remain for text the converter did not produce: running-text delimiter collisions and the emphasis forms marked cannot express (D12), leading spaces kept by marked, and one backslash of an odd run before `|` in a table cell's code span (D15).
+- **[Quotes nested more than 10 levels]** The depth cap (D15) keeps the text but not always the structure past depth 10. A lazy `===` or `--` line that marked continued after a hard break becomes a paragraph of its own. Lists at different depths past 10 can join, and a list item past 10 can end where marked continued it lazily. A `=` or `-` line can become a setext underline where the uncapped parse kept it as text, which marked itself does at depth 1 after a lazy line (`> b`, `c`, `> ---`). A quote ladder that keeps its depth because its deepest line opens a fence, an HTML block or a definition exhausts the quote work limit from about 12 levels (13 when no unquoted reply follows) and becomes the literal document. → Real e-mail quoting stays far below 10 levels, and the corpus pins a 12-level ladder.
 
 ## Migration Plan
 
@@ -467,8 +532,19 @@ It lives outside the published `atlassian/**` glob, so test-only code never ship
 
 ## Open Questions
 
-- Do Jira (description, comment, worklog and transition comments) and Confluence (page body, footer comment) accept the new shapes and render them as intended? The shapes are tables with `isNumberColumnEnabled` / `layout`, lists and code blocks inside blockquotes, link `title`, empty headings or paragraphs, headings that contain a `hardBreak`, and `orderedList.attrs.order`. They are verified against the schema only. The live smoke test (task 9.4) answers this.
+- Do Jira (description, comment, worklog and transition comments) and Confluence (page body, footer comment) accept the new shapes and render them as intended? The shapes are tables with `isNumberColumnEnabled` / `layout`, lists and code blocks inside blockquotes, link `title`, empty headings or paragraphs, headings that contain a `hardBreak`, and `orderedList.attrs.order`. The live smoke test (tasks 9.4 to 9.6) answered it: both accept every shape and render it as intended.
+    - **Jira, 2026-10-08, on AM-15 (task 9.4).** A comment (10137) and the description, each holding every shape above plus ballot-box task items, were accepted. The stored ADF is the ADF sent, with two normalizations: Jira adds `attrs: {}` to each table cell and drops the empty `content: []` of an empty heading. It is schema-valid, and `af jira get` renders it exactly as the local rendering, which reads back to the same outline.
+    - The legacy HTML that `expand=renderedFields` returns goes through wiki markup. It drops link titles, splits a heading at its hard break, ignores a list's start number, and turns the `|` lines of a table kept as text into a wiki table. The issue view renders ADF directly; a look at it is still to do (task 9.5).
+    - **Jira UI:** the user confirmed that AM-15 renders as intended (task 9.5).
+    - **Confluence, 2026-10-08 (task 9.5).** A scratch page in the user's personal space (73826306) and a footer comment on it (73859073) held the same content. Both were accepted, and every visible shape renders as intended in Confluence's HTML: the table's header row, nested lists, the quote holding literal pipe lines (no table), a list and a code block, the link with its title, `<h2>Release notes<br/>for version 2</h2>` and `<ol start="3">`. Confluence normalizes on its side, and no converter change is needed:
+        - it drops the empty heading on write; Jira keeps it;
+        - its ADF read-back omits the link title, which storage and HTML keep;
+        - the first ordered list gains `order: 1`, the table loses `isNumberColumnEnabled: false`, and cells gain `colspan` / `rowspan` 1;
+        - a footer comment's ADF read-back makes header-cell text strong;
+        - the server-rendered code macro labels `ts` as Java, its default, while storage keeps `ts`, a valid ADF language.
+
+      `af confluence get` prints exactly adfToText of the stored ADF, so it differs from the local rendering only in the dropped heading and link title. The user checked the page in the browser, as task 9.6 asked, and confirmed it renders as intended.
 - When can `taskList` / `taskItem` replace the ballot-box fallback? This is a follow-up after live verification (D10).
 - Should a small set of named character references (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&nbsp;`) be decoded? This is left out for now (D8).
 
-<!-- cspell:words marklassian mdast micromark statsig opentelemetry ufo atlaskit Atlaskit noncharacters subsup rowspan colwidth prosemirror lheading unpkg codespan strikethrough autolinks misrender -->
+<!-- cspell:words marklassian mdast micromark statsig opentelemetry ufo atlaskit Atlaskit noncharacters subsup rowspan colwidth prosemirror lheading unpkg codespan strikethrough autolinks misrender noncharacter unclosable rescans -->

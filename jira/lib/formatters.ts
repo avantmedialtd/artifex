@@ -495,6 +495,16 @@ export function formatEditMeta(issueKey: string, meta: JiraEditMetaResponse): st
     return lines.join('\n');
 }
 
+// A `|` ends a markdown table cell unless a backslash escapes it, so every pipe
+// not escaped yet gets one (as escapePipe in bitbucket/lib/formatters.ts does).
+// Pipes adfToText already escaped, as in its table cells, are left as they are:
+// another backslash would escape the backslash instead and end the cell.
+function escapePipe(text: string): string {
+    return text.replace(/(\\*)\|/g, (pipe, backslashes: string) =>
+        backslashes.length % 2 === 0 ? `${backslashes}\\|` : pipe,
+    );
+}
+
 // Worklogs to markdown
 export function formatWorklogs(issueKey: string, worklogs: JiraWorklog[]): string {
     const lines: string[] = [];
@@ -513,7 +523,10 @@ export function formatWorklogs(issueKey: string, worklogs: JiraWorklog[]): strin
     for (const w of worklogs) {
         const author = w.author?.displayName ?? '-';
         const started = w.started ? formatDate(w.started) : '-';
-        const comment = w.comment ? adfToText(w.comment).replace(/\n/g, ' ').slice(0, 40) : '';
+        // Escaped after truncating, so the escapes do not use up the 40 characters.
+        const comment = w.comment
+            ? escapePipe(adfToText(w.comment).replace(/\n/g, ' ').slice(0, 40))
+            : '';
         lines.push(`| ${w.id} | ${author} | ${w.timeSpent ?? '-'} | ${started} | ${comment} |`);
     }
 

@@ -28,3 +28,6 @@ Thumbs.db
 .github/
 
 openspec/
+
+# Vendored ADF JSON schema snapshot, kept byte-identical to upstream
+test/fixtures/adf-schema-full.json

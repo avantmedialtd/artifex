@@ -30,7 +30,9 @@ commands/            - Command handler modules
 └── help.ts          - help command
 atlassian/lib/       - Shared Atlassian infrastructure
 ├── config.ts        - Shared config (ATLASSIAN_* / JIRA_* env vars)
-├── adf.ts           - ADF markdown converters (shared by Jira + Confluence)
+├── adf.ts           - ADF converter facade: textToAdf / adfToText (shared by Jira + Confluence)
+├── markdown-to-adf.ts - Markdown → ADF: marked's GFM lexer plus af's own mapper
+├── adf-to-markdown.ts - ADF → markdown renderer
 ├── adf-types.ts     - ADF type definitions
 └── request.ts       - Shared HTTP request helper with auth
 jira/lib/            - Jira API client and formatters
@@ -347,7 +349,11 @@ Legacy variables (`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`) are also supp
 The shared infrastructure lives in `atlassian/lib/`:
 
 - `config.ts` - Reads env vars with fallback logic
-- `adf.ts` - Markdown ↔ ADF converters used by both Jira and Confluence
+- `adf.ts` - Markdown ↔ ADF converters used by both Jira and Confluence. A facade over two modules:
+    - `markdown-to-adf.ts` lexes GitHub-flavored markdown with `marked` (one module-level `Marked` instance, `.lexer()` only, never `setOptions`/`use`) and maps the tokens to ADF with af's own rules: a single newline is a hard break, raw HTML stays literal text, the `code` mark is combined only with links, nested quotes are flattened, and task items become ☐ / ☑ bullets rather than ADF task items. Input nested more than 100 levels deep, or deep enough to overflow the stack, is kept as written.
+    - `---` directly under a line of text is a setext heading underline (as on GitHub), so a separator needs a blank line before it.
+    - `adf-to-markdown.ts` renders ADF back to canonical markdown, including tables, nested lists, task items, mentions, emoji and inline cards; it never throws. For the regression corpus and typical agent text, `textToAdf → adfToText → textToAdf` reproduces the same ADF; text typed in the Jira UI can hit documented limits (delimiter characters in running text, emphasis forms marked cannot express).
+    - Tests validate every output against the vendored ADF JSON schema (`test/fixtures/adf-schema-full.json`) and the regression corpus of agent-style markdown (`test/fixtures/adf-corpus.json`), using the helpers in `test/helpers/adf.ts`.
 - `request.ts` - Authenticated HTTP request helpers:
     - `request<T>(url)` for JSON endpoints
     - `requestText(url)` for plain-text endpoints (Bitbucket pipeline logs, PR diffs)

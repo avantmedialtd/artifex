@@ -7,10 +7,15 @@ export interface AdfDocument {
     content: AdfNode[];
 }
 
+export interface AdfMark {
+    type: string;
+    attrs?: Record<string, unknown>;
+}
+
 export interface AdfNode {
     type: string;
     content?: AdfNode[];
     text?: string;
     attrs?: Record<string, unknown>;
-    marks?: Array<{ type: string; attrs?: Record<string, unknown> }>;
+    marks?: AdfMark[];
 }

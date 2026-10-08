@@ -8,7 +8,9 @@
         "dist",
         "build",
         "*.log",
-        ".oxlintrc.json"
+        ".oxlintrc.json",
+        "test/fixtures/adf-schema-full.json",
+        "test/fixtures/adf-corpus.json"
     ],
     "words": [
         "Antal",
