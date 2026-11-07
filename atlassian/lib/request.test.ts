@@ -84,6 +84,27 @@ describe('atlassian request helpers', () => {
             );
         });
 
+        it('appends Bitbucket field errors the message does not contain', async () => {
+            vi.stubGlobal(
+                'fetch',
+                vi.fn().mockResolvedValue(
+                    new Response(
+                        JSON.stringify({
+                            type: 'error',
+                            error: {
+                                message: 'Bad request',
+                                fields: { reviewers: ['Malformed reviewers list'] },
+                            },
+                        }),
+                        { status: 400 },
+                    ),
+                ),
+            );
+            await expect(requestText('https://api.bitbucket.org/2.0/foo')).rejects.toThrow(
+                'Bad request\nreviewers: Malformed reviewers list',
+            );
+        });
+
         it('returns empty string on 204', async () => {
             vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
             const result = await requestText('https://api.bitbucket.org/2.0/foo');
@@ -133,6 +154,53 @@ describe('atlassian request helpers', () => {
                     headers: { Authorization: 'Basic x' },
                 }),
             ).rejects.toThrow('newstatus: already closed');
+        });
+
+        it.each<[string, Record<string, unknown>, string]>([
+            [
+                'appends a field error the message does not contain',
+                { message: 'Bad request', fields: { reviewers: ['Malformed reviewers list'] } },
+                'Bad request\nreviewers: Malformed reviewers list',
+            ],
+            [
+                'does not repeat a field error the message already contains',
+                {
+                    message: 'reviewers: Malformed reviewers list',
+                    fields: { reviewers: ['Malformed reviewers list'] },
+                },
+                'reviewers: Malformed reviewers list',
+            ],
+            [
+                'adds one line per field and joins the messages of a field with "; "',
+                {
+                    message: 'Bad request',
+                    fields: {
+                        title: ['This field is required.'],
+                        reviewers: ['Malformed reviewers list', 'Inactive user'],
+                    },
+                },
+                'Bad request\ntitle: This field is required.\n' +
+                    'reviewers: Malformed reviewers list; Inactive user',
+            ],
+            [
+                'keeps the message alone when there are no fields',
+                { message: 'No access' },
+                'No access',
+            ],
+        ])('Bitbucket field errors: %s', async (_, error, expected) => {
+            vi.stubGlobal(
+                'fetch',
+                vi
+                    .fn()
+                    .mockResolvedValue(
+                        new Response(JSON.stringify({ type: 'error', error }), { status: 400 }),
+                    ),
+            );
+            const err = await request<unknown>('https://api.bitbucket.org/2.0/x', {
+                headers: { Authorization: 'Basic x' },
+            }).catch((e: unknown) => e);
+            expect(err).toBeInstanceOf(AtlassianHttpError);
+            expect((err as AtlassianHttpError).message).toBe(expected);
         });
     });
 

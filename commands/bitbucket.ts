@@ -9,9 +9,12 @@ import { assertSingleSource, readProse, type ProseSource } from '../utils/text-i
 import {
     filterCommentsByResolution,
     filterTasksByResolution,
+    pullRequestQuery,
     resolutionFilterFromFlags,
 } from '../bitbucket/lib/filters.ts';
 import { groupSignalFailures } from '../bitbucket/lib/signals.ts';
+import { buildPullRequestUpdate } from '../bitbucket/lib/update.ts';
+import { AtlassianHttpError } from '../atlassian/lib/request.ts';
 
 interface BitbucketOptions {
     json?: boolean;
@@ -25,7 +28,10 @@ interface BitbucketOptions {
     from?: string;
     to?: string;
     reviewers?: string;
+    /** `pr create`: open as a draft. `pr update`: move back to draft. Lists: only drafts. */
     draft?: boolean;
+    /** `pr update`: mark ready for review. `pr list` / `pr mine`: only PRs that are not drafts. */
+    ready?: boolean;
 
     // PR list filters
     state?: string;
@@ -81,6 +87,7 @@ interface BitbucketOptions {
 const BOOLEAN_FLAGS = new Set([
     '--json',
     '--draft',
+    '--ready',
     '--mine',
     '--checks',
     '--close-source',
@@ -111,10 +118,11 @@ const FLAG_ALIASES = new Map<string, string>([
 
 // The pull request commands that take prose reject unknown options and extra
 // positional arguments, so a mistyped flag or an unquoted body fails instead of
-// being ignored. Every action of `pr comment` and `pr task` is covered.
-// `maxPositionals` counts the arguments after `pr`; options are listed as typed,
-// so `pr create` lists the branch aliases. Any other subcommand or action
-// matches no rule and stays lenient.
+// being ignored. Every action of `pr comment` and `pr task` is covered, and so
+// are `pr ready` and `pr draft`, which stand for `pr update --ready` / `--draft`
+// and accept only the global options. `maxPositionals` counts the arguments
+// after `pr`; options are listed as typed, so `pr create` lists the branch
+// aliases. Any other subcommand or action matches no rule and stays lenient.
 const GLOBAL_OPTIONS = ['--json', '--workspace', '--repo'];
 const BODY_PROSE = { inline: '--body', file: '--body-file' };
 const DESCRIPTION_PROSE = { inline: '--description', file: '--description-file' };
@@ -156,10 +164,12 @@ const STRICT_RULES = new Map<string, StrictRule>([
     ),
     prRule(
         'update',
-        ['--title', '--description', '--description-file', '--reviewers'],
+        ['--title', '--description', '--description-file', '--reviewers', '--ready', '--draft'],
         2,
         DESCRIPTION_PROSE,
     ),
+    prRule('ready', [], 2),
+    prRule('draft', [], 2),
     prRule('comment list', ['--resolved', '--unresolved'], 3),
     prRule(
         'comment add',
@@ -260,8 +270,10 @@ USAGE:
   af bb <subcommand> [args] [options]              (alias)
 
 PULL REQUESTS:
-  pr list [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--mine | --author Q] [--checks]
-  pr mine [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--limit N] [--checks]
+  pr list [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--mine | --author Q]
+          [--draft | --ready] [--checks]
+  pr mine [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--limit N]
+          [--draft | --ready] [--checks]
                                                     My authored PRs across all my workspaces
                                                     (--workspace W narrows; use --limit with ALL)
   pr get <id>
@@ -271,7 +283,9 @@ PULL REQUESTS:
             [--reviewers a,b] [--draft]
             (--from also accepts --source, --src; --to also accepts --destination, --dest)
   pr update <id> [--title T] [--description TEXT / --description-file <path|->]
-                 [--reviewers a,b]
+                 [--reviewers a,b] [--ready | --draft]
+  pr ready <id>                                     Mark a draft ready for review
+  pr draft <id>                                     Move an open PR back to draft
   pr approve <id>           pr unapprove <id>
   pr request-changes <id>
   pr merge <id> [--strategy merge_commit|squash|fast_forward] [--close-source]
@@ -285,6 +299,12 @@ PULL REQUESTS:
   --checks adds Builds (head commit) and Conflicts for open PRs, at about three
   requests per listed open PR (more when a PR has many build statuses). It is
   informational only and never changes the exit code. It has no effect with --json.
+
+  Drafts show as OPEN (draft). --draft and --ready filter the lists to drafts, or
+  to PRs that are not drafts. Reviewers on a draft are not notified until it is
+  marked ready, and a draft cannot be merged: run pr ready <id> first.
+
+  pr update --reviewers replaces the whole reviewer list; --reviewers "" clears it.
 
 PR COMMENTS:
   pr comment list <pr-id> [--resolved | --unresolved]
@@ -339,7 +359,8 @@ OPTIONS:
   --json          Emit raw JSON instead of human-formatted output
 
   Options that take a value also accept --name=value. pr create, pr update,
-  pr comment and pr task reject options they do not know and extra arguments.
+  pr ready, pr draft, pr comment and pr task reject options they do not know and
+  extra arguments.
 
 MULTI-LINE TEXT:
   Inside "double" or 'single' quotes, \\n stays a backslash and an n; it is never
@@ -359,6 +380,7 @@ EXAMPLES:
   af bb pr mine --state ALL --limit 20
   af bb pr mine --checks
   af bb pr create --title "Fix bug" --reviewers a:abc123,b:def456
+  af bb pr update 42 --description-file final.md --ready
   af bb pr comment add 42 --body "Looks good" --reply-to 100
   af bb pr task add 42 --body "Rename this" --on-comment 100
   af bb pr task update 42 7 --resolved
@@ -396,8 +418,13 @@ function descriptionSource(opts: BitbucketOptions): ProseSource {
     };
 }
 
+/**
+ * `--reviewers a,b` as account ids. Only an absent flag means "no reviewer
+ * change": an empty value (`--reviewers ""`) is an empty list, which clears the
+ * reviewers on `pr update` and adds none on `pr create`.
+ */
 function parseReviewers(flag: string | undefined): string[] | undefined {
-    if (!flag) return undefined;
+    if (flag === undefined) return undefined;
     return flag
         .split(',')
         .map(s => s.trim())
@@ -433,6 +460,43 @@ function checkLimit(options: BitbucketOptions): void {
     if (options.limit !== undefined && (!Number.isFinite(options.limit) || options.limit <= 0)) {
         throw new Error('--limit must be a positive integer');
     }
+}
+
+/** `pr update`, `pr list` and `pr mine` reject `--ready` together with `--draft`. */
+function checkReadyDraft(options: BitbucketOptions): void {
+    if (options.ready && options.draft) {
+        throw new Error('--ready and --draft are mutually exclusive');
+    }
+}
+
+/**
+ * `pr update` needs at least one change flag. Without one it used to send an
+ * empty PUT, which could clear the reviewers (design D8).
+ */
+function checkUpdateChange(options: BitbucketOptions): void {
+    const changed =
+        options.title !== undefined ||
+        options.description !== undefined ||
+        options['description-file'] !== undefined ||
+        options.reviewers !== undefined ||
+        options.ready === true ||
+        options.draft === true;
+    if (!changed) {
+        throw new Error(
+            'pr update needs at least one of --title, --description, --description-file, ' +
+                '--reviewers, --ready or --draft',
+        );
+    }
+}
+
+/**
+ * The draft state that `--draft` (`true`) or `--ready` (`false`) asks for: the
+ * filter of `pr list` and `pr mine`, and the change of `pr update`.
+ */
+function draftState(options: BitbucketOptions): boolean | undefined {
+    if (options.draft) return true;
+    if (options.ready) return false;
+    return undefined;
 }
 
 const PR_STATES = new Set(['OPEN', 'MERGED', 'DECLINED', 'SUPERSEDED', 'ALL']);
@@ -608,8 +672,9 @@ async function handlePr(
 
     switch (action) {
         case 'list': {
+            checkReadyDraft(options);
             const state = parsePrState(options);
-            const q = options.author ? `author.nickname="${options.author}"` : undefined;
+            const q = pullRequestQuery({ author: options.author, draft: draftState(options) });
             const prs = await client.listPullRequests(ws, repo, { state, q });
             let filtered = prs;
             if (options.mine) {
@@ -672,15 +737,15 @@ async function handlePr(
         }
         case 'update': {
             const id = requireIdArg(args[1], 'pr id');
-            // `--description ""` is sent as is, which clears the description.
-            const description = readProse(descriptionSource(options));
-            const pr = await client.updatePullRequest(ws, repo, id, {
-                title: options.title,
-                description,
-                reviewerAccountIds: parseReviewers(options.reviewers),
-            });
-            fmt.output(json ? pr : fmt.formatPullRequest(pr), false);
-            return 0;
+            return await updatePr(id, options, json, ws, repo, client, fmt);
+        }
+        case 'ready':
+        case 'draft': {
+            // Aliases of `pr update <id> --ready` / `--draft`. Their strict rules
+            // accept only the global options, so no other change is present.
+            const id = requireIdArg(args[1], 'pr id');
+            const preset = action === 'ready' ? { ready: true } : { draft: true };
+            return await updatePr(id, { ...options, ...preset }, json, ws, repo, client, fmt);
         }
         case 'approve': {
             const id = requireIdArg(args[1], 'pr id');
@@ -710,10 +775,25 @@ async function handlePr(
                 error(`Error: invalid --strategy ${strategy}`);
                 return 1;
             }
-            const pr = await client.mergePullRequest(ws, repo, id, {
-                strategy: strategy as 'merge_commit' | 'squash' | 'fast_forward' | undefined,
-                closeSource: options['close-source'],
-            });
+            let pr: BitbucketPullRequest;
+            try {
+                pr = await client.mergePullRequest(ws, repo, id, {
+                    strategy: strategy as 'merge_commit' | 'squash' | 'fast_forward' | undefined,
+                    closeSource: options['close-source'],
+                });
+            } catch (err) {
+                // Design D11: only a failed merge costs the extra GET, and the
+                // pull request's `draft` field decides, not Bitbucket's wording.
+                if (err instanceof AtlassianHttpError && (await isDraft(client, ws, repo, id))) {
+                    error(`Error: ${err.message}`);
+                    error(
+                        `Error: PR #${id} is a draft and cannot be merged. ` +
+                            `Mark it ready first: af bb pr ready ${id}`,
+                    );
+                    return 1;
+                }
+                throw err;
+            }
             fmt.output(json ? pr : fmt.formatPullRequest(pr), false);
             return 0;
         }
@@ -756,6 +836,103 @@ async function handlePr(
 }
 
 /**
+ * Printed after Bitbucket's message when it rejects the reviewers of an update
+ * with HTTP 400. Every update resends the current reviewers (see `update.ts`),
+ * and a list with an inactive user is rejected (design Risks).
+ */
+const REVIEWERS_HINT =
+    'Error: without --reviewers, an update resends the current reviewers, and Bitbucket ' +
+    'rejects the list when one of them is no longer active. Pass --reviewers to pr update ' +
+    'with the reviewers to keep, or remove the inactive reviewer in Bitbucket.';
+
+/**
+ * `pr update`, and `pr ready` / `pr draft` with `ready` or `draft` preset
+ * (design D2). The argument checks run first and the description is read next,
+ * both before any request. The pull request is then fetched. Nothing is sent
+ * when it is not open (an error) or when only `--ready` / `--draft` was given
+ * and it is already in that state (a notice). Otherwise the body built by
+ * `buildPullRequestUpdate` is PUT.
+ */
+async function updatePr(
+    id: number,
+    options: BitbucketOptions,
+    json: boolean,
+    ws: string,
+    repo: string,
+    client: ClientModule,
+    fmt: FmtModule,
+): Promise<number> {
+    checkReadyDraft(options);
+    checkUpdateChange(options);
+    // `--description ""` is sent as is, which clears the description.
+    const description = readProse(descriptionSource(options));
+
+    const current = await client.getPullRequest(ws, repo, id);
+    if (current.state !== 'OPEN') {
+        error(
+            `Error: pull request ${id} is ${current.state}; only open pull requests can be updated`,
+        );
+        return 1;
+    }
+
+    const update = buildPullRequestUpdate(current, {
+        title: options.title,
+        description,
+        reviewerAccountIds: parseReviewers(options.reviewers),
+        draft: draftState(options),
+    });
+    if (update.kind === 'noop') {
+        const notice =
+            update.state === 'ready'
+                ? `Pull request ${id} is already ready for review`
+                : `Pull request ${id} is already a draft`;
+        // With --json the notice goes to stderr, so stdout stays parseable.
+        if (json) {
+            console.error(notice);
+            fmt.output(current, false);
+        } else {
+            console.log(notice);
+        }
+        return 0;
+    }
+
+    let pr: BitbucketPullRequest;
+    try {
+        pr = await client.updatePullRequest(ws, repo, id, update.body);
+    } catch (err) {
+        if (
+            err instanceof AtlassianHttpError &&
+            err.status === 400 &&
+            /reviewer/i.test(err.message)
+        ) {
+            error(`Error: ${err.message}`);
+            error(REVIEWERS_HINT);
+            return 1;
+        }
+        throw err;
+    }
+    fmt.output(json ? pr : fmt.formatPullRequest(pr), false);
+    return 0;
+}
+
+/**
+ * Whether the pull request is a draft, asked only after a merge failed. `false`
+ * when it cannot be fetched, so the merge error is then reported as it was.
+ */
+async function isDraft(
+    client: ClientModule,
+    ws: string,
+    repo: string,
+    id: number,
+): Promise<boolean> {
+    try {
+        return Boolean((await client.getPullRequest(ws, repo, id)).draft);
+    } catch {
+        return false;
+    }
+}
+
+/**
  * `pr mine`: the caller's authored PRs across every workspace they belong to.
  * Only an explicit `--workspace` narrows the search — `af.json` and the git
  * remote are repo-context signals and are deliberately ignored here.
@@ -766,11 +943,13 @@ async function handlePrMine(
     client: ClientModule,
     fmt: FmtModule,
 ): Promise<number> {
+    checkReadyDraft(options);
     const state = parsePrState(options);
     checkLimit(options);
     const { pullRequests, skipped } = await client.listMyPullRequests({
         workspace: options.workspace,
         state,
+        q: pullRequestQuery({ draft: draftState(options) }),
         limit: options.limit,
     });
     // stderr, not `warn()` (which writes stdout), so `--json` output stays parseable.

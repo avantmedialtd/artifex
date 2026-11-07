@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { parseArgs, handleBitbucket, showBitbucketHelp } from './bitbucket.ts';
+import { AtlassianHttpError } from '../atlassian/lib/request.ts';
 import * as client from '../bitbucket/lib/client.ts';
 import * as bbConfig from '../bitbucket/lib/config.ts';
 import { bbRequest } from '../bitbucket/lib/request.ts';
@@ -21,11 +22,24 @@ vi.mock('../bitbucket/lib/client.ts', () => ({
     addTask: vi.fn(),
     updateTask: vi.fn(),
     createPullRequest: vi.fn(),
+    getPullRequest: vi.fn(),
     updatePullRequest: vi.fn(),
+    mergePullRequest: vi.fn(),
     getCurrentBranch: vi.fn(),
     getRepository: vi.fn(),
     triggerPipeline: vi.fn(),
 }));
+
+/**
+ * Asserts that no client function was called and no request was sent directly.
+ * Mock histories accumulate across tests, so clear them first (`vi.clearAllMocks`).
+ */
+function expectNothingSent(): void {
+    const mocks = Object.entries(client).filter(([, fn]) => vi.isMockFunction(fn));
+    expect(mocks.length).toBeGreaterThan(0);
+    for (const [name, fn] of mocks) expect(fn, name).not.toHaveBeenCalled();
+    expect(bbRequest).not.toHaveBeenCalled();
+}
 
 // `pr list --mine` resolves `/user` through `bbRequest` directly, not the client.
 vi.mock('../bitbucket/lib/request.ts', () => ({ bbRequest: vi.fn() }));
@@ -869,10 +883,33 @@ describe('parseArgs strict checking on pull request prose commands', () => {
     });
 
     it('rejects an option the action does not accept, naming it and the command', () => {
-        const message = parseError(['pr', 'update', '42', '--draft']);
-        expect(message).toContain("Unknown option --draft for 'af bitbucket pr update'.");
+        const message = parseError(['pr', 'update', '42', '--close-source']);
+        expect(message).toContain("Unknown option --close-source for 'af bitbucket pr update'.");
         expect(message).toContain(
-            'Accepted options: --title, --description, --description-file, --reviewers, --json, --workspace, --repo',
+            'Accepted options: --title, --description, --description-file, --reviewers, --ready, --draft, --json, --workspace, --repo',
+        );
+    });
+
+    it('accepts --ready and --draft on pr update', () => {
+        expect(parseArgs(['pr', 'update', '42', '--draft']).options.draft).toBe(true);
+        const { options } = parseArgs(['pr', 'update', '42', '--ready', '--title', 'T']);
+        expect(options).toEqual({ ready: true, title: 'T' });
+    });
+
+    it('rejects an update option on the draft aliases, naming it and the alias', () => {
+        expect(parseError(['pr', 'ready', '42', '--title', 'New title']).split('\n')).toEqual([
+            "Unknown option --title for 'af bitbucket pr ready'.",
+            'Accepted options: --json, --workspace, --repo',
+            "Run 'af bitbucket --help' for usage.",
+        ]);
+        expect(parseError(['pr', 'draft', '42', '--ready'])).toMatch(
+            /^Unknown option --ready for 'af bitbucket pr draft'\.\n/,
+        );
+    });
+
+    it('rejects --ready written with a value', () => {
+        expect(parseError(['pr', 'update', '42', '--ready=true'])).toBe(
+            'Option --ready does not take a value',
         );
     });
 
@@ -952,6 +989,9 @@ describe('parseArgs strict checking on pull request prose commands', () => {
             ['pr', 'task', 'update', '42', '7', '--body-file', 'f.md', '--resolved'],
             ['pr', 'task', 'delete', '42', '7'],
             ['pr', 'update', '42', '--title', 'T', '--description-file', '-', '--reviewers', 'a'],
+            ['pr', 'update', '42', '--description-file', 'final.md', '--ready'],
+            ['pr', 'ready', '42', '--json'],
+            ['pr', 'draft', '42', '--workspace', 'ws', '--repo', 'r'],
         ];
         for (const argv of accepted) expect(() => parseArgs(argv)).not.toThrow();
     });
@@ -1015,10 +1055,12 @@ describe('parseArgs strict rule table (design D10)', () => {
         ],
         [
             'update',
-            ['--title', '--description', '--description-file', '--reviewers'],
+            ['--title', '--description', '--description-file', '--reviewers', '--ready', '--draft'],
             2,
             description,
         ],
+        ['ready', [], 2, undefined],
+        ['draft', [], 2, undefined],
         ['comment list', ['--resolved', '--unresolved'], 3, undefined],
         ['comment add', ['--body', '--body-file', '--file', '--line', '--reply-to'], 3, body],
         ['comment update', ['--body', '--body-file'], 4, body],
@@ -1032,7 +1074,7 @@ describe('parseArgs strict rule table (design D10)', () => {
         ['task delete', [], 4, undefined],
     ];
     const globals = ['--json', '--workspace', '--repo'];
-    const booleans = new Set(['--draft', '--resolved', '--unresolved', '--json']);
+    const booleans = new Set(['--draft', '--ready', '--resolved', '--unresolved', '--json']);
     /** `pr <words>` followed by ids up to the command's positional limit. */
     const commandLine = (words: string, maxPositionals: number): string[] => {
         const head = words.split(' ');
@@ -1149,6 +1191,7 @@ describe('pull request prose input', () => {
     };
 
     beforeEach(() => {
+        vi.clearAllMocks();
         vi.mocked(client.addComment)
             .mockReset()
             .mockResolvedValue(comment as never);
@@ -1162,6 +1205,9 @@ describe('pull request prose input', () => {
             .mockReset()
             .mockResolvedValue(task as never);
         vi.mocked(client.createPullRequest)
+            .mockReset()
+            .mockResolvedValue(pullRequest as never);
+        vi.mocked(client.getPullRequest)
             .mockReset()
             .mockResolvedValue(pullRequest as never);
         vi.mocked(client.updatePullRequest)
@@ -1435,24 +1481,29 @@ describe('pull request prose input', () => {
             expect(read).toBeLessThan(lookup);
         });
 
+        // The PUT also resends the fetched title and (empty) reviewer list.
         it('pr update --description-file - sends the stdin text as the description', async () => {
             readStdin.mockReturnValue(heredoc);
             const code = await run('pr', 'update', '42', '--description-file', '-');
             expect(code).toBe(0);
             expect(client.updatePullRequest).toHaveBeenCalledWith('ws', 'repo', 42, {
-                title: undefined,
+                title: 'T',
                 description: heredoc,
-                reviewerAccountIds: undefined,
+                reviewers: [],
             });
+            // The text is read before the pull request is fetched.
+            const [read] = readStdin.mock.invocationCallOrder;
+            const [fetch] = vi.mocked(client.getPullRequest).mock.invocationCallOrder;
+            expect(read).toBeLessThan(fetch);
         });
 
         it('pr update --description "" sends an empty description, clearing it', async () => {
             const code = await run('pr', 'update', '42', '--description', '');
             expect(code).toBe(0);
             expect(client.updatePullRequest).toHaveBeenCalledWith('ws', 'repo', 42, {
-                title: undefined,
+                title: 'T',
                 description: '',
-                reviewerAccountIds: undefined,
+                reviewers: [],
             });
         });
 
@@ -1565,10 +1616,16 @@ describe('pull request prose input', () => {
                 client.addComment,
             ],
             [
-                '--draft on pr update',
-                ['pr', 'update', '42', '--draft'],
-                ["Unknown option --draft for 'af bitbucket pr update'."],
-                client.updatePullRequest,
+                '--title on pr ready',
+                ['pr', 'ready', '42', '--title', 'New title'],
+                ["Unknown option --title for 'af bitbucket pr ready'."],
+                client.getPullRequest,
+            ],
+            [
+                '--ready=true on pr update',
+                ['pr', 'update', '42', '--ready=true'],
+                ['Option --ready does not take a value'],
+                client.getPullRequest,
             ],
             [
                 '--draft=true on pr create',
@@ -1581,6 +1638,7 @@ describe('pull request prose input', () => {
             expect(code).toBe(1);
             for (const message of messages) expect(stderr()).toContain(message);
             expect(request).not.toHaveBeenCalled();
+            expectNothingSent();
             expect(readStdin).not.toHaveBeenCalled();
             expect(logSpy).not.toHaveBeenCalled();
         });
@@ -1596,6 +1654,7 @@ describe('pull request prose input', () => {
             client.addTask,
             client.updateTask,
             client.createPullRequest,
+            client.getPullRequest,
             client.updatePullRequest,
             client.getRepository,
         ];
@@ -1646,6 +1705,11 @@ describe('pull request prose input', () => {
                 ['pr', 'update', '--description-file', '-'],
                 'pr id required',
             ],
+            [
+                'pr update has --ready and --draft',
+                ['pr', 'update', '42', '--description-file', '-', '--ready', '--draft'],
+                'Error: --ready and --draft are mutually exclusive',
+            ],
         ])('exits 1 without reading stdin when %s', async (_, argv, message) => {
             readStdin.mockReturnValue(heredoc);
             const code = await run(...argv);
@@ -1668,6 +1732,474 @@ describe('pull request prose input', () => {
             expect(stderr()).toContain('Could not resolve Bitbucket workspace and repo');
             expect(readStdin).not.toHaveBeenCalled();
             for (const request of requests) expect(request).not.toHaveBeenCalled();
+        });
+    });
+});
+
+// `pr update --ready | --draft`, the `pr ready` / `pr draft` aliases, the list
+// filters and the merge hint. Every PUT resends the current title, description
+// and reviewers (bitbucket/lib/update.ts); the client is mocked.
+describe('pull request draft state', () => {
+    const user = (id: string) => ({ type: 'user', account_id: id, display_name: id });
+    const stamp = '2026-11-01T00:00:00Z';
+    /** Pull request 42: open, not a draft, with a description and reviewers a1 and a2. */
+    const openPr = (overrides: Record<string, unknown> = {}) => ({
+        id: 42,
+        title: 'Current title',
+        description: 'Current description',
+        state: 'OPEN',
+        draft: false,
+        author: user('me'),
+        source: { branch: { name: 'feature/x' } },
+        destination: { branch: { name: 'main' }, repository: { full_name: 'ws/repo' } },
+        reviewers: [user('a1'), user('a2')],
+        participants: [],
+        created_on: stamp,
+        updated_on: stamp,
+        ...overrides,
+    });
+    const draftPr = () => openPr({ draft: true });
+    /** What the mocked PUT returns. */
+    const updated = openPr({ title: 'Returned by the PUT' });
+    const CURRENT_REVIEWERS = [{ account_id: 'a1' }, { account_id: 'a2' }];
+    const base = ['--workspace', 'ws', '--repo', 'repo'];
+    const run = (...argv: string[]): Promise<number> => handleBitbucket([...argv, ...base]);
+
+    let logSpy: MockInstance<typeof console.log>;
+    let errSpy: MockInstance<typeof console.error>;
+    let readStdin: MockInstance<() => string>;
+    let dir: string;
+
+    const stdout = (): string => logSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    const stderr = (): string => errSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    /** The body of the one PUT that was sent. */
+    const putBody = (): unknown => {
+        expect(client.updatePullRequest).toHaveBeenCalledTimes(1);
+        return vi.mocked(client.updatePullRequest).mock.calls[0]?.[3];
+    };
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.mocked(client.getPullRequest)
+            .mockReset()
+            .mockResolvedValue(openPr() as never);
+        vi.mocked(client.updatePullRequest)
+            .mockReset()
+            .mockResolvedValue(updated as never);
+        vi.mocked(client.mergePullRequest)
+            .mockReset()
+            .mockResolvedValue(openPr({ state: 'MERGED' }) as never);
+        vi.mocked(client.listPullRequests)
+            .mockReset()
+            .mockResolvedValue([] as never);
+        vi.mocked(client.listMyPullRequests)
+            .mockReset()
+            .mockResolvedValue({ pullRequests: [], skipped: [] } as never);
+        logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        readStdin = vi.spyOn(defaultTextInputIo, 'readStdin').mockImplementation(() => {
+            throw new Error('stdin must not be read');
+        });
+        dir = mkdtempSync(join(tmpdir(), 'af-draft-state-'));
+    });
+
+    afterEach(() => {
+        logSpy.mockRestore();
+        errSpy.mockRestore();
+        readStdin.mockRestore();
+        rmSync(dir, { recursive: true, force: true });
+    });
+
+    describe('argument errors', () => {
+        it.each<[string, string[], string]>([
+            [
+                'pr update --ready --draft',
+                ['pr', 'update', '42', '--ready', '--draft'],
+                'Error: --ready and --draft are mutually exclusive',
+            ],
+            [
+                'pr list --draft --ready',
+                ['pr', 'list', '--draft', '--ready'],
+                'Error: --ready and --draft are mutually exclusive',
+            ],
+            [
+                'pr mine --draft --ready',
+                ['pr', 'mine', '--draft', '--ready'],
+                'Error: --ready and --draft are mutually exclusive',
+            ],
+            [
+                'pr update without a change flag',
+                ['pr', 'update', '42'],
+                'Error: pr update needs at least one of --title, --description, ' +
+                    '--description-file, --reviewers, --ready or --draft',
+            ],
+            ['pr ready without an id', ['pr', 'ready'], 'Error: pr id required'],
+            ['pr draft without an id', ['pr', 'draft'], 'Error: pr id required'],
+            [
+                'pr ready with --title',
+                ['pr', 'ready', '42', '--title', 'New title'],
+                "Unknown option --title for 'af bitbucket pr ready'.",
+            ],
+            [
+                'pr update --ready=true',
+                ['pr', 'update', '42', '--ready=true'],
+                'Option --ready does not take a value',
+            ],
+        ])('%s exits 1 and sends nothing', async (_, argv, message) => {
+            const code = await run(...argv);
+            expect(code).toBe(1);
+            expect(stderr()).toContain(message);
+            expectNothingSent();
+            expect(readStdin).not.toHaveBeenCalled();
+            expect(logSpy).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('pr update', () => {
+        it('fetches the pull request before the PUT', async () => {
+            const code = await run('pr', 'update', '42', '--title', 'New title');
+            expect(code).toBe(0);
+            expect(client.getPullRequest).toHaveBeenCalledWith('ws', 'repo', 42);
+            const [fetch] = vi.mocked(client.getPullRequest).mock.invocationCallOrder;
+            const [put] = vi.mocked(client.updatePullRequest).mock.invocationCallOrder;
+            expect(fetch).toBeLessThan(put);
+            expect(client.updatePullRequest).toHaveBeenCalledWith('ws', 'repo', 42, {
+                title: 'New title',
+                description: 'Current description',
+                reviewers: CURRENT_REVIEWERS,
+            });
+            expect(stdout()).toContain('Returned by the PUT');
+        });
+
+        it('replaces the reviewer list with --reviewers', async () => {
+            await run('pr', 'update', '42', '--reviewers', 'a3');
+            expect(putBody()).toEqual({
+                title: 'Current title',
+                description: 'Current description',
+                reviewers: [{ account_id: 'a3' }],
+            });
+        });
+
+        it.each<[string, string[]]>([
+            ['--reviewers ""', ['--reviewers', '']],
+            ['--reviewers=', ['--reviewers=']],
+        ])('%s clears the reviewers', async (_, flag) => {
+            const code = await run('pr', 'update', '42', ...flag);
+            expect(code).toBe(0);
+            expect(putBody()).toEqual({
+                title: 'Current title',
+                description: 'Current description',
+                reviewers: [],
+            });
+        });
+
+        it('--ready with --reviewers "" on a ready pull request still clears the reviewers', async () => {
+            const code = await run('pr', 'update', '42', '--ready', '--reviewers', '');
+            expect(code).toBe(0);
+            expect(putBody()).toEqual({
+                title: 'Current title',
+                description: 'Current description',
+                reviewers: [],
+            });
+        });
+
+        it('accepts --draft and moves an open pull request back to draft', async () => {
+            const code = await run('pr', 'update', '42', '--draft');
+            expect(code).toBe(0);
+            expect(putBody()).toEqual({
+                title: 'Current title',
+                description: 'Current description',
+                reviewers: CURRENT_REVIEWERS,
+                draft: true,
+            });
+        });
+
+        it('--ready marks a draft ready, keeping its reviewers', async () => {
+            vi.mocked(client.getPullRequest).mockResolvedValue(draftPr() as never);
+            const code = await run('pr', 'update', '42', '--ready');
+            expect(code).toBe(0);
+            expect(putBody()).toEqual({
+                title: 'Current title',
+                description: 'Current description',
+                reviewers: CURRENT_REVIEWERS,
+                draft: false,
+            });
+        });
+
+        it('finishes a draft in one PUT with --description-file and --ready', async () => {
+            vi.mocked(client.getPullRequest).mockResolvedValue(draftPr() as never);
+            const path = join(dir, 'final.md');
+            writeFileSync(path, '## Final\n\nReady for review.\n');
+            const code = await run('pr', 'update', '42', '--description-file', path, '--ready');
+            expect(code).toBe(0);
+            expect(putBody()).toEqual({
+                title: 'Current title',
+                description: '## Final\n\nReady for review.\n',
+                reviewers: CURRENT_REVIEWERS,
+                draft: false,
+            });
+        });
+
+        it('leaves an unchanged draft state out of the body', async () => {
+            await run('pr', 'update', '42', '--title', 'T2', '--ready');
+            expect(putBody()).not.toHaveProperty('draft');
+            expect(putBody()).toMatchObject({ title: 'T2' });
+        });
+
+        it.each(['MERGED', 'DECLINED', 'SUPERSEDED'])(
+            'reports a %s pull request and sends no PUT',
+            async state => {
+                vi.mocked(client.getPullRequest).mockResolvedValue(openPr({ state }) as never);
+                const code = await run('pr', 'update', '42', '--title', 'T');
+                expect(code).toBe(1);
+                expect(stderr()).toContain(
+                    `Error: pull request 42 is ${state}; only open pull requests can be updated`,
+                );
+                expect(client.updatePullRequest).not.toHaveBeenCalled();
+                expect(logSpy).not.toHaveBeenCalled();
+            },
+        );
+
+        it('prints the notice and sends no PUT when the pull request is already ready', async () => {
+            const code = await run('pr', 'update', '42', '--ready');
+            expect(code).toBe(0);
+            expect(stdout()).toBe('Pull request 42 is already ready for review');
+            expect(client.getPullRequest).toHaveBeenCalledTimes(1);
+            expect(client.updatePullRequest).not.toHaveBeenCalled();
+            expect(errSpy).not.toHaveBeenCalled();
+        });
+
+        it('with --json, prints the fetched pull request on stdout and the notice on stderr', async () => {
+            const code = await run('pr', 'update', '42', '--ready', '--json');
+            expect(code).toBe(0);
+            expect(JSON.parse(stdout())).toEqual(openPr());
+            expect(stderr()).toBe('Pull request 42 is already ready for review');
+            expect(client.updatePullRequest).not.toHaveBeenCalled();
+        });
+
+        it('with --json, prints the pull request the PUT returned', async () => {
+            const code = await run('pr', 'update', '42', '--title', 'New title', '--json');
+            expect(code).toBe(0);
+            expect(JSON.parse(stdout())).toEqual(updated);
+        });
+    });
+
+    describe('pr ready and pr draft', () => {
+        it('pr ready sends draft: false to a draft, keeping title, description and reviewers', async () => {
+            vi.mocked(client.getPullRequest).mockResolvedValue(draftPr() as never);
+            const code = await run('pr', 'ready', '42');
+            expect(code).toBe(0);
+            expect(client.updatePullRequest).toHaveBeenCalledWith('ws', 'repo', 42, {
+                title: 'Current title',
+                description: 'Current description',
+                reviewers: CURRENT_REVIEWERS,
+                draft: false,
+            });
+            expect(stdout()).toContain('Returned by the PUT');
+        });
+
+        it('pr draft sends draft: true to an open pull request', async () => {
+            const code = await run('pr', 'draft', '42');
+            expect(code).toBe(0);
+            expect(putBody()).toMatchObject({ draft: true });
+        });
+
+        it('pr draft prints the notice and sends no PUT when it is already a draft', async () => {
+            vi.mocked(client.getPullRequest).mockResolvedValue(draftPr() as never);
+            const code = await run('pr', 'draft', '42');
+            expect(code).toBe(0);
+            expect(stdout()).toBe('Pull request 42 is already a draft');
+            expect(client.updatePullRequest).not.toHaveBeenCalled();
+        });
+
+        it('pr ready prints the notice when the pull request is already ready', async () => {
+            const code = await run('pr', 'ready', '42');
+            expect(code).toBe(0);
+            expect(stdout()).toBe('Pull request 42 is already ready for review');
+            expect(client.updatePullRequest).not.toHaveBeenCalled();
+        });
+
+        it('pr ready reports a pull request that is not open', async () => {
+            vi.mocked(client.getPullRequest).mockResolvedValue(
+                openPr({ state: 'DECLINED', draft: true }) as never,
+            );
+            const code = await run('pr', 'ready', '42');
+            expect(code).toBe(1);
+            expect(stderr()).toContain('pull request 42 is DECLINED');
+            expect(client.updatePullRequest).not.toHaveBeenCalled();
+        });
+
+        it('pr ready --json prints the raw pull request the PUT returned', async () => {
+            vi.mocked(client.getPullRequest).mockResolvedValue(draftPr() as never);
+            const code = await run('pr', 'ready', '42', '--json');
+            expect(code).toBe(0);
+            expect(JSON.parse(stdout())).toEqual(updated);
+        });
+    });
+
+    // The resent reviewer list can contain an inactive user, which Bitbucket
+    // rejects with "Malformed reviewers list" (BCLOUD-23093, design Risks).
+    describe('a rejected reviewer list', () => {
+        it('adds the --reviewers hint after Bitbucket’s message on a 400 that mentions reviewers', async () => {
+            vi.mocked(client.getPullRequest).mockResolvedValue(draftPr() as never);
+            vi.mocked(client.updatePullRequest).mockRejectedValue(
+                new AtlassianHttpError('Malformed reviewers list', 400),
+            );
+            const code = await run('pr', 'ready', '42');
+            expect(code).toBe(1);
+            expect(errSpy).toHaveBeenCalledTimes(2);
+            const [message, hint] = errSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+            expect(message).toContain('Error: Malformed reviewers list');
+            expect(hint).toContain('an update resends the current reviewers');
+            expect(hint).toContain('Pass --reviewers to pr update');
+            expect(hint).toContain('remove the inactive reviewer in Bitbucket');
+            expect(logSpy).not.toHaveBeenCalled();
+        });
+
+        it('adds the hint when only Bitbucket’s field errors mention reviewers', async () => {
+            // atlassian/lib/request.ts appends the envelope's error.fields to a generic message.
+            vi.mocked(client.updatePullRequest).mockRejectedValue(
+                new AtlassianHttpError('Bad request\nreviewers: Malformed reviewers list', 400),
+            );
+            const code = await run('pr', 'update', '42', '--title', 'T');
+            expect(code).toBe(1);
+            expect(stderr()).toContain('Error: Bad request\nreviewers: Malformed reviewers list');
+            expect(stderr()).toContain('Pass --reviewers to pr update');
+        });
+
+        it.each<[string, Error]>([
+            ['a 400 that does not mention reviewers', new AtlassianHttpError('Bad title', 400)],
+            ['a 500 that mentions reviewers', new AtlassianHttpError('reviewers unavailable', 500)],
+            ['a network error that mentions reviewers', new Error('reviewers: fetch failed')],
+        ])('prints only Bitbucket’s message for %s', async (_, failure) => {
+            vi.mocked(client.updatePullRequest).mockRejectedValue(failure);
+            const code = await run('pr', 'update', '42', '--title', 'T');
+            expect(code).toBe(1);
+            expect(errSpy).toHaveBeenCalledTimes(1);
+            expect(stderr()).toContain(`Error: ${failure.message}`);
+            expect(stderr()).not.toContain('--reviewers');
+        });
+    });
+
+    describe('list filters', () => {
+        it('pr list --draft sends q=draft=true', async () => {
+            const code = await run('pr', 'list', '--draft');
+            expect(code).toBe(0);
+            expect(client.listPullRequests).toHaveBeenCalledWith('ws', 'repo', {
+                state: 'OPEN',
+                q: 'draft=true',
+            });
+        });
+
+        it('pr list --ready sends q=draft=false', async () => {
+            await run('pr', 'list', '--ready');
+            expect(vi.mocked(client.listPullRequests).mock.calls[0]?.[2]?.q).toBe('draft=false');
+        });
+
+        it('pr list --author alice --draft joins both clauses with AND', async () => {
+            await run('pr', 'list', '--author', 'alice', '--draft');
+            expect(vi.mocked(client.listPullRequests).mock.calls[0]?.[2]?.q).toBe(
+                'author.nickname="alice" AND draft=true',
+            );
+        });
+
+        it('pr mine --ready passes q=draft=false', async () => {
+            const code = await handleBitbucket(['pr', 'mine', '--ready']);
+            expect(code).toBe(0);
+            expect(client.listMyPullRequests).toHaveBeenCalledWith({
+                workspace: undefined,
+                state: 'OPEN',
+                q: 'draft=false',
+                limit: undefined,
+            });
+        });
+
+        it('pr mine --draft --limit 2 filters on the server and keeps the limit', async () => {
+            await handleBitbucket(['pr', 'mine', '--draft', '--limit', '2']);
+            expect(client.listMyPullRequests).toHaveBeenCalledWith(
+                expect.objectContaining({ q: 'draft=true', limit: 2 }),
+            );
+        });
+
+        it('pr list and pr mine send no q without a filter', async () => {
+            await run('pr', 'list');
+            await handleBitbucket(['pr', 'mine']);
+            expect(vi.mocked(client.listPullRequests).mock.calls[0]?.[2]?.q).toBeUndefined();
+            expect(vi.mocked(client.listMyPullRequests).mock.calls[0]?.[0]?.q).toBeUndefined();
+        });
+
+        it('pr list marks a draft as OPEN (draft) in the State cell', async () => {
+            vi.mocked(client.listPullRequests).mockResolvedValue([
+                openPr({ id: 7, draft: true }),
+                openPr({ id: 8 }),
+            ] as never);
+            await run('pr', 'list');
+            const rows = stdout().split('\n').slice(2);
+            expect(rows[0]).toMatch(/^\| #7 \| OPEN \(draft\) \| /);
+            expect(rows[1]).toMatch(/^\| #8 \| OPEN \| /);
+        });
+    });
+
+    // The merge-error fixture of task 1.5 does not exist: the sandbox spike did
+    // not run. These errors are synthetic. The hint must depend only on the
+    // `draft` field of the follow-up GET, never on the error text.
+    describe('pr merge of a draft', () => {
+        it('prints Bitbucket’s message, then the draft hint, and exits 1', async () => {
+            vi.mocked(client.mergePullRequest).mockRejectedValue(
+                new AtlassianHttpError('Merge checks failed', 400),
+            );
+            vi.mocked(client.getPullRequest).mockResolvedValue(draftPr() as never);
+            const code = await run('pr', 'merge', '42');
+            expect(code).toBe(1);
+            expect(client.getPullRequest).toHaveBeenCalledWith('ws', 'repo', 42);
+            const lines = errSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+            expect(lines).toHaveLength(2);
+            expect(lines[0]).toContain('Error: Merge checks failed');
+            expect(lines[1]).toContain(
+                'Error: PR #42 is a draft and cannot be merged. Mark it ready first: af bb pr ready 42',
+            );
+            expect(logSpy).not.toHaveBeenCalled();
+        });
+
+        it('prints only Bitbucket’s message when the pull request is not a draft', async () => {
+            // The text mentions a draft, yet only the fetched draft field counts.
+            vi.mocked(client.mergePullRequest).mockRejectedValue(
+                new AtlassianHttpError('Draft pull requests cannot be merged', 400),
+            );
+            const code = await run('pr', 'merge', '42');
+            expect(code).toBe(1);
+            expect(client.getPullRequest).toHaveBeenCalledTimes(1);
+            expect(errSpy).toHaveBeenCalledTimes(1);
+            expect(stderr()).toContain('Error: Draft pull requests cannot be merged');
+            expect(stderr()).not.toContain('af bb pr ready');
+        });
+
+        it('prints only Bitbucket’s message when the follow-up GET fails', async () => {
+            vi.mocked(client.mergePullRequest).mockRejectedValue(
+                new AtlassianHttpError('Merge checks failed', 400),
+            );
+            vi.mocked(client.getPullRequest).mockRejectedValue(new AtlassianHttpError('Gone', 404));
+            const code = await run('pr', 'merge', '42');
+            expect(code).toBe(1);
+            expect(errSpy).toHaveBeenCalledTimes(1);
+            expect(stderr()).toContain('Error: Merge checks failed');
+            expect(stderr()).not.toContain('Gone');
+        });
+
+        it('does not fetch the pull request after a failure that is not an HTTP error', async () => {
+            vi.mocked(client.mergePullRequest).mockRejectedValue(new TypeError('fetch failed'));
+            const code = await run('pr', 'merge', '42');
+            expect(code).toBe(1);
+            expect(client.getPullRequest).not.toHaveBeenCalled();
+            expect(stderr()).toContain('Error: fetch failed');
+        });
+
+        it('makes no request besides the merge when it succeeds', async () => {
+            const code = await run('pr', 'merge', '42');
+            expect(code).toBe(0);
+            expect(client.mergePullRequest).toHaveBeenCalledTimes(1);
+            expect(client.getPullRequest).not.toHaveBeenCalled();
+            expect(stdout()).toContain('| State | MERGED |');
         });
     });
 });
@@ -1749,6 +2281,21 @@ describe('showBitbucketHelp', () => {
         expect(help).toContain('\\n stays a backslash and an n; it is never');
         expect(help).toContain('pr comment add');
         expect(help).toContain('pr task add');
+    });
+
+    it('documents the draft commands, flags and behaviour', () => {
+        const help = reference();
+        const prose = help.replace(/\s+/g, ' ');
+        expect(help).toContain('pr ready <id>');
+        expect(help).toContain('pr draft <id>');
+        expect(help).toContain('[--reviewers a,b] [--ready | --draft]');
+        // pr list and pr mine each wrap the draft filter onto their second line.
+        expect(help.match(/^ {10}\[--draft \| --ready\] \[--checks\]$/gm)).toHaveLength(2);
+        expect(prose).toContain(
+            'Reviewers on a draft are not notified until it is marked ready, and a draft cannot be merged',
+        );
+        expect(help).toContain('af bb pr update 42 --description-file final.md --ready');
+        expect(prose).toContain('pr create, pr update, pr ready, pr draft, pr comment and pr task');
     });
 
     it('prints the multi-line example flush-left so it can be copied', () => {

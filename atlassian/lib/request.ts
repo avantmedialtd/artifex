@@ -95,7 +95,7 @@ async function parseErrorMessage(response: Response): Promise<string> {
         }
         if (errorData.error?.message) {
             // Bitbucket Cloud envelope
-            return errorData.error.message;
+            return withFieldErrors(errorData.error.message, errorData.error.fields);
         }
         if (errorData.message) {
             return errorData.message;
@@ -109,6 +109,27 @@ async function parseErrorMessage(response: Response): Promise<string> {
         // fall through to default
     }
     return fallback;
+}
+
+/**
+ * Bitbucket Cloud's error envelope keeps per-field errors in `error.fields`,
+ * and its message may not repeat them (e.g. "Bad request"). Each is appended as
+ * a `field: detail` line, unless the message already contains that line, so
+ * the detail reaches the user and the callers that match on it (the reviewers
+ * hint of `af bb pr update`).
+ */
+function withFieldErrors(message: string, fields: Record<string, unknown> | undefined): string {
+    const entries = fields && typeof fields === 'object' ? Object.entries(fields) : [];
+    const lines = entries
+        .map(([field, detail]) => `${field}: ${fieldDetail(detail)}`)
+        .filter(line => !message.includes(line));
+    return [message, ...lines].join('\n');
+}
+
+/** A field's messages, which Bitbucket sends as a list, joined with `; `. */
+function fieldDetail(detail: unknown): string {
+    if (Array.isArray(detail)) return detail.map(fieldDetail).join('; ');
+    return typeof detail === 'string' ? detail : JSON.stringify(detail);
 }
 
 /**
@@ -137,7 +158,10 @@ export async function requestText(url: string, options: RequestInit = {}): Promi
                     if (errorData.errorMessages?.length) {
                         errorMessage = errorData.errorMessages.join('\n');
                     } else if (errorData.error?.message) {
-                        errorMessage = errorData.error.message;
+                        errorMessage = withFieldErrors(
+                            errorData.error.message,
+                            errorData.error.fields,
+                        );
                     } else if (errorData.message) {
                         errorMessage = errorData.message;
                     } else if (errorData.errors) {

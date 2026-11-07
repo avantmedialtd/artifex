@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
     filterCommentsByResolution,
     filterTasksByResolution,
+    pullRequestQuery,
     resolutionFilterFromFlags,
 } from './filters.ts';
 import type { BitbucketComment, BitbucketTask } from './types.ts';
@@ -122,6 +123,32 @@ describe('filterCommentsByResolution', () => {
         // The walk is bounded; the exact root is arbitrary but must terminate.
         expect(() => filterCommentsByResolution([a, b], 'unresolved')).not.toThrow();
         expect(filterCommentsByResolution([a, b], 'unresolved').length).toBe(2);
+    });
+});
+
+describe('pullRequestQuery', () => {
+    it('builds the author clause for an author alone', () => {
+        expect(pullRequestQuery({ author: 'alice' })).toBe('author.nickname="alice"');
+    });
+
+    it('builds draft=true or draft=false for a draft filter alone', () => {
+        expect(pullRequestQuery({ draft: true })).toBe('draft=true');
+        expect(pullRequestQuery({ draft: false })).toBe('draft=false');
+    });
+
+    it('joins the author and draft clauses with AND', () => {
+        expect(pullRequestQuery({ author: 'alice', draft: true })).toBe(
+            'author.nickname="alice" AND draft=true',
+        );
+        expect(pullRequestQuery({ author: 'bob', draft: false })).toBe(
+            'author.nickname="bob" AND draft=false',
+        );
+    });
+
+    it('returns undefined when there is nothing to filter', () => {
+        expect(pullRequestQuery({})).toBeUndefined();
+        expect(pullRequestQuery({ author: undefined, draft: undefined })).toBeUndefined();
+        expect(pullRequestQuery({ author: '' })).toBeUndefined();
     });
 });
 

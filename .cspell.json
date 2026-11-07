@@ -125,6 +125,7 @@
         "scriptable",
         "ENEEDAUTH",
         "INPROGRESS",
-        "Bvalues"
+        "Bvalues",
+        "resends"
     ]
 }

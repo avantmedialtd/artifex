@@ -154,20 +154,23 @@ function appendStateParams(
 const REVIEW_FIELDS = '+values.participants,+values.reviewers';
 
 /**
- * Set `fields=REVIEW_FIELDS` on `url`, replacing any `fields` already present.
- * It goes through `URLSearchParams`, which encodes `+` as `%2B`; an unencoded
- * `+` decodes as a space and silently matches nothing. The list functions apply
- * it to their first URL and, as `mapNext`, to every `next` URL, so review data
- * survives whether Bitbucket drops, echoes, or mis-encodes `fields` there.
+ * Set `fields=REVIEW_FIELDS` on `url`, and `q` when the call has one, replacing
+ * any value already present. It goes through `URLSearchParams`, which encodes
+ * `+` as `%2B`; an unencoded `+` decodes as a space and silently matches
+ * nothing. The list functions apply it to their first URL and, as `mapNext`, to
+ * every `next` URL, so review data and the filter survive whether Bitbucket
+ * drops, echoes, or mis-encodes them there.
  */
-function withReviewFields(url: string): string {
+function withListParams(url: string, q: string | undefined): string {
     const parsed = new URL(url);
     parsed.searchParams.set('fields', REVIEW_FIELDS);
+    if (q) parsed.searchParams.set('q', q);
     return parsed.toString();
 }
 
 export interface ListPullRequestsOptions {
     state?: BitbucketPullRequestState | 'ALL';
+    /** Bitbucket filter query, e.g. `author.nickname="alice" AND draft=true`. */
     q?: string;
 }
 
@@ -178,10 +181,13 @@ export async function listPullRequests(
 ): Promise<BitbucketPullRequest[]> {
     const params = new URLSearchParams();
     appendStateParams(params, opts.state);
-    if (opts.q) params.append('q', opts.q);
-    const url = withReviewFields(`${repoUrl(workspace, repo)}/pullrequests?${params.toString()}`);
+    const url = withListParams(
+        `${repoUrl(workspace, repo)}/pullrequests?${params.toString()}`,
+        opts.q,
+    );
+    const mapNext = (next: string): string => withListParams(next, opts.q);
     const out: BitbucketPullRequest[] = [];
-    for await (const pr of paginate<BitbucketPullRequest>(url, { mapNext: withReviewFields })) {
+    for await (const pr of paginate<BitbucketPullRequest>(url, { mapNext })) {
         out.push(pr);
     }
     return out;
@@ -236,24 +242,16 @@ export async function createPullRequest(
     });
 }
 
-export interface UpdatePullRequestOptions {
-    title?: string;
-    description?: string;
-    reviewerAccountIds?: string[];
-}
-
+/**
+ * PUT `body` to the pull request exactly as given. Which unchanged fields it
+ * must carry is decided by `buildPullRequestUpdate` in `update.ts`.
+ */
 export async function updatePullRequest(
     workspace: string,
     repo: string,
     id: number,
-    opts: UpdatePullRequestOptions,
+    body: BitbucketUpdatePullRequestRequest,
 ): Promise<BitbucketPullRequest> {
-    const body: BitbucketUpdatePullRequestRequest = {};
-    if (opts.title !== undefined) body.title = opts.title;
-    if (opts.description !== undefined) body.description = opts.description;
-    if (opts.reviewerAccountIds) {
-        body.reviewers = opts.reviewerAccountIds.map(accountId => ({ account_id: accountId }));
-    }
     return request<BitbucketPullRequest>(`${repoUrl(workspace, repo)}/pullrequests/${id}`, {
         method: 'PUT',
         body: JSON.stringify(body),
@@ -720,6 +718,8 @@ export async function listUserWorkspaces(): Promise<BitbucketWorkspaceAccess[]> 
 
 export interface ListUserPullRequestsOptions {
     state?: BitbucketPullRequestState | 'ALL';
+    /** Bitbucket filter query, e.g. `draft=true`. Set on every page request. */
+    q?: string;
     /** Stop draining pages once this many pull requests are collected. Unbounded when omitted. */
     limit?: number;
 }
@@ -738,12 +738,14 @@ export async function listWorkspacePullRequestsForUser(
     const params = new URLSearchParams();
     appendStateParams(params, opts.state);
     params.append('sort', '-updated_on');
-    const url = withReviewFields(
+    const url = withListParams(
         `${API_BASE}/workspaces/${encodeURIComponent(workspace)}` +
             `/pullrequests/${encodeURIComponent(user)}?${params.toString()}`,
+        opts.q,
     );
+    const mapNext = (next: string): string => withListParams(next, opts.q);
     const out: BitbucketPullRequest[] = [];
-    for await (const pr of paginate<BitbucketPullRequest>(url, { mapNext: withReviewFields })) {
+    for await (const pr of paginate<BitbucketPullRequest>(url, { mapNext })) {
         out.push(pr);
         if (opts.limit !== undefined && out.length >= opts.limit) break;
     }
@@ -820,6 +822,7 @@ export async function listMyPullRequests(
             try {
                 return await listWorkspacePullRequestsForUser(workspace, user, {
                     state: opts.state,
+                    q: opts.q,
                     limit: opts.limit,
                 });
             } catch (err) {

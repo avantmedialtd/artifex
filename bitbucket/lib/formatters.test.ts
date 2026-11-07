@@ -8,6 +8,7 @@ import {
     formatMembers,
     formatMyPullRequestList,
     formatPipelineList,
+    formatPullRequest,
     formatPullRequestList,
     formatReviewers,
     formatSrcList,
@@ -242,6 +243,46 @@ describe('pull request list review and signal columns', () => {
                 { ...base, id: 3 },
             ]);
             expect([0, 1, 2].map(i => row(out, i).Tasks)).toEqual(['2', '—', '—']);
+        });
+    });
+
+    describe('State cell', () => {
+        const draft = { ...base, id: 7, draft: true };
+        const ready = { ...base, id: 8, draft: false };
+        const unset = { ...base, id: 9 };
+
+        it.each([
+            ['pr list', formatPullRequestList],
+            ['pr mine', formatMyPullRequestList],
+        ])(
+            '%s marks a draft as OPEN (draft) and a pull request that is not one as OPEN',
+            (_, format) => {
+                const out = format([draft, ready, unset]);
+                expect([0, 1, 2].map(i => row(out, i).State)).toEqual([
+                    'OPEN (draft)',
+                    'OPEN',
+                    'OPEN',
+                ]);
+            },
+        );
+
+        it.each([
+            ['pr list', formatPullRequestList],
+            ['pr mine', formatMyPullRequestList],
+        ])('%s marks a draft the same way when signals are shown', (_, format) => {
+            const out = format([draft], [signals()]);
+            expect(row(out).State).toBe('OPEN (draft)');
+        });
+
+        it('keeps the State row of formatPullRequest as it was', () => {
+            const stateRow = (pr: BitbucketPullRequest) =>
+                formatPullRequest(pr)
+                    .split('\n')
+                    .filter(line => line.startsWith('| State |'));
+            expect(stateRow(draft)).toEqual(['| State | OPEN (draft) |']);
+            expect(stateRow(ready)).toEqual(['| State | OPEN |']);
+            expect(stateRow(unset)).toEqual(['| State | OPEN |']);
+            expect(stateRow({ ...base, state: 'MERGED' })).toEqual(['| State | MERGED |']);
         });
     });
 

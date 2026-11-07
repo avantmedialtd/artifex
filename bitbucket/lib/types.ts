@@ -309,6 +309,7 @@ export interface BitbucketUpdatePullRequestRequest {
     title?: string;
     description?: string;
     reviewers?: { account_id: string }[];
+    draft?: boolean;
 }
 
 export interface BitbucketCreateCommentRequest {

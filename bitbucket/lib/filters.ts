@@ -1,14 +1,30 @@
 /**
- * Client-side resolution-state filters for Bitbucket PR comments and tasks.
+ * Client-side resolution-state filters for Bitbucket PR comments and tasks, and
+ * the server-side `q` filter of the pull request lists.
  *
  * Kept separate from the formatters (which render to strings) because these are
  * pure data transforms over the already-drained page set. Filtering happens
  * client-side rather than via the API `q` param: resolution lives on a thread's
  * root comment, and only a client-side walk can keep a resolved root together
  * with its replies (which carry no `resolution` of their own).
+ *
+ * Pull request lists are the opposite case: `pullRequestQuery` builds their
+ * server-side `q` filter, so that `--limit` counts only matching pull requests.
  */
 
 import type { BitbucketComment, BitbucketTask } from './types.ts';
+
+/**
+ * The `q` filter of `pr list` and `pr mine`: `author.nickname="<author>"` for
+ * `--author`, `draft=true` for `--draft` or `draft=false` for `--ready`, joined
+ * with ` AND ` when both are given. `undefined` when there is nothing to filter.
+ */
+export function pullRequestQuery(filter: { author?: string; draft?: boolean }): string | undefined {
+    const clauses: string[] = [];
+    if (filter.author) clauses.push(`author.nickname="${filter.author}"`);
+    if (filter.draft !== undefined) clauses.push(`draft=${filter.draft}`);
+    return clauses.length > 0 ? clauses.join(' AND ') : undefined;
+}
 
 export type ResolutionFilter = 'resolved' | 'unresolved';
 

@@ -29,6 +29,8 @@ import {
     listWorkspacePullRequestsForUser,
     listMyPullRequests,
     listPullRequestSignals,
+    createPullRequest,
+    updatePullRequest,
 } from './client.ts';
 
 // resolveComment / reopenComment are thin HTTP wrappers with no body-builder to
@@ -344,6 +346,63 @@ describe('read surface client URLs', () => {
     });
 });
 
+// --- Pull request update ------------------------------------------------------
+
+// `buildPullRequestUpdate` (update.ts) decides the body; the client must send it
+// as given, adding and dropping nothing.
+describe('createPullRequest', () => {
+    beforeEach(() => {
+        vi.mocked(bbRequestModule.bbRequest)
+            .mockReset()
+            .mockResolvedValue({ id: 1 } as never);
+    });
+
+    it('sends no reviewers for an empty reviewer list, which `--reviewers ""` gives', async () => {
+        await createPullRequest('ws', 'repo', {
+            title: 'T',
+            source: 'feature/x',
+            reviewerAccountIds: [],
+        });
+        const [url, init] = vi.mocked(bbRequestModule.bbRequest).mock.calls[0] ?? [];
+        expect(url).toBe(`${REPO}/pullrequests`);
+        expect(JSON.parse(init?.body as string)).toStrictEqual({
+            title: 'T',
+            source: { branch: { name: 'feature/x' } },
+        });
+    });
+});
+
+describe('updatePullRequest', () => {
+    beforeEach(() => {
+        vi.mocked(bbRequestModule.bbRequest)
+            .mockReset()
+            .mockResolvedValue({ id: 42, title: 'T' } as never);
+    });
+
+    it('PUTs the body to the pull request URL, serialized unchanged', async () => {
+        const body = {
+            title: 'T',
+            description: '',
+            reviewers: [{ account_id: 'a1' }, { account_id: 'a2' }],
+            draft: false,
+        };
+        const result = await updatePullRequest('ws', 'repo', 42, body);
+        expect(bbRequestModule.bbRequest).toHaveBeenCalledTimes(1);
+        expect(bbRequestModule.bbRequest).toHaveBeenCalledWith(`${REPO}/pullrequests/42`, {
+            method: 'PUT',
+            body: JSON.stringify(body),
+        });
+        expect(result).toEqual({ id: 42, title: 'T' });
+    });
+
+    it('adds no field the body does not carry', async () => {
+        await updatePullRequest('ws', 'repo', 7, { draft: true });
+        const [url, init] = vi.mocked(bbRequestModule.bbRequest).mock.calls[0] ?? [];
+        expect(url).toBe(`${REPO}/pullrequests/7`);
+        expect(JSON.parse(init?.body as string)).toStrictEqual({ draft: true });
+    });
+});
+
 // --- Pull request state parameters ----------------------------------------
 
 describe('pullRequestStates', () => {
@@ -483,6 +542,90 @@ describe('review fields on the pull request list requests', () => {
     );
 });
 
+// --- The q filter on the pull request list requests ---------------------------
+
+// `--author` and `--draft` / `--ready` reach both list endpoints as `q`, which is
+// set again on every `next` URL, so the filter never depends on Bitbucket
+// echoing it there.
+describe('q on the pull request list requests', () => {
+    const Q = 'author.nickname="alice" AND draft=true';
+    const FIELDS = '+values.participants,+values.reviewers';
+
+    const LIST_CALLS = [
+        {
+            name: 'listPullRequests',
+            list: (q?: string) => listPullRequests('ws', 'repo', { q }),
+            others: { state: ['OPEN'] },
+            next: `${REPO}/pullrequests?state=OPEN&page=2`,
+        },
+        {
+            name: 'listWorkspacePullRequestsForUser',
+            list: (q?: string) => listWorkspacePullRequestsForUser('ws', '{me-uuid}', { q }),
+            others: { state: ['OPEN'], sort: ['-updated_on'] },
+            next: `${BASE}/workspaces/ws/pullrequests/%7Bme-uuid%7D?state=OPEN&sort=-updated_on&page=2`,
+        },
+    ];
+
+    beforeEach(() => {
+        vi.mocked(bbRequestModule.bbPaginate)
+            .mockReset()
+            .mockImplementation(() => gen([]) as never);
+    });
+
+    function paginateCall(): { url: URL; mapNext: (next: string) => string } {
+        const call = vi.mocked(bbRequestModule.bbPaginate).mock.calls[0];
+        const mapNext = call?.[1]?.mapNext;
+        if (!mapNext) throw new Error('expected a mapNext hook');
+        return { url: new URL(call?.[0] as string), mapNext };
+    }
+
+    it.each(LIST_CALLS)(
+        '$name sends q on its first URL next to fields, state and sort',
+        async ({ list, others }) => {
+            await list(Q);
+            const { url } = paginateCall();
+            expect(url.searchParams.getAll('q')).toEqual([Q]);
+            expect(url.searchParams.getAll('fields')).toEqual([FIELDS]);
+            for (const [key, values] of Object.entries(others)) {
+                expect(url.searchParams.getAll(key)).toEqual(values);
+            }
+        },
+    );
+
+    it.each(LIST_CALLS)('$name adds q to a next URL that lacks it', async ({ list, next }) => {
+        await list(Q);
+        const mapped = new URL(paginateCall().mapNext(next));
+        expect(mapped.searchParams.getAll('q')).toEqual([Q]);
+        expect(mapped.searchParams.getAll('fields')).toEqual([FIELDS]);
+        expect(mapped.searchParams.get('page')).toBe('2');
+    });
+
+    it.each(LIST_CALLS)(
+        '$name replaces a q that a next URL echoes, leaving exactly one',
+        async ({ list, next }) => {
+            await list(Q);
+            const { mapNext } = paginateCall();
+            const echoed = `${next}&${new URLSearchParams({ q: Q }).toString()}`;
+            const stale = `${next}&${new URLSearchParams([
+                ['q', 'draft=false'],
+                ['q', 'draft=true'],
+            ]).toString()}`;
+            for (const input of [echoed, stale]) {
+                const mapped = new URL(mapNext(input));
+                expect(mapped.searchParams.getAll('q')).toEqual([Q]);
+                expect(mapped.searchParams.get('page')).toBe('2');
+            }
+        },
+    );
+
+    it.each(LIST_CALLS)('$name sends no q without a filter', async ({ list, next }) => {
+        await list();
+        const { url, mapNext } = paginateCall();
+        expect(url.searchParams.has('q')).toBe(false);
+        expect(new URL(mapNext(next)).searchParams.has('q')).toBe(false);
+    });
+});
+
 // --- My pull requests across workspaces ---------------------------------------
 
 const ME = { account_id: 'acc-1', display_name: 'Me', uuid: '{me-uuid}' };
@@ -611,6 +754,16 @@ describe('listMyPullRequests', () => {
         expect(paginatedUrls()[0]?.startsWith(`${BASE}/workspaces/w1/pullrequests/acc-1?`)).toBe(
             true,
         );
+    });
+
+    it('forwards q to the request of every workspace', async () => {
+        routePaginate(['w1', 'w2'], { w1: () => gen([]), w2: () => gen([]) });
+        await listMyPullRequests({ q: 'draft=false' });
+        const workspaceUrls = paginatedUrls().filter(u => u.includes('/pullrequests/'));
+        expect(workspaceUrls).toHaveLength(2);
+        for (const url of workspaceUrls) {
+            expect(new URL(url).searchParams.getAll('q')).toEqual(['draft=false']);
+        }
     });
 
     it('an explicit workspace skips /user/workspaces', async () => {

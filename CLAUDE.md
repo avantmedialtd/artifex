@@ -358,6 +358,7 @@ The shared infrastructure lives in `atlassian/lib/`:
     - `request<T>(url)` for JSON endpoints
     - `requestText(url)` for plain-text endpoints (Bitbucket pipeline logs, PR diffs)
     - `paginate<T>(url)` async-iterable for cursor-paginated endpoints (Bitbucket Cloud)
+    - a non-2xx response throws `AtlassianHttpError` (the parsed message plus the HTTP `status`); a Bitbucket error's per-field details (`error.fields`) are appended to its message as `field: detail` lines
 
 ### Jira Custom Fields
 
@@ -421,12 +422,16 @@ Generate a workspace API token at `https://bitbucket.org/<workspace>/workspace/s
 
 ```bash
 # Pull requests
-af bb pr list [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--mine | --author Q] [--checks]
-af bb pr mine [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--workspace W] [--limit N] [--checks]
+af bb pr list [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--mine | --author Q]
+              [--draft | --ready] [--checks]
+af bb pr mine [--state OPEN|MERGED|DECLINED|SUPERSEDED|ALL] [--workspace W] [--limit N]
+              [--draft | --ready] [--checks]
 af bb pr get <id>                           af bb pr diff <id>
 af bb pr create --title T [--from B] [--to B] [--description / --description-file F]
                 [--reviewers a,b] [--draft]
 af bb pr update <id> [--title T] [--description / --description-file F] [--reviewers a,b]
+                     [--ready | --draft]
+af bb pr ready <id>                         af bb pr draft <id>    # = pr update --ready / --draft
 af bb pr approve <id>                       af bb pr unapprove <id>
 af bb pr request-changes <id>
 af bb pr merge <id> [--strategy merge_commit|squash|fast_forward] [--close-source]
@@ -482,6 +487,8 @@ The `pr list` and `pr mine` tables always show **Review** — `✓n` approvals (
 
 `--checks` on `pr list` and `pr mine` adds **Builds** and **Conflicts** columns for the displayed pull requests (after the `--mine` filter and `--limit`), fetched only for **OPEN** ones — other rows show `—` and cost nothing. Builds summarizes the statuses of the source **head commit** only (`✗ n failed` > `○ n stopped` > `⟳ n running` > `✓ n passed`), and Conflicts reads the first page of `…/pullrequests/{id}/conflicts` (`✗ n`, `✗ n+` when more pages exist without a total, or `✓ none`). At most 4 PRs are fetched at once, each running `…/statuses?pagelen=100` and `…/conflicts` in parallel, so the cost is about three requests per listed open PR (statuses, plus conflicts and its redirect), more when a PR has many build statuses — against the 1,000 requests/hour a personal token gets. A signal that cannot be fetched renders `?` and is reported on stderr as one grouped warning per signal and cause (e.g. `Warning: conflicts unavailable for 12 pull requests (HTTP 401: …)`). Signals are informational: they never change the exit code. `--json` output stays the raw PR array (which now also carries `participants` and `reviewers`); `--checks --json` makes no signal requests and prints a notice on stderr. No merge verdict ("mergeable"/"blocked") is shown, because Bitbucket Cloud has no public merge-check API (BCLOUD-22014) and branch restrictions need repository admin and omit project-level rules; use `pr status <id>` for the full per-commit build breakdown.
 
+**Drafts.** `pr create --draft` opens a draft; `pr update <id> --ready` (alias `pr ready <id>`) marks it ready for review, and `pr update <id> --draft` (alias `pr draft <id>`) moves an open pull request back to draft. Bitbucket has no ready endpoint: `draft` is a field of the pull request PUT, so `--ready` / `--draft` combine with `--title`, `--description` / `--description-file` and `--reviewers` in one request (`pr update 42 --description-file final.md --ready`). Reviewers on a draft are not notified until it is marked ready, and a draft cannot be merged: when `pr merge` fails, af fetches the pull request (only then) and, if it is a draft, names `af bb pr ready <id>`. `pr update` and its aliases fetch the pull request before they write. One that is not `OPEN` is an error, and nothing is sent; `--ready` / `--draft` alone on a pull request already in that state prints a notice, sends no PUT and exits `0` (with `--json`, the fetched pull request goes to stdout and the notice to stderr); no change flag at all is an error. `draft` is sent only when it changes. Every PUT resends the current title, description and reviewers for the fields the user did not change: how Bitbucket treats a PUT that leaves fields out is unverified (reports say a PUT without `title` is rejected and one without `reviewers` clears them), so af takes the conservative route. Its costs are that an edit made in Bitbucket between the GET and the PUT is overwritten, and that a resent reviewer list containing an inactive user is rejected; the error then suggests `--reviewers`. The resend set lives in `buildPullRequestUpdate` (`bitbucket/lib/update.ts`). `--reviewers` replaces the whole list, so `--reviewers ""` clears it. In the `pr list` / `pr mine` tables a draft's State reads `OPEN (draft)`. `--draft` / `--ready` there keep only drafts, or only pull requests that are not drafts: the filter goes out as `q` (`draft=true` / `draft=false`, joined to the `--author` clause with `AND`) and is set again on every `next` page URL, so `--limit`, `--mine`, `--checks` and `--json` all see the filtered set.
+
 `pr comment list` and `pr task list` accept `--resolved` / `--unresolved` (mutually exclusive) to filter by resolution state; the filter also narrows `--json` output. Comment resolution is a _thread_ property, so the filter keeps or drops whole threads by their root comment's state — the replies of a matching thread are retained. Tasks carry per-task state, so their filter is a flat match.
 
 The read surface is intentionally read-only (every command is a GET) and mirrors the `af sonar` inspection shape. `pr status` is informational and always exits `0` even when a status is `FAILED` — gate it in scripts via `--json`. `commit list` and `pr activity` are bounded by `--limit` (default 25); `repo`/`branch`/`tag` lists drain all pages. `src read`/`src ls`/`commit list` default to the repository's main branch when `--ref`/`--branch` is omitted. `whoami` needs the token's Account read scope. Write-to-repo, `status` publishing, and repo administration are deliberately out of scope (later tiers).
@@ -503,7 +510,7 @@ The target workspace and repo are resolved in this order:
 
 Every subcommand supports `--json` to emit raw API responses.
 
-`--body-file` and `--description-file` take a path, or `-` to read stdin (`af bb pr comment add 42 --body-file - <<'AF_BODY'`); the text is sent as typed and Bitbucket renders it as markdown. Comment and task bodies must not be empty. The PR prose commands (`pr create`, `pr update`, `pr comment …`, `pr task …`) reject unknown options and extra positionals, and every subcommand accepts `--name=value`.
+`--body-file` and `--description-file` take a path, or `-` to read stdin (`af bb pr comment add 42 --body-file - <<'AF_BODY'`); the text is sent as typed and Bitbucket renders it as markdown. Comment and task bodies must not be empty. `pr create`, `pr update`, `pr ready`, `pr draft`, `pr comment …` and `pr task …` reject unknown options and extra positionals (`pr ready` and `pr draft` accept only `--json`, `--workspace` and `--repo`), and every subcommand accepts `--name=value`.
 
 ### SonarQube Command
 

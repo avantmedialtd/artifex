@@ -85,6 +85,11 @@ function tableRow(cells: string[]): string {
     return `| ${cells.join(' | ')} |`;
 }
 
+/** The pull request's state, followed by ` (draft)` for a draft: `OPEN (draft)`. */
+function stateCell(pr: BitbucketPullRequest): string {
+    return `${pr.state}${pr.draft ? ' (draft)' : ''}`;
+}
+
 /** `✓n ✗n ○n` (approvals, changes requested, pending), non-zero parts only. */
 function reviewCell(pr: BitbucketPullRequest): string {
     const review = summarizeReview(pr);
@@ -165,7 +170,7 @@ export function formatPullRequestList(
         lines.push(
             tableRow([
                 prLink(pr),
-                pr.state,
+                stateCell(pr),
                 escapePipe(pr.title),
                 pr.author.display_name,
                 `${pr.source.branch.name} → ${pr.destination.branch.name}`,
@@ -201,7 +206,7 @@ export function formatMyPullRequestList(
             tableRow([
                 pr.destination.repository?.full_name ?? '—',
                 prLink(pr),
-                pr.state,
+                stateCell(pr),
                 escapePipe(pr.title),
                 `${pr.source.branch.name} → ${pr.destination.branch.name}`,
                 ...reviewCells(pr, signals, i),
@@ -218,7 +223,7 @@ export function formatPullRequest(pr: BitbucketPullRequest): string {
     lines.push('');
     lines.push('| Field | Value |');
     lines.push('|-------|-------|');
-    lines.push(`| State | ${pr.state}${pr.draft ? ' (draft)' : ''} |`);
+    lines.push(`| State | ${stateCell(pr)} |`);
     lines.push(`| Author | ${pr.author.display_name} |`);
     lines.push(`| Source | \`${pr.source.branch.name}\` |`);
     lines.push(`| Destination | \`${pr.destination.branch.name}\` |`);
