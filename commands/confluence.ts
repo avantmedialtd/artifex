@@ -1,4 +1,6 @@
+import type { DownloadForms } from '../atlassian/lib/download.ts';
 import { checkStrictArgs, splitOptionToken, type StrictRule } from '../utils/cli-args.ts';
+import { mapWithConcurrency } from '../utils/concurrency.ts';
 import { error } from '../utils/output.ts';
 import {
     aliasedSource,
@@ -22,19 +24,34 @@ interface ConfluenceOptions {
     add?: string;
     remove?: string;
     message?: string;
+    name?: string;
+    out?: string;
+    force?: boolean;
 }
 
 // Global options, accepted by every subcommand. `--limit` is not one: only the
 // listing subcommands read it.
 const GLOBAL_OPTIONS = ['--json'];
 
-// Every strict subcommand takes its prose from `--body` or `--body-file`.
+// Options that take no value. Written with `=` (`--json=true`) they are an error.
+const BOOLEAN_OPTIONS = new Set(['--json', '--force']);
+
+// Every strict subcommand that takes prose takes it from `--body` or `--body-file`.
 const BODY_PROSE = { inline: '--body', file: '--body-file' };
+
+// `af confluence download` takes one page ID, or attachment IDs (`att<digits>`).
+const DOWNLOAD_FORMS: DownloadForms = {
+    command: 'af confluence download',
+    usage: 'af confluence download <page-id> | <attachment-id>... [--name <pattern>] [--out <dir|->] [--force]',
+    container: { name: 'page ID', examples: '12345', pattern: /^\d+$/ },
+    attachment: { name: 'attachment ID', examples: 'att12345 att67890', pattern: /^att\d+$/ },
+};
 
 // The subcommands that take prose reject unknown options and extra positional
 // arguments, so a mistyped flag or an unquoted body fails instead of being
-// ignored. Other subcommands keep the lenient parsing. `maxPositionals` counts
-// the arguments after the subcommand.
+// ignored; so does `download`, which takes any number of positional arguments
+// and checks their forms itself. Other subcommands keep the lenient parsing.
+// `maxPositionals` counts the arguments after the subcommand.
 const STRICT_RULES = new Map<string, StrictRule>([
     [
         'create',
@@ -80,15 +97,24 @@ const STRICT_RULES = new Map<string, StrictRule>([
             prose: BODY_PROSE,
         },
     ],
+    [
+        'download',
+        {
+            command: 'af confluence download',
+            options: ['--name', '--out', '--force', ...GLOBAL_OPTIONS],
+            maxPositionals: Number.POSITIVE_INFINITY,
+        },
+    ],
 ]);
 
 /**
  * Parse command-line arguments into subcommand, args, and options.
  *
  * Options take their value from the next argument or, written as
- * `--name=value`, from the text after the first `=`. `--json` takes no value.
- * The subcommands in STRICT_RULES then reject options they do not accept and
- * extra positional arguments; the error message has no `Error: ` prefix.
+ * `--name=value`, from the text after the first `=`. The BOOLEAN_OPTIONS
+ * (`--json`, `--force`) take no value. The subcommands in STRICT_RULES then
+ * reject options they do not accept and extra positional arguments; the error
+ * message has no `Error: ` prefix.
  * An option such a subcommand does not take is reported as unknown even when
  * it is the last argument and has no value.
  */
@@ -112,12 +138,12 @@ export function parseArgs(argv: string[]): {
 
         if (!token) {
             args.push(argv[i]);
-        } else if (token.flag === '--json') {
+        } else if (BOOLEAN_OPTIONS.has(token.flag)) {
             if (token.inlineValue !== undefined) {
                 throw new Error(`Option ${token.flag} does not take a value`);
             }
             typedOptions.push(token.flag);
-            options.json = true;
+            (options as Record<string, unknown>)[token.flag.slice(2)] = true;
         } else {
             typedOptions.push(token.flag);
             const value = token.inlineValue ?? argv[++i];
@@ -188,6 +214,8 @@ LABEL COMMANDS:
 ATTACHMENT COMMANDS:
   attachments <page-id>      List attachments on a page
   attach <page-id> <file>    Upload an attachment
+  download <page-id> | <attachment-id>...
+                             Download a page's attachments, or attachments by ID
 
 SPACE COMMANDS:
   spaces                     List all spaces
@@ -196,8 +224,8 @@ SPACE COMMANDS:
 OPTIONS:
   --json                     Output as JSON instead of markdown
 
-  Options that take a value also accept --name=value. create, update and
-  comment reject options they do not know and extra arguments.
+  Options that take a value also accept --name=value. create, update, comment
+  and download reject options they do not know and extra arguments.
 
 LIST OPTIONS (list, search, tree, comments, labels, attachments, spaces):
   --limit <n>                Limit results (default: 50)
@@ -229,6 +257,21 @@ LABEL OPTIONS:
   --add "<name>"             Add a label
   --remove "<name>"          Remove a label
 
+DOWNLOAD OPTIONS:
+  --name <pattern>           Only attachments whose filename matches: * is any run
+                             of characters, ? is one character, and case is ignored
+  --out <dir|->              Write into <dir> (created when missing), or with -
+                             write one attachment's bytes to standard output. In
+                             <dir>, a file with the same name and size is skipped,
+                             and any other file in the way stops the command
+                             before anything is downloaded
+  --force                    With --out <dir>, replace the files in the way
+
+  Without --out, each run creates a new, empty folder in the OS temporary
+  directory (af-confluence-<page-id>-..., or af-confluence-attachments-... for
+  IDs) and prints the folder's and each file's absolute path. Nothing lands in
+  the working tree. Pass --out to keep the files somewhere else.
+
 MULTI-LINE TEXT:
   Inside "double" or 'single' quotes, \\n stays a backslash and an n; it is never
   a newline. Double quotes also run \`commands\` and expand $VARS. For multi-line
@@ -255,6 +298,10 @@ EXAMPLES:
   af confluence label 12345 --add "important"
   af confluence label 12345 --remove "draft"
   af confluence attach 12345 ./diagram.png
+  af confluence attachments 12345
+  af confluence download 12345
+  af confluence download 12345 --name '*.png' --out ./diagrams
+  af confluence download att12345678 --out - > diagram.png
   af confluence spaces
   af confluence space MYSPACE
 `);
@@ -542,6 +589,78 @@ export async function handleConfluence(args: string[]): Promise<number> {
                     json,
                 );
                 break;
+            }
+
+            case 'download': {
+                const download = await import('../atlassian/lib/download.ts');
+                // Every argument error comes before any request.
+                const selection = download.classifyPositionals(subArgs, DOWNLOAD_FORMS);
+                download.checkDownloadOptions(options);
+
+                // All metadata first, every page of it: a failure stops the
+                // command before any folder is created or file downloaded.
+                const attachments =
+                    selection.kind === 'container'
+                        ? await client.getAllAttachments(selection.value)
+                        : await mapWithConcurrency(
+                              selection.ids,
+                              download.DOWNLOAD_CONCURRENCY,
+                              id => client.getAttachment(id),
+                          );
+                if (selection.kind === 'container' && attachments.length === 0) {
+                    // Everything was asked for, and everything is nothing: not a
+                    // failure. No folder is created, and --json still gets its object.
+                    console.error(`Page ${selection.value} has no attachments.`);
+                    if (json) fmt.output({ directory: null, files: [] }, true);
+                    return 0;
+                }
+                const selected = download.filterByName(attachments, options.name, a => a.title);
+
+                const { getAuthHeader, getBaseUrl } = await import('../atlassian/lib/request.ts');
+                const baseUrl = getBaseUrl();
+                const summary = await download.downloadAttachments(
+                    selected.map(attachment => {
+                        const item = {
+                            id: attachment.id,
+                            name: attachment.title,
+                            size: attachment.fileSize,
+                            mimeType: attachment.mediaType,
+                        };
+                        // The URL is always on the configured site; a link that
+                        // is not a site-relative path fails, and is not fetched.
+                        const link = attachment.downloadLink;
+                        if (link?.startsWith('/'))
+                            return { ...item, url: `${baseUrl}/wiki${link}` };
+                        const error =
+                            link === undefined
+                                ? 'the attachment has no download link'
+                                : `its download link does not start with /: ${link}`;
+                        return { ...item, url: '', error };
+                    }),
+                    {
+                        prefix:
+                            selection.kind === 'container'
+                                ? `af-confluence-${selection.value}-`
+                                : 'af-confluence-attachments-',
+                        out: options.out,
+                        force: options.force,
+                        authorization: getAuthHeader(),
+                        baseOrigin: new URL(baseUrl).origin,
+                    },
+                );
+
+                const report = download.formatDownloadReport(
+                    summary,
+                    selection.kind === 'container' ? `page ${selection.value}` : undefined,
+                );
+                // With --out -, the bytes were the output; only failures are reported.
+                if (json) {
+                    fmt.output(summary, true);
+                } else {
+                    if (options.out !== '-') fmt.output(report.stdout, false);
+                    for (const line of report.stderr) error(line);
+                }
+                return summary.files.some(file => file.status === 'failed') ? 1 : 0;
             }
 
             case 'spaces': {

@@ -241,6 +241,38 @@ export async function getAttachments(
     );
 }
 
+// The largest page of attachments the v2 API serves: limit=251 is a 400.
+const ATTACHMENT_PAGE_LIMIT = 250;
+
+/**
+ * Every attachment of a page: the first page of results, then each
+ * `_links.next` until a response has none. `next` is a site-relative path
+ * (`/wiki/api/v2/pages/{id}/attachments?limit=…&cursor=…`), so it is prefixed
+ * with the configured base URL; anything else is refused, because the request
+ * carries the credentials.
+ */
+export async function getAllAttachments(pageId: string): Promise<ConfluenceAttachment[]> {
+    const attachments: ConfluenceAttachment[] = [];
+    let url: string | undefined = v2Url(
+        `/pages/${pageId}/attachments?limit=${ATTACHMENT_PAGE_LIMIT}`,
+    );
+    while (url) {
+        const page: ConfluencePaginatedResponse<ConfluenceAttachment> =
+            await request<ConfluencePaginatedResponse<ConfluenceAttachment>>(url);
+        attachments.push(...page.results);
+        const next = page._links?.next;
+        if (next && !next.startsWith('/')) {
+            throw new Error(`Unexpected pagination link from Confluence: ${next}`);
+        }
+        url = next ? `${getBaseUrl()}${next}` : undefined;
+    }
+    return attachments;
+}
+
+export async function getAttachment(attachmentId: string): Promise<ConfluenceAttachment> {
+    return request<ConfluenceAttachment>(v2Url(`/attachments/${attachmentId}`));
+}
+
 export async function addAttachment(
     pageId: string,
     filePath: string,

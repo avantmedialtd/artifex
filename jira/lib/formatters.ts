@@ -11,10 +11,11 @@ import type {
     JiraWorklog,
     JiraBoard,
     JiraSprint,
+    JiraAttachment,
 } from './types.ts';
-import type { JiraAttachment } from './client.ts';
 import { adfToText } from './client.ts';
 import { link } from '../../utils/output.ts';
+import { formatBytes } from '../../utils/format-bytes.ts';
 import type { CustomFieldDef } from './fields/codec-types.ts';
 import { decode } from './fields/decoder.ts';
 
@@ -161,6 +162,18 @@ export function formatIssue(
         for (const rl of remoteLinks) {
             lines.push(`- ${rl.object.title} — ${rl.object.url}`);
         }
+    }
+
+    // Attachments, from the issue response itself (`fields=*all` includes them)
+    if (f.attachment?.length) {
+        lines.push('');
+        lines.push(`## Attachments (${f.attachment.length})`);
+        lines.push('');
+        lines.push(formatAttachmentTable(f.attachment));
+        lines.push('');
+        lines.push(
+            `Download: \`af jira download ${issue.key}\` (or by ID: \`af jira download <id>\`)`,
+        );
     }
 
     // Custom Fields
@@ -414,16 +427,54 @@ export function formatAttachments(issueKey: string, attachments: JiraAttachment[
     lines.push(`|----------|------|------|`);
 
     for (const att of attachments) {
-        const size =
-            att.size < 1024
-                ? `${att.size} B`
-                : att.size < 1024 * 1024
-                  ? `${(att.size / 1024).toFixed(1)} KB`
-                  : `${(att.size / 1024 / 1024).toFixed(1)} MB`;
-        lines.push(`| ${att.filename} | ${size} | ${att.mimeType} |`);
+        lines.push(`| ${att.filename} | ${formatBytes(att.size)} | ${att.mimeType} |`);
     }
 
     return lines.join('\n');
+}
+
+// An issue's attachments as a markdown table: ID, Filename, Size, Type and
+// Added (the date and the author). Filenames and types are untrusted, so they
+// go through tableCell.
+export function formatAttachmentTable(attachments: JiraAttachment[]): string {
+    const lines: string[] = [];
+    lines.push(`| ID | Filename | Size | Type | Added |`);
+    lines.push(`|----|----------|------|------|-------|`);
+    for (const att of attachments) {
+        const author = att.author?.displayName;
+        const added = author ? `${formatDate(att.created)} by ${author}` : formatDate(att.created);
+        lines.push(
+            `| ${att.id} | ${tableCell(att.filename)} | ${formatBytes(att.size)} | ${tableCell(att.mimeType)} | ${tableCell(added)} |`,
+        );
+    }
+    return lines.join('\n');
+}
+
+// `af jira attachments <key>`
+export function formatAttachmentList(issueKey: string, attachments: JiraAttachment[]): string {
+    const lines: string[] = [];
+
+    lines.push(`# Attachments on ${issueLink(issueKey)} (${attachments.length})`);
+    lines.push('');
+
+    if (attachments.length === 0) {
+        lines.push('No attachments.');
+        return lines.join('\n');
+    }
+
+    lines.push(formatAttachmentTable(attachments));
+    return lines.join('\n');
+}
+
+// A table cell for untrusted text: control characters (a line break among them)
+// display as `_`, and pipes are escaped, so the text cannot break the table.
+function tableCell(text: string): string {
+    let cell = '';
+    for (const char of text) {
+        const code = char.charCodeAt(0);
+        cell += code < 0x20 || code === 0x7f ? '_' : char;
+    }
+    return escapePipe(cell);
 }
 
 // Remote links list to markdown

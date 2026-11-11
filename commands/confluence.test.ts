@@ -1,11 +1,22 @@
-// cspell:words flie
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+// cspell:words flie outt
+import {
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    readdirSync,
+    rmSync,
+    writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { textToAdf } from '../atlassian/lib/adf.ts';
+import { downloadAttachments, type DownloadSummary } from '../atlassian/lib/download.ts';
+import { getAuthHeader, getBaseUrl } from '../atlassian/lib/request.ts';
 import * as client from '../confluence/lib/client.ts';
+import type { ConfluenceAttachment } from '../confluence/lib/types.ts';
 import { defaultTextInputIo } from '../utils/text-input.ts';
 import { handleConfluence, parseArgs, showConfluenceHelp } from './confluence.ts';
 
@@ -29,8 +40,16 @@ vi.mock('../confluence/lib/client.ts', async importOriginal => ({
     addLabels: vi.fn(),
     removeLabel: vi.fn(),
     getAttachments: vi.fn(),
+    getAllAttachments: vi.fn(),
+    getAttachment: vi.fn(),
     addAttachment: vi.fn(),
     search: vi.fn(),
+}));
+
+// The download I/O is mocked; the argument checks, --name and the report are real.
+vi.mock('../atlassian/lib/download.ts', async importOriginal => ({
+    ...(await importOriginal<typeof import('../atlassian/lib/download.ts')>()),
+    downloadAttachments: vi.fn(),
 }));
 
 const BOM = String.fromCharCode(0xfeff);
@@ -253,6 +272,47 @@ describe('parseArgs', () => {
             expect(() => parseArgs(['list', 'MYSPACE', '--sort'])).toThrow(
                 'Option --sort requires a value',
             );
+        });
+    });
+
+    describe('download', () => {
+        it('accepts --name, --out, --force and --json, and any number of IDs', () => {
+            const parsed = parseArgs([
+                'download',
+                'att1',
+                'att2',
+                'att3',
+                '--name',
+                '*.png',
+                '--out',
+                'files',
+                '--force',
+                '--json',
+            ]);
+            expect(parsed.args).toEqual(['att1', 'att2', 'att3']);
+            expect(parsed.options).toMatchObject({
+                name: '*.png',
+                out: 'files',
+                force: true,
+                json: true,
+            });
+            expect(parseArgs(['download', 'att1', '--out=-']).options.out).toBe('-');
+        });
+
+        it('suggests --out for --outt, listing the accepted options', () => {
+            expect(() => parseArgs(['download', '12345', '--outt', './files'])).toThrow(
+                [
+                    "Unknown option --outt for 'af confluence download'. Did you mean --out?",
+                    'Accepted options: --name, --out, --force, --json',
+                    "Run 'af confluence --help' for usage.",
+                ].join('\n'),
+            );
+        });
+
+        it('rejects a value given to --force', () => {
+            expect(() =>
+                parseArgs(['download', '12345', '--out', './files', '--force=yes']),
+            ).toThrow('Option --force does not take a value');
         });
     });
 });
@@ -638,6 +698,263 @@ describe('other subcommands', () => {
         expect(await handleConfluence(['spaces', '--json=1'])).toBe(1);
         expect(stderr()).toContain('Error: Option --json does not take a value');
         expect(client.listSpaces).not.toHaveBeenCalled();
+    });
+});
+
+describe('af confluence download', () => {
+    beforeEach(() => {
+        vi.stubEnv('ATLASSIAN_BASE_URL', 'https://test.atlassian.net');
+        vi.stubEnv('ATLASSIAN_EMAIL', 'user@test.com');
+        vi.stubEnv('ATLASSIAN_API_TOKEN', 'tok');
+    });
+
+    afterEach(() => {
+        vi.unstubAllEnvs();
+    });
+
+    function attachment(id: string, title: string, fileSize = 100): ConfluenceAttachment {
+        return {
+            id,
+            status: 'current',
+            title,
+            mediaType: 'image/png',
+            fileSize,
+            fileId: `file-${id}`,
+            pageId: '12345',
+            downloadLink: `/download/attachments/12345/${title}?version=1&api=v2`,
+        };
+    }
+
+    /** The content URL of an attachment, on the configured site. */
+    function contentUrl(a: ConfluenceAttachment): string {
+        return `${getBaseUrl()}/wiki${a.downloadLink}`;
+    }
+
+    function downloaded(directory: string, attachments: ConfluenceAttachment[]): DownloadSummary {
+        return {
+            directory,
+            files: attachments.map(a => ({
+                id: a.id,
+                filename: a.title,
+                path: `${directory}/${a.title}`,
+                size: a.fileSize,
+                mimeType: a.mediaType,
+                status: 'downloaded' as const,
+            })),
+        };
+    }
+
+    function expectNoRequest(): void {
+        for (const fn of Object.values(client)) {
+            if (vi.isMockFunction(fn)) expect(fn).not.toHaveBeenCalled();
+        }
+        expect(downloadAttachments).not.toHaveBeenCalled();
+        expect(globalThis.fetch).not.toHaveBeenCalled();
+    }
+
+    const PAGE = [attachment('att111', 'diagram.png', 38_612), attachment('att222', 'notes.png')];
+
+    it('downloads every attachment of a page into a folder named after it', async () => {
+        vi.mocked(client.getAllAttachments).mockResolvedValue(PAGE);
+        vi.mocked(downloadAttachments).mockResolvedValue(
+            downloaded('/tmp/af-confluence-12345-Ab12Cd', PAGE),
+        );
+
+        expect(await handleConfluence(['download', '12345'])).toBe(0);
+
+        expect(client.getAllAttachments).toHaveBeenCalledWith('12345');
+        expect(downloadAttachments).toHaveBeenCalledWith(
+            [
+                {
+                    id: 'att111',
+                    name: 'diagram.png',
+                    size: 38_612,
+                    mimeType: 'image/png',
+                    url: contentUrl(PAGE[0]),
+                },
+                {
+                    id: 'att222',
+                    name: 'notes.png',
+                    size: 100,
+                    mimeType: 'image/png',
+                    url: contentUrl(PAGE[1]),
+                },
+            ],
+            {
+                prefix: 'af-confluence-12345-',
+                out: undefined,
+                force: undefined,
+                authorization: getAuthHeader(),
+                baseOrigin: new URL(getBaseUrl()).origin,
+            },
+        );
+        expect(contentUrl(PAGE[0])).toMatch(
+            /^https:\/\/[^/]+\/wiki\/download\/attachments\/12345\/diagram\.png\?/,
+        );
+        expect(out).toEqual([
+            [
+                'Downloaded 2 attachment(s) from page 12345 to /tmp/af-confluence-12345-Ab12Cd',
+                'att111  37.7 KB  /tmp/af-confluence-12345-Ab12Cd/diagram.png',
+                'att222  100 B  /tmp/af-confluence-12345-Ab12Cd/notes.png',
+            ].join('\n'),
+        ]);
+    });
+
+    it('fetches each attachment ID once into an attachments folder', async () => {
+        vi.mocked(client.getAttachment).mockImplementation(async id => attachment(id, `${id}.png`));
+        vi.mocked(downloadAttachments).mockResolvedValue({ directory: '/tmp/x', files: [] });
+
+        expect(await handleConfluence(['download', 'att111', 'att222', 'att111'])).toBe(0);
+
+        expect(vi.mocked(client.getAttachment).mock.calls).toEqual([['att111'], ['att222']]);
+        expect(vi.mocked(downloadAttachments).mock.calls[0][1].prefix).toBe(
+            'af-confluence-attachments-',
+        );
+        expect(client.getAllAttachments).not.toHaveBeenCalled();
+    });
+
+    it('rejects a page ID together with an attachment ID before any request', async () => {
+        expect(await handleConfluence(['download', '12345', 'att111'])).toBe(1);
+        expect(stderr()).toContain(
+            `Unexpected argument "att111" for 'af confluence download': a call takes one page ID or attachment IDs, not both.`,
+        );
+        expect(stderr()).toContain(
+            'Accepted forms: one page ID (12345), or one or more attachment IDs',
+        );
+        expectNoRequest();
+    });
+
+    it.each([
+        [['download', '12345', '--outt', './files'], 'Did you mean --out?'],
+        [['download', '12345', '--out', './files', '--force=yes'], 'does not take a value'],
+        [['download', '12345', '--force'], '--force needs --out <dir>'],
+        [['download', 'att111', '--out', '-', '--json'], '--json cannot be used with --out -'],
+        [['download', 'page-12345'], 'Unrecognized argument "page-12345"'],
+    ])('rejects %j before any request', async (argv, message) => {
+        expect(await handleConfluence(argv)).toBe(1);
+        expect(stderr()).toContain(message);
+        expectNoRequest();
+    });
+
+    it('prints a notice and succeeds for a page without attachments', async () => {
+        vi.mocked(client.getAllAttachments).mockResolvedValue([]);
+        expect(await handleConfluence(['download', '12345'])).toBe(0);
+        expect(err).toEqual(['Page 12345 has no attachments.']);
+        expect(out).toEqual([]);
+        expect(downloadAttachments).not.toHaveBeenCalled();
+    });
+
+    it('prints an empty result as JSON for a page without attachments', async () => {
+        vi.mocked(client.getAllAttachments).mockResolvedValue([]);
+        expect(await handleConfluence(['download', '12345', '--json'])).toBe(0);
+        expect(JSON.parse(out.join('\n'))).toEqual({ directory: null, files: [] });
+        expect(err).toEqual(['Page 12345 has no attachments.']);
+        expect(downloadAttachments).not.toHaveBeenCalled();
+    });
+
+    it('creates no folder when no attachment of the page can be fetched', async () => {
+        const actual = await vi.importActual<typeof import('../atlassian/lib/download.ts')>(
+            '../atlassian/lib/download.ts',
+        );
+        vi.mocked(downloadAttachments).mockImplementation(actual.downloadAttachments);
+        vi.mocked(client.getAllAttachments).mockResolvedValue([
+            { ...attachment('att1', 'a.png', 3), downloadLink: 'https://elsewhere.example/a.png' },
+            { ...attachment('att2', 'b.png', 3), downloadLink: undefined },
+        ]);
+        const freshFolders = (): string[] =>
+            readdirSync(tmpdir()).filter(name => name.startsWith('af-confluence-98765-'));
+        const before = freshFolders();
+        const target = join(dir, 'missing');
+
+        expect(await handleConfluence(['download', '98765', '--json'])).toBe(1);
+        expect(JSON.parse(out.join('\n'))).toEqual({
+            directory: null,
+            files: [
+                expect.objectContaining({ id: 'att1', path: null, status: 'failed' }),
+                expect.objectContaining({ id: 'att2', path: null, status: 'failed' }),
+            ],
+        });
+        expect(freshFolders()).toEqual(before);
+
+        out = [];
+        expect(await handleConfluence(['download', '98765', '--out', target])).toBe(1);
+        expect(existsSync(target)).toBe(false);
+        expect(out).toEqual(['Downloaded 0 attachment(s) from page 98765']);
+        expect(stderr()).toContain(
+            'Failed to download att2 (b.png): the attachment has no download link',
+        );
+        expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
+    it('fails an attachment whose download link is not a site path, and fetches only the rest', async () => {
+        const actual = await vi.importActual<typeof import('../atlassian/lib/download.ts')>(
+            '../atlassian/lib/download.ts',
+        );
+        vi.mocked(downloadAttachments).mockImplementation(actual.downloadAttachments);
+        const good = attachment('att1', 'good.png', 3);
+        const evil = {
+            ...attachment('att2', 'evil.png', 3),
+            downloadLink: 'https://elsewhere.example/x.png',
+        };
+        const missing = { ...attachment('att3', 'none.png', 3), downloadLink: undefined };
+        vi.mocked(client.getAllAttachments).mockResolvedValue([good, evil, missing]);
+        const fetchMock = vi.fn(async (url: string) => {
+            if (url === contentUrl(good)) return new Response('png');
+            throw new Error(`unexpected request: ${url}`);
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        const target = join(dir, 'files');
+
+        expect(await handleConfluence(['download', '12345', '--out', target])).toBe(1);
+
+        expect(fetchMock.mock.calls.map(call => call[0])).toEqual([contentUrl(good)]);
+        expect(readdirSync(target)).toEqual(['good.png']);
+        expect(readFileSync(join(target, 'good.png'), 'utf8')).toBe('png');
+        expect(stderr().split('\n')).toEqual([
+            'Failed to download att2 (evil.png): its download link does not start with /: https://elsewhere.example/x.png',
+            'Failed to download att3 (none.png): the attachment has no download link',
+        ]);
+        expect(out.join('\n')).toContain(`att1  3 B  ${join(target, 'good.png')}`);
+    });
+
+    it('accepts --json and prints the result as JSON', async () => {
+        vi.mocked(client.getAllAttachments).mockResolvedValue([PAGE[0]]);
+        const summary = downloaded('/tmp/af-confluence-12345-Ab12Cd', [PAGE[0]]);
+        vi.mocked(downloadAttachments).mockResolvedValue(summary);
+
+        expect(await handleConfluence(['download', '12345', '--json'])).toBe(0);
+
+        expect(JSON.parse(out.join('\n'))).toEqual(summary);
+        expect(err).toEqual([]);
+    });
+
+    it('lists the filenames when --name matches nothing', async () => {
+        vi.mocked(client.getAllAttachments).mockResolvedValue(PAGE);
+        expect(await handleConfluence(['download', '12345', '--name', '*.pdf'])).toBe(1);
+        expect(stderr()).toContain(
+            "No attachment matches --name '*.pdf'. The attachments are:\n  diagram.png\n  notes.png",
+        );
+        expect(downloadAttachments).not.toHaveBeenCalled();
+    });
+
+    it('documents download in the help', async () => {
+        expect(await handleConfluence(['--help'])).toBe(0);
+        const text = out.join('\n');
+        expect(text).toContain('  download <page-id> | <attachment-id>...');
+        expect(text).toContain("Download a page's attachments, or attachments by ID");
+        expect(text).toContain('DOWNLOAD OPTIONS:');
+        expect(text).toContain(
+            '  --name <pattern>           Only attachments whose filename matches',
+        );
+        expect(text).toContain(
+            '  --out <dir|->              Write into <dir> (created when missing), or with -',
+        );
+        expect(text).toContain("write one attachment's bytes to standard output");
+        expect(text).toContain('  --force                    With --out <dir>, replace the files');
+        expect(text).toContain(
+            'create, update, comment\n  and download reject options they do not know',
+        );
+        expect(text).toContain('  af confluence download att12345678 --out - > diagram.png');
     });
 });
 

@@ -183,6 +183,18 @@ export interface JiraRemoteLink {
     };
 }
 
+// An issue attachment, as in `fields.attachment` and GET /attachment/{id}.
+export interface JiraAttachment {
+    id: string;
+    filename: string;
+    size: number;
+    mimeType: string;
+    content: string;
+    thumbnail?: string;
+    created: string;
+    author: JiraUser;
+}
+
 export interface JiraIssueFields {
     summary: string;
     description?: string | JiraAdfDocument | null;
@@ -213,6 +225,7 @@ export interface JiraIssueFields {
         };
     }>;
     issuelinks?: JiraIssueLink[];
+    attachment?: JiraAttachment[];
     timetracking?: JiraTimeTracking;
     fixVersions?: JiraVersion[];
     versions?: JiraVersion[]; // affectedVersions in API response

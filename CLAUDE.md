@@ -34,6 +34,7 @@ atlassian/lib/       - Shared Atlassian infrastructure
 ├── markdown-to-adf.ts - Markdown → ADF: marked's GFM lexer plus af's own mapper
 ├── adf-to-markdown.ts - ADF → markdown renderer
 ├── adf-types.ts     - ADF type definitions
+├── download.ts      - Attachment downloads shared by Jira + Confluence (safe names, temp-file writes)
 └── request.ts       - Shared HTTP request helper with auth
 jira/lib/            - Jira API client and formatters
 confluence/lib/      - Confluence API client and formatters
@@ -41,7 +42,9 @@ utils/               - Utility modules
 ├── output.ts        - Terminal output formatting with ANSI colors
 ├── claude.ts        - Claude Code CLI availability check
 ├── text-input.ts    - Prose input from an inline flag, a -file twin, or stdin (readProse)
-└── cli-args.ts      - --name=value splitting and strict option checks (checkStrictArgs)
+├── cli-args.ts      - --name=value splitting and strict option checks (checkStrictArgs)
+├── concurrency.ts   - mapWithConcurrency: at most N calls in flight, results in input order
+└── format-bytes.ts  - formatBytes: B / KB / MB with one decimal
 ```
 
 ### Key Files
@@ -359,6 +362,8 @@ The shared infrastructure lives in `atlassian/lib/`:
     - `requestText(url)` for plain-text endpoints (Bitbucket pipeline logs, PR diffs)
     - `paginate<T>(url)` async-iterable for cursor-paginated endpoints (Bitbucket Cloud)
     - a non-2xx response throws `AtlassianHttpError` (the parsed message plus the HTTP `status`); a Bitbucket error's per-field details (`error.fields`) are appended to its message as `field: detail` lines
+    - `errorMessageFrom(response)` is that parser, exported for callers that fetch by hand (the attachment download)
+- `download.ts` - Downloads attachments to local files for `af jira download` and `af confluence download` (see Jira Attachments)
 
 ### Jira Custom Fields
 
@@ -396,7 +401,7 @@ Beyond CRUD, `af jira` covers transitions-with-screens, issue moves, worklogs, b
 - **Reparent.** `af jira update KEY --parent PARENT` sets the canonical `parent` field (it replaced Epic Link); `--clear-parent` attempts `parent: null` (provisional — Jira's clearing behavior is undocumented and varies by project type).
 - **Comments.** `af jira comment KEY --body …` adds a comment (`--add` is an alias of `--body`; with no body flag the comments are listed), and `--body-file <path>` or `--body-file -` (stdin) takes the body from a file. `comment edit KEY <id>` takes the same flags; `comment delete KEY <id>`. `--visibility "Role"` (or `group:Name`) restricts the platform comment. `--internal` / `--public` route through the JSM Service Desk API (`/rest/servicedeskapi/...`), since the platform `jsdPublic` flag is read-only; that text is sent as typed and JSM renders it as wiki markup, not markdown.
 - **Multi-line text.** Every prose flag has a `-file` twin taking a path or `-` for stdin: `--body-file`, `--description-file` (issue and version descriptions) and `--comment-file` (transition and worklog comments). Inside quotes the shell passes `\n` through as a backslash and an `n`, and double quotes also run backticks and expand `$`, so send multi-line markdown with a quoted heredoc, flush-left: `af jira comment KEY --body-file - <<'AF_BODY'` … `AF_BODY`. Stdin is read only on an explicit `-`. The resolver is `readProse` in `utils/text-input.ts`; it never unescapes `\n`.
-- **Strict parsing.** The prose subcommands (`comment`, `create`, `update`, `transition`, `worklog`, `version-create`, `version-update`) reject unknown options and extra positionals with a suggestion (`checkStrictArgs` in `utils/cli-args.ts`); other subcommands stay lenient. Every subcommand accepts `--name=value`.
+- **Strict parsing.** The prose subcommands (`comment`, `create`, `update`, `transition`, `worklog`, `version-create`, `version-update`) and the attachment subcommands (`attachments`, `download`) reject unknown options and extra positionals with a suggestion (`checkStrictArgs` in `utils/cli-args.ts`); other subcommands stay lenient. Every subcommand accepts `--name=value`.
 - **editmeta.** `af jira editmeta KEY` reports editable fields + allowed values (the edit-context twin of `fields`/createmeta).
 - **Move + bulk (async).** `af jira move KEY --to-project P [--type T]` and `af jira bulk <delete|transition|edit> --jql "…"` use the asynchronous bulk endpoints (`POST /bulk/issues/*` → poll `GET /bulk/queue/{taskId}`). Selections chunk to ≤1000 issues and run serially (within the global 5-concurrent ceiling). Bulk transition refuses screen/field-requiring transitions and points at single-issue `transition`. Move infers status/field defaults so cross-workflow moves don't need a hand-built mapping.
 - **Worklogs.** `af jira worklog add/list/update/delete`; comments render as ADF; `started` defaults to now in Jira's timestamp format.
@@ -404,6 +409,23 @@ Beyond CRUD, `af jira` covers transitions-with-screens, issue moves, worklogs, b
 - **Watch/vote.** `af jira watch/unwatch KEY` (unwatch resolves the caller via `/myself` for the accountId-scoped delete) and `af jira vote KEY`.
 
 All subcommands support `--json`. The client lives in `jira/lib/client.ts` (`request` = `/rest/api/3`, `requestAgile` = `/rest/agile/1.0`, both via a shared `jiraFetch`; `JiraApiError` carries the HTTP status).
+
+### Jira Attachments
+
+```bash
+af jira attachments MR-4                  # ID, filename, size, type, date added and author
+af jira download MR-4                     # every attachment of the issue
+af jira download 10046 10113              # those attachments (IDs are bare digits, unique site-wide)
+af jira download MR-4 --name '*.png'      # * is any run, ? one character, case ignored
+af jira download MR-4 --out ./shots       # into a directory of your choice
+af jira download 10046 --out - | less     # one attachment's bytes on stdout
+```
+
+- **Listing.** `af jira attachments KEY` reads `GET /issue/{key}?fields=attachment`; `--json` prints the raw `fields.attachment` array. `af jira get KEY` shows the same table as an `## Attachments (<n>)` section between Remote Links and Custom Fields, followed by a `Download: af jira download KEY` hint, and omits it when there are none. It comes from the response `get` already fetches (`fields=*all`), and `get --json` is unchanged. Filenames are untrusted: in a table cell, `|` is escaped and control characters show as `_`.
+- **Positional forms.** `download` takes one issue key or one or more attachment IDs, never both (a repeated ID counts once); any other argument is an error that names it and both forms. `--name` keeps the attachments whose filename matches; a pattern that matches nothing exits 1 and lists the filenames. An issue without attachments prints a notice on stderr and exits 0.
+- **Destination.** Without `--out`, each run creates a new, empty folder in the OS temp directory (`af-jira-<KEY>-…`, for example `af-jira-MR-4-Xy12Ab`, or `af-jira-attachments-…`) and prints the folder's and each file's absolute path. Nothing lands in the working tree, so downloads never show up in `git status`, never get committed by accident, and never make `af stop-hook` run E2E. `--out <dir>` writes there, creating it when missing: a regular file with the same name and size is skipped (`(already present)`, since an attachment never changes), and anything else in the way is a conflict that stops the run before any download, unless `--force` (which still never replaces a directory). `--out -` streams exactly one attachment to stdout and cannot be combined with `--json`. `--force` needs `--out <dir>`.
+- **Output.** One header line (`Downloaded <n> attachment(s) from MR-4 to <folder>`), then `<id>  <size>  <path>` per file, the absolute path last; failures go to stderr and make the exit code 1, while the other files still download. `--json` prints `{ directory, files: [{ id, filename, path, size, mimeType, status, error? }] }`, `status` being `downloaded`, `skipped` or `failed`; `directory` is `null` when no folder was used (an issue without attachments, or every file failing before any request).
+- **How bytes are fetched.** From `GET /rest/api/3/attachment/content/{id}?redirect=false`, built from the configured base URL and the ID (never the metadata's `content` URL): with `redirect=false` Jira serves the bytes itself and reports errors in its JSON envelope. The shared helper `atlassian/lib/download.ts` (also used by `af confluence download`) turns each untrusted name into one safe path component (NFC; `/`, `\` and control characters become `_`; `.`, `..` or empty become `attachment-<id>`; at most 255 bytes, keeping the extension) and gives names that collide ignoring case `-<id>` before the extension. It writes each file to an exclusively created `.af-<random>.part` and renames it into place only when the byte count matches the metadata size. It follows redirects itself, sending `Authorization` only to the configured site's origin (Atlassian's pre-signed media URLs get none), and runs at most 4 metadata requests and 4 downloads at once (`mapWithConcurrency` in `utils/concurrency.ts`).
 
 ### Bitbucket Command
 
@@ -569,12 +591,17 @@ af confluence tree <page-id>             # Show page hierarchy
 af confluence comment <page-id> --body "Comment text"   # --add is an alias of --body
 af confluence label <page-id> --add "label-name"
 af confluence attach <page-id> ./file.pdf
+af confluence attachments <page-id>      # ID, filename, size and type
+af confluence download <page-id>         # every attachment of the page
+af confluence download <att-id> --out -  # one attachment's bytes on stdout
 af confluence spaces                     # List all spaces
 ```
 
 The Confluence client uses the v2 API (`/wiki/api/v2/`) for most operations and falls back to v1 (`/wiki/rest/api/`) for search (CQL), label management, and attachment uploads. Page content is stored as ADF (Atlassian Document Format), with automatic markdown conversion.
 
-`--body-file` takes a path, or `-` to read stdin, on `create`, `update` and `comment` (`af confluence comment <page-id> --body-file - <<'AF_BODY'`). `--body` with `--body-file` is an error. `create`, `update` and `comment` reject unknown options and extra positionals; every subcommand accepts `--name=value`.
+`--body-file` takes a path, or `-` to read stdin, on `create`, `update` and `comment` (`af confluence comment <page-id> --body-file - <<'AF_BODY'`). `--body` with `--body-file` is an error. `create`, `update`, `comment` and `download` reject unknown options and extra positionals; every subcommand accepts `--name=value`.
+
+`af confluence attachments <page-id>` lists one page of results (`--limit`, default 50) with each attachment's ID (`att<digits>`), so a single one can be downloaded. `af confluence download` takes one page ID (bare digits) or one or more attachment IDs, never both. For a page it reads every page of `GET /wiki/api/v2/pages/{id}/attachments?limit=250` (250 is the maximum), following each site-relative `_links.next`; for IDs it reads `GET /wiki/api/v2/attachments/{id}`. Each file comes from `{base}/wiki{downloadLink}`, which redirects to a pre-signed media URL that is fetched without credentials; an attachment whose `downloadLink` does not start with `/` fails, and nothing is fetched for it. `--name`, `--out <dir|->`, `--force`, `--json`, the output and the fresh temporary folder (`af-confluence-<page-id>-…` or `af-confluence-attachments-…`) work as for `af jira download` (see Jira Attachments), through the same helper.
 
 ### Adding New Commands
 

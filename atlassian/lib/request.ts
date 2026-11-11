@@ -71,7 +71,7 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
     });
 
     if (!response.ok) {
-        throw new AtlassianHttpError(await parseErrorMessage(response), response.status);
+        throw new AtlassianHttpError(await errorMessageFrom(response), response.status);
     }
 
     // Handle 204 No Content
@@ -84,9 +84,11 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
 
 /**
  * Build a human-readable error message from an Atlassian (Jira/Confluence/Bitbucket)
- * error response. Handles all three known envelope shapes.
+ * error response. Handles all three known envelope shapes, and falls back to
+ * `HTTP <status>: <statusText>` for a body that is not one of them (or not JSON).
+ * Reads the response body.
  */
-async function parseErrorMessage(response: Response): Promise<string> {
+export async function errorMessageFrom(response: Response): Promise<string> {
     const fallback = `HTTP ${response.status}: ${response.statusText}`;
     try {
         const errorData = (await response.json()) as AtlassianApiError;

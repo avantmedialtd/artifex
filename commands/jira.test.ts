@@ -23,6 +23,9 @@ vi.mock('../jira/lib/client.ts', async importOriginal => ({
     deleteWorklog: vi.fn(),
     createVersion: vi.fn(),
     updateVersion: vi.fn(),
+    getIssueAttachments: vi.fn(),
+    getAttachment: vi.fn(),
+    attachmentContentUrl: vi.fn(),
 }));
 
 // `--field` resolves custom fields through the field registry, which fetches.
@@ -32,10 +35,20 @@ vi.mock('../jira/lib/fields/resolve-flags.ts', async importOriginal => ({
     resolveFieldFlags: vi.fn(),
 }));
 
+// The download I/O is mocked; the argument checks, --name and the report are real.
+vi.mock('../atlassian/lib/download.ts', async importOriginal => ({
+    ...(await importOriginal<typeof import('../atlassian/lib/download.ts')>()),
+    downloadAttachments: vi.fn(),
+}));
+
+import { stripVTControlCharacters } from 'node:util';
 import { handleJira, parseArgs } from './jira.ts';
 import * as client from '../jira/lib/client.ts';
 import { resolveFieldFlags } from '../jira/lib/fields/resolve-flags.ts';
 import { defaultTextInputIo, type TextInputIo } from '../utils/text-input.ts';
+import { downloadAttachments, type DownloadSummary } from '../atlassian/lib/download.ts';
+import { getAuthHeader, getBaseUrl } from '../atlassian/lib/request.ts';
+import type { JiraAttachment } from '../jira/lib/types.ts';
 
 const HINT = 'Reading --body-file from stdin. Type the text, then press Ctrl-D on an empty line.';
 const MARKDOWN = '## Summary\n\n- First point\n';
@@ -335,6 +348,60 @@ describe('jira parseArgs', () => {
         [['transition', 'PROJ-1', '--field-json', '{}'], '--field-json', 'af jira transition'],
     ])('rejects an option the action does not take: %j', (argv, option, command) => {
         expect(() => parseArgs(argv)).toThrow(`Unknown option ${option} for '${command}'.`);
+    });
+});
+
+// The attachment commands' rules. `download` takes any number of positional
+// arguments, so the table above, which checks for an extra one, does not fit it.
+describe('jira parseArgs: attachment commands', () => {
+    describe.each([
+        { argv: ['attachments', 'MR-4'], command: 'af jira attachments', options: [] },
+        {
+            argv: ['download', 'MR-4'],
+            command: 'af jira download',
+            options: ['--name', '--out', '--force'],
+        },
+    ])('the $command rule', ({ argv, command, options }) => {
+        it('accepts exactly its documented options, with --json last', () => {
+            expect(parseErrorLines([...argv, '--zzz', 'x'])).toEqual([
+                `Unknown option --zzz for '${command}'.`,
+                `Accepted options: ${[...options, '--json'].join(', ')}`,
+                "Run 'af jira --help' for usage.",
+            ]);
+        });
+    });
+
+    it.each([
+        'attachments MR-4 --json',
+        'download MR-4 --name *.png --out ./shots --force --json',
+        'download 10046 10113 --out=-',
+    ])('accepts the documented options: %s', line => {
+        expect(() => parseArgs(line.split(' '))).not.toThrow();
+    });
+
+    it('takes one argument for attachments, and any number for download', () => {
+        expect(parseErrorLines(['attachments', 'MR-4', 'MR-5'])).toEqual([
+            `Unexpected argument "MR-5" for 'af jira attachments'.`,
+        ]);
+        const ids = Array.from({ length: 30 }, (_, i) => String(10000 + i));
+        expect(parseArgs(['download', ...ids]).args).toEqual(ids);
+    });
+
+    it('suggests --name for --nam', () => {
+        expect(parseErrorLines(['download', 'MR-4', '--nam', '*.png'])[0]).toBe(
+            "Unknown option --nam for 'af jira download'. Did you mean --name?",
+        );
+    });
+
+    it('treats --force as a boolean option', () => {
+        expect(parseArgs(['download', 'MR-4', '--out', 'd', '--force']).options.force).toBe(true);
+        expect(() => parseArgs(['download', 'MR-4', '--out', 'd', '--force=yes'])).toThrow(
+            'Option --force does not take a value',
+        );
+    });
+
+    it('takes - as the value of --out', () => {
+        expect(parseArgs(['download', '10046', '--out', '-']).options.out).toBe('-');
     });
 });
 
@@ -1121,6 +1188,411 @@ describe('handleJira prose input', () => {
         it('leaves an unknown worklog action to the handler', async () => {
             expect(await run('worklog', 'frobnicate', 'PROJ-1')).toBe(1);
             expect(stderr()).toContain('worklog requires an action');
+        });
+    });
+});
+
+describe('handleJira attachments and download', () => {
+    const SITE = 'https://test.atlassian.net';
+    let logs: string[];
+    let errors: string[];
+
+    beforeEach(() => {
+        vi.resetAllMocks();
+        vi.stubEnv('ATLASSIAN_BASE_URL', SITE);
+        vi.stubEnv('ATLASSIAN_EMAIL', 'user@test.com');
+        vi.stubEnv('ATLASSIAN_API_TOKEN', 'tok');
+        vi.mocked(client.attachmentContentUrl).mockImplementation(
+            id => `${SITE}/rest/api/3/attachment/content/${id}?redirect=false`,
+        );
+        // Anything the mocks do not cover must never reach the network.
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async () => {
+                throw new Error('unexpected network request');
+            }),
+        );
+        logs = [];
+        errors = [];
+        vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+            logs.push(args.map(String).join(' '));
+        });
+        vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+            errors.push(args.map(String).join(' '));
+        });
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+        vi.unstubAllEnvs();
+    });
+
+    const stdout = (): string => stripVTControlCharacters(logs.join('\n'));
+    const stderr = (): string => stripVTControlCharacters(errors.join('\n'));
+
+    function attachment(id: string, filename: string, size = 100): JiraAttachment {
+        return {
+            id,
+            filename,
+            size,
+            mimeType: filename.toLowerCase().endsWith('.png') ? 'image/png' : 'text/plain',
+            content: `${SITE}/rest/api/3/attachment/content/${id}`,
+            created: '2026-01-02T09:00:00.000+0000',
+            author: { accountId: 'a1', displayName: 'Jane Doe', active: true },
+        };
+    }
+
+    const MR_10 = [
+        attachment('10113', 'mobile-modules.png', 38_612),
+        attachment('10115', 'mobile-property-settings.png', 38_750),
+    ];
+
+    function contentUrl(id: string): string {
+        return `${SITE}/rest/api/3/attachment/content/${id}?redirect=false`;
+    }
+
+    /** The summary downloadAttachments would return, every file downloaded into `directory`. */
+    function downloaded(directory: string, attachments: JiraAttachment[]): DownloadSummary {
+        return {
+            directory,
+            files: attachments.map(a => ({
+                id: a.id,
+                filename: a.filename,
+                path: `${directory}/${a.filename}`,
+                size: a.size,
+                mimeType: a.mimeType,
+                status: 'downloaded' as const,
+            })),
+        };
+    }
+
+    function expectNoRequest(): void {
+        for (const fn of Object.values(client)) {
+            if (vi.isMockFunction(fn) && fn !== client.attachmentContentUrl) {
+                expect(fn).not.toHaveBeenCalled();
+            }
+        }
+        expect(downloadAttachments).not.toHaveBeenCalled();
+        expect(globalThis.fetch).not.toHaveBeenCalled();
+    }
+
+    describe('attachments', () => {
+        it('lists the attachments in a table headed with the key and count', async () => {
+            vi.mocked(client.getIssueAttachments).mockResolvedValue(MR_10);
+            expect(await handleJira(['attachments', 'MR-10'])).toBe(0);
+            expect(client.getIssueAttachments).toHaveBeenCalledWith('MR-10');
+            expect(stdout()).toContain('# Attachments on MR-10 (2)');
+            expect(stdout()).toContain('| 10113 | mobile-modules.png | 37.7 KB | image/png |');
+            expect(stdout()).toContain('by Jane Doe');
+        });
+
+        it('prints the raw attachment array with --json', async () => {
+            vi.mocked(client.getIssueAttachments).mockResolvedValue(MR_10);
+            expect(await handleJira(['attachments', 'MR-10', '--json'])).toBe(0);
+            expect(JSON.parse(logs.join('\n'))).toEqual(MR_10);
+        });
+
+        it('says so when there are none', async () => {
+            vi.mocked(client.getIssueAttachments).mockResolvedValue([]);
+            expect(await handleJira(['attachments', 'PROJ-1'])).toBe(0);
+            expect(stdout()).toContain('No attachments.');
+        });
+
+        it('needs an issue key', async () => {
+            expect(await handleJira(['attachments'])).toBe(1);
+            expect(stderr()).toContain(
+                'Issue key required. Usage: af jira attachments <issue-key>',
+            );
+            expectNoRequest();
+        });
+
+        it('rejects a second issue key', async () => {
+            expect(await handleJira(['attachments', 'MR-4', 'MR-5'])).toBe(1);
+            expect(stderr()).toContain(`Unexpected argument "MR-5" for 'af jira attachments'.`);
+            expectNoRequest();
+        });
+    });
+
+    describe('download', () => {
+        it('downloads every attachment of an issue into a folder named after it', async () => {
+            vi.mocked(client.getIssueAttachments).mockResolvedValue(MR_10);
+            vi.mocked(downloadAttachments).mockResolvedValue(
+                downloaded('/tmp/af-jira-MR-10-Xy12Ab', MR_10),
+            );
+
+            expect(await handleJira(['download', 'mr-10'])).toBe(0);
+
+            expect(client.getIssueAttachments).toHaveBeenCalledWith('mr-10');
+            expect(downloadAttachments).toHaveBeenCalledWith(
+                [
+                    {
+                        id: '10113',
+                        name: 'mobile-modules.png',
+                        size: 38_612,
+                        mimeType: 'image/png',
+                        url: contentUrl('10113'),
+                    },
+                    {
+                        id: '10115',
+                        name: 'mobile-property-settings.png',
+                        size: 38_750,
+                        mimeType: 'image/png',
+                        url: contentUrl('10115'),
+                    },
+                ],
+                {
+                    prefix: 'af-jira-MR-10-',
+                    out: undefined,
+                    force: undefined,
+                    authorization: getAuthHeader(),
+                    baseOrigin: new URL(getBaseUrl()).origin,
+                },
+            );
+            expect(getAuthHeader()).toMatch(/^Basic /);
+            expect(stdout().split('\n')).toEqual([
+                'Downloaded 2 attachment(s) from mr-10 to /tmp/af-jira-MR-10-Xy12Ab',
+                '10113  37.7 KB  /tmp/af-jira-MR-10-Xy12Ab/mobile-modules.png',
+                '10115  37.8 KB  /tmp/af-jira-MR-10-Xy12Ab/mobile-property-settings.png',
+            ]);
+            expect(errors).toEqual([]);
+        });
+
+        it('fetches each attachment ID once, at most 4 at a time, into an attachments folder', async () => {
+            vi.mocked(client.getAttachment).mockImplementation(async id =>
+                attachment(id, `file-${id}.png`),
+            );
+            vi.mocked(downloadAttachments).mockResolvedValue({ directory: '/tmp/x', files: [] });
+
+            expect(await handleJira(['download', '10046', '10113', '10046'])).toBe(0);
+
+            expect(vi.mocked(client.getAttachment).mock.calls).toEqual([['10046'], ['10113']]);
+            const [items, options] = vi.mocked(downloadAttachments).mock.calls[0];
+            expect(items.map(i => [i.id, i.url])).toEqual([
+                ['10046', contentUrl('10046')],
+                ['10113', contentUrl('10113')],
+            ]);
+            expect(options.prefix).toBe('af-jira-attachments-');
+            expect(client.getIssueAttachments).not.toHaveBeenCalled();
+        });
+
+        it('passes --out and --force through', async () => {
+            vi.mocked(client.getIssueAttachments).mockResolvedValue(MR_10);
+            vi.mocked(downloadAttachments).mockResolvedValue(downloaded('/abs/shots', MR_10));
+            expect(await handleJira(['download', 'MR-10', '--out', './shots', '--force'])).toBe(0);
+            expect(vi.mocked(downloadAttachments).mock.calls[0][1]).toMatchObject({
+                out: './shots',
+                force: true,
+            });
+        });
+
+        it('keeps only the attachments matching --name', async () => {
+            vi.mocked(client.getIssueAttachments).mockResolvedValue([
+                attachment('1', 'a.png'),
+                attachment('2', 'b.PNG'),
+                attachment('3', 'notes.txt'),
+            ]);
+            vi.mocked(downloadAttachments).mockResolvedValue({ directory: '/tmp/x', files: [] });
+            expect(await handleJira(['download', 'MR-1', '--name', '*.png'])).toBe(0);
+            const [items] = vi.mocked(downloadAttachments).mock.calls[0];
+            expect(items.map(i => i.name)).toEqual(['a.png', 'b.PNG']);
+        });
+
+        it('lists the filenames when --name matches nothing', async () => {
+            vi.mocked(client.getIssueAttachments).mockResolvedValue(MR_10);
+            expect(await handleJira(['download', 'MR-10', '--name', '*.pdf'])).toBe(1);
+            expect(stderr()).toContain("No attachment matches --name '*.pdf'.");
+            expect(stderr()).toContain('  mobile-modules.png\n  mobile-property-settings.png');
+            expect(downloadAttachments).not.toHaveBeenCalled();
+        });
+
+        it('prints a notice and succeeds for an issue without attachments', async () => {
+            vi.mocked(client.getIssueAttachments).mockResolvedValue([]);
+            expect(await handleJira(['download', 'PROJ-1', '--name', '*.png'])).toBe(0);
+            expect(errors).toEqual(['PROJ-1 has no attachments.']);
+            expect(logs).toEqual([]);
+            expect(downloadAttachments).not.toHaveBeenCalled();
+        });
+
+        it('prints an empty result as JSON for an issue without attachments', async () => {
+            vi.mocked(client.getIssueAttachments).mockResolvedValue([]);
+            expect(await handleJira(['download', 'PROJ-1', '--json'])).toBe(0);
+            expect(JSON.parse(logs.join('\n'))).toEqual({ directory: null, files: [] });
+            expect(errors).toEqual(['PROJ-1 has no attachments.']);
+            expect(downloadAttachments).not.toHaveBeenCalled();
+        });
+
+        it("reports Jira's error for an unknown ID and downloads nothing", async () => {
+            vi.mocked(client.getAttachment).mockImplementation(async id => {
+                if (id === '99999999') {
+                    throw new client.JiraApiError(
+                        "The attachment with id '99999999' does not exist",
+                        404,
+                    );
+                }
+                return attachment(id, 'image.png');
+            });
+            expect(await handleJira(['download', '10046', '99999999'])).toBe(1);
+            expect(stderr()).toContain("The attachment with id '99999999' does not exist");
+            expect(downloadAttachments).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            [['download', 'MR-4', '10046'], 'Unexpected argument "10046"', 'not both'],
+            [['download', '10046', 'MR-4'], 'Unexpected argument "MR-4"', 'not both'],
+            [['download', 'MR-4', 'MR-5'], 'Unexpected argument "MR-5"', 'one issue key'],
+            [['download', 'screenshot.png'], 'Unrecognized argument "screenshot.png"', '--name'],
+            [['download'], 'Issue key or attachment IDs required', 'Usage: af jira download'],
+        ])('rejects %j before any request', async (argv, first, detail) => {
+            expect(await handleJira(argv)).toBe(1);
+            expect(stderr()).toContain(first);
+            expect(stderr()).toContain(detail);
+            if (argv.length > 1) {
+                expect(stderr()).toContain(
+                    'Accepted forms: one issue key (PROJ-123), or one or more attachment IDs',
+                );
+            }
+            expectNoRequest();
+        });
+
+        it.each([
+            [['download', 'MR-4', '--force'], '--force needs --out <dir>'],
+            [['download', 'MR-4', '--out', '-', '--force'], '--force needs --out <dir>'],
+            [['download', '10046', '--out', '-', '--json'], '--json cannot be used with --out -'],
+            [
+                ['download', 'MR-4', '--out', ''],
+                '--out needs a directory, or - for standard output',
+            ],
+            [['download', 'MR-4', '--nam', '*.png'], 'Did you mean --name?'],
+            [['download', 'MR-4', '--out', './shots', '--force=yes'], 'does not take a value'],
+        ])('rejects the options %j before any request', async (argv, message) => {
+            expect(await handleJira(argv)).toBe(1);
+            expect(stderr()).toContain(message);
+            expectNoRequest();
+        });
+
+        it('prints the folder and every file as JSON', async () => {
+            vi.mocked(client.getIssueAttachments).mockResolvedValue(MR_10);
+            const summary = downloaded('/tmp/af-jira-MR-10-Xy12Ab', MR_10);
+            vi.mocked(downloadAttachments).mockResolvedValue(summary);
+
+            expect(await handleJira(['download', 'MR-10', '--json'])).toBe(0);
+
+            const printed = JSON.parse(logs.join('\n'));
+            expect(printed).toEqual(summary);
+            expect(Object.keys(printed)).toEqual(['directory', 'files']);
+            expect(Object.keys(printed.files[0])).toEqual([
+                'id',
+                'filename',
+                'path',
+                'size',
+                'mimeType',
+                'status',
+            ]);
+        });
+
+        it('reports a failed file, marks a skipped one, and exits 1', async () => {
+            vi.mocked(client.getIssueAttachments).mockResolvedValue(MR_10);
+            const summary = downloaded('/abs/shots', MR_10);
+            summary.files[0].status = 'skipped';
+            summary.files[1] = { ...summary.files[1], status: 'failed', error: 'Boom' };
+            vi.mocked(downloadAttachments).mockResolvedValue(summary);
+
+            expect(await handleJira(['download', 'MR-10', '--out', '/abs/shots'])).toBe(1);
+
+            expect(stdout().split('\n')).toEqual([
+                'Downloaded 0 attachment(s) from MR-10 to /abs/shots',
+                '10113  37.7 KB  (already present)  /abs/shots/mobile-modules.png',
+            ]);
+            expect(stderr()).toBe('Failed to download 10115 (mobile-property-settings.png): Boom');
+        });
+
+        it('keeps a failed file in the JSON output and exits 1', async () => {
+            vi.mocked(client.getIssueAttachments).mockResolvedValue(MR_10);
+            const summary = downloaded('/tmp/f', MR_10);
+            summary.files[1] = { ...summary.files[1], status: 'failed', error: 'Boom' };
+            vi.mocked(downloadAttachments).mockResolvedValue(summary);
+
+            expect(await handleJira(['download', 'MR-10', '--json'])).toBe(1);
+            expect(JSON.parse(logs.join('\n')).files[1]).toMatchObject({
+                status: 'failed',
+                error: 'Boom',
+            });
+        });
+
+        it('prints nothing but failures with --out -', async () => {
+            vi.mocked(client.getAttachment).mockResolvedValue(attachment('10046', 'image.png'));
+            vi.mocked(downloadAttachments).mockResolvedValue({
+                directory: null,
+                files: [
+                    {
+                        id: '10046',
+                        filename: 'image.png',
+                        path: '-',
+                        size: 100,
+                        mimeType: 'image/png',
+                        status: 'downloaded',
+                    },
+                ],
+            });
+            expect(await handleJira(['download', '10046', '--out', '-'])).toBe(0);
+            expect(vi.mocked(downloadAttachments).mock.calls[0][1].out).toBe('-');
+            expect(logs).toEqual([]);
+            expect(errors).toEqual([]);
+
+            vi.mocked(downloadAttachments).mockResolvedValue({
+                directory: null,
+                files: [
+                    {
+                        id: '10046',
+                        filename: 'image.png',
+                        path: '-',
+                        size: 26_904,
+                        mimeType: 'image/png',
+                        status: 'failed',
+                        error: 'expected 26904 bytes, received 1000',
+                    },
+                ],
+            });
+            expect(await handleJira(['download', '10046', '--out', '-'])).toBe(1);
+            expect(logs).toEqual([]);
+            expect(stderr()).toBe(
+                'Failed to download 10046 (image.png): expected 26904 bytes, received 1000',
+            );
+        });
+
+        it('reports a conflict from the helper and exits 1', async () => {
+            vi.mocked(client.getIssueAttachments).mockResolvedValue(MR_10);
+            vi.mocked(downloadAttachments).mockRejectedValue(
+                new Error(
+                    '1 existing path in /abs/shots would be replaced, so nothing was downloaded:',
+                ),
+            );
+            expect(await handleJira(['download', 'MR-10', '--out', '/abs/shots'])).toBe(1);
+            expect(stderr()).toContain('Error: 1 existing path in /abs/shots would be replaced');
+        });
+    });
+
+    describe('help', () => {
+        it('documents the attachment commands and the download options', async () => {
+            expect(await handleJira(['--help'])).toBe(0);
+            const text = stdout();
+            expect(text).toContain("  attachments <issue-key>   List an issue's attachments");
+            expect(text).toContain('  download <issue-key> | <id>...');
+            expect(text).toContain('DOWNLOAD OPTIONS:');
+            expect(text).toContain(
+                '  --name <pattern>          Only attachments whose filename matches',
+            );
+            expect(text).toContain('  --out <dir|->             Write into <dir>');
+            expect(text).toContain("one attachment's bytes to standard output");
+            expect(text).toContain(
+                '  --force                   With --out <dir>, replace the files',
+            );
+            expect(text).toContain('Without --out, each run creates a new, empty folder');
+            expect(text).toContain(
+                'version-create, version-update, attachments and download\n  reject options they do not know',
+            );
+            expect(text).toContain('  af jira download 10046 --out - | less');
         });
     });
 });

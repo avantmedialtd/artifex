@@ -68,6 +68,9 @@ export interface ConfluenceAttachment {
     title: string;
     mediaType: string;
     fileSize: number;
+    // The media-platform file ID, which ADF media nodes refer to.
+    fileId?: string;
+    pageId?: string;
     webuiLink?: string;
     downloadLink?: string;
     version?: ConfluenceVersion;

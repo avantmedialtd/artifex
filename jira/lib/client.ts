@@ -26,11 +26,15 @@ import type {
     JiraWorklog,
     JiraBoard,
     JiraSprint,
+    JiraAttachment,
 } from './types.ts';
 import type { JiraFieldCatalogEntry, JiraCreateMetaResponse } from './fields/codec-types.ts';
 
 // Re-export ADF converters for backward compatibility
 export { textToAdf, adfToText };
+
+// Declared in types.ts; re-exported so existing imports from the client keep working.
+export type { JiraAttachment };
 
 /**
  * Error thrown for non-2xx Jira responses. Carries the HTTP status so callers
@@ -687,16 +691,6 @@ export async function unassignIssue(issueKey: string): Promise<void> {
 }
 
 // Attachments
-export interface JiraAttachment {
-    id: string;
-    filename: string;
-    size: number;
-    mimeType: string;
-    content: string;
-    created: string;
-    author: JiraUser;
-}
-
 export async function addAttachment(issueKey: string, filePath: string): Promise<JiraAttachment[]> {
     const fs = await import('fs');
     const path = await import('path');
@@ -757,6 +751,29 @@ export async function addAttachment(issueKey: string, filePath: string): Promise
     }
 
     return response.json() as Promise<JiraAttachment[]>;
+}
+
+/** An issue's attachments, from `fields.attachment`; empty when it has none. */
+export async function getIssueAttachments(issueKey: string): Promise<JiraAttachment[]> {
+    const issue = await request<{ fields?: { attachment?: JiraAttachment[] } }>(
+        `/issue/${issueKey}?fields=attachment`,
+    );
+    return issue.fields?.attachment ?? [];
+}
+
+/** One attachment's metadata. An unknown ID is a 404 carrying Jira's error message. */
+export async function getAttachment(attachmentId: string): Promise<JiraAttachment> {
+    return request<JiraAttachment>(`/attachment/${attachmentId}`);
+}
+
+/**
+ * Where an attachment's bytes are fetched from: built from the configured base
+ * URL and the ID, never from the metadata's `content` URL. With
+ * `redirect=false`, Jira serves the bytes itself instead of redirecting to its
+ * media host, and reports errors in its usual JSON envelope.
+ */
+export function attachmentContentUrl(attachmentId: string): string {
+    return `${getSharedBaseUrl()}/rest/api/3/attachment/content/${attachmentId}?redirect=false`;
 }
 
 // Issue Links

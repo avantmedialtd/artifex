@@ -1,5 +1,6 @@
 import { error } from '../utils/output.ts';
 import { checkStrictArgs, splitOptionToken, type StrictRule } from '../utils/cli-args.ts';
+import { mapWithConcurrency } from '../utils/concurrency.ts';
 import {
     aliasedSource,
     assertSingleSource,
@@ -7,6 +8,7 @@ import {
     type ProseSource,
 } from '../utils/text-input.ts';
 import type { CustomFieldDef } from '../jira/lib/fields/codec-types.ts';
+import type { DownloadForms } from '../atlassian/lib/download.ts';
 
 /**
  * Resolve a comma-separated `--show-field` argument into CustomFieldDef entries.
@@ -116,6 +118,8 @@ interface JiraOptions {
     sprint?: string;
     board?: string;
     state?: string;
+    out?: string;
+    force?: boolean;
 }
 
 // Options that take no value. Written with `=` (`--json=true`) they are an error.
@@ -128,6 +132,7 @@ const BOOLEAN_OPTIONS = new Set([
     '--clear-parent',
     '--internal',
     '--public',
+    '--force',
 ]);
 
 // Each prose flag and its `-file` twin, which takes a path or `-` for stdin.
@@ -152,9 +157,11 @@ function strictRule(
 
 /**
  * The subcommands that take prose reject unknown options and extra positional
- * arguments, which used to be ignored silently. `comment` and `worklog` rules
- * are keyed by their action; `maxPositionals` counts the arguments after the
- * subcommand (`comment edit KEY ID` has 3). Other subcommands stay lenient.
+ * arguments, which used to be ignored silently, and so do the attachment
+ * commands. `comment` and `worklog` rules are keyed by their action;
+ * `maxPositionals` counts the arguments after the subcommand (`comment edit KEY
+ * ID` has 3). `download` takes any number, and checks their forms itself. Other
+ * subcommands stay lenient.
  */
 const STRICT_RULES = new Map<string, StrictRule>(
     [
@@ -259,8 +266,19 @@ const STRICT_RULES = new Map<string, StrictRule>(
             1,
             DESCRIPTION_PROSE,
         ),
+        strictRule('attachments', [], 1),
+        strictRule('download', ['--name', '--out', '--force'], Number.POSITIVE_INFINITY),
     ].map(rule => [rule.command, rule]),
 );
+
+// `af jira download` takes one issue key, or attachment IDs: bare digits, which
+// are unique across the site.
+const DOWNLOAD_FORMS: DownloadForms = {
+    command: 'af jira download',
+    usage: 'af jira download <issue-key> | <attachment-id>... [--name <pattern>] [--out <dir|->] [--force]',
+    container: { name: 'issue key', examples: 'PROJ-123', pattern: /^[A-Za-z][A-Za-z0-9_]*-\d+$/ },
+    attachment: { name: 'attachment ID', examples: '10046 10113', pattern: /^\d+$/ },
+};
 
 /** The strict rule for a subcommand and its first positional argument, if any. */
 function findStrictRule(subcommand: string, action: string | undefined): StrictRule | undefined {
@@ -396,6 +414,9 @@ COMMANDS:
   comment edit <key> <id>   Replace a comment's text (--body / --body-file)
   comment delete <key> <id> Delete a comment
   attach <issue-key> <file> Attach a file to an issue
+  attachments <issue-key>   List an issue's attachments
+  download <issue-key> | <id>...
+                            Download an issue's attachments, or attachments by ID
   transition <issue-key>    Change issue status
   transitions <issue-key>   List available transitions
   assign <issue-key>        Assign issue to a user
@@ -430,8 +451,8 @@ OPTIONS:
   --json                    Output as JSON instead of markdown
 
   Options that take a value also accept --name=value. comment, create, update,
-  transition, worklog, version-create and version-update reject options they
-  do not know and extra arguments.
+  transition, worklog, version-create, version-update, attachments and download
+  reject options they do not know and extra arguments.
 
 LIST / SEARCH OPTIONS:
   --limit <n>               Limit results (default: 50)
@@ -523,6 +544,22 @@ COMMENT OPTIONS:
                             With --internal or --public the text is sent as typed, and
                             Jira Service Management renders it as wiki markup, not markdown
 
+DOWNLOAD OPTIONS:
+  --name <pattern>          Only attachments whose filename matches: * is any run of
+                            characters, ? is one character, and case is ignored
+  --out <dir|->             Write into <dir> (created when missing), or with - write
+                            one attachment's bytes to standard output. In <dir>, a
+                            file with the same name and size is skipped, and any
+                            other file in the way stops the command before anything
+                            is downloaded
+  --force                   With --out <dir>, replace the files in the way
+
+  Without --out, each run creates a new, empty folder in the OS temporary
+  directory (af-jira-<KEY>-..., or af-jira-attachments-... for IDs) and prints
+  the folder's and each file's absolute path. Nothing lands in the working tree,
+  so a download never shows up in git status or starts af stop-hook. Pass --out
+  to keep the files somewhere else.
+
 TRANSITION OPTIONS:
   --to "<status>"           Target status name (required)
   --resolution <name>       Set the resolution (e.g., Fixed, "Won't Do")
@@ -601,6 +638,11 @@ EXAMPLES:
   af jira versions PROJ
   af jira version-create --project PROJ --name "v1.0.0" --release-date 2024-06-01
   af jira version-update 12345 --released
+  af jira attachments MR-4
+  af jira download MR-4
+  af jira download MR-4 --name '*.png'
+  af jira download 10046 10113 --out ./shots
+  af jira download 10046 --out - | less
 `);
 }
 
@@ -1008,6 +1050,80 @@ export async function handleJira(args: string[]): Promise<number> {
                 const attachments = await client.addAttachment(issueKey, filePath);
                 fmt.output(json ? attachments : fmt.formatAttachments(issueKey, attachments), json);
                 break;
+            }
+
+            case 'attachments': {
+                const issueKey = subArgs[0];
+                if (!issueKey) {
+                    error('Error: Issue key required. Usage: af jira attachments <issue-key>');
+                    return 1;
+                }
+                const attachments = await client.getIssueAttachments(issueKey);
+                fmt.output(
+                    json ? attachments : fmt.formatAttachmentList(issueKey, attachments),
+                    json,
+                );
+                break;
+            }
+
+            case 'download': {
+                const download = await import('../atlassian/lib/download.ts');
+                // Every argument error comes before any request.
+                const selection = download.classifyPositionals(subArgs, DOWNLOAD_FORMS);
+                download.checkDownloadOptions(options);
+
+                // All metadata first: a failure (an unknown ID, say) stops the
+                // command before any folder is created or file downloaded.
+                const attachments =
+                    selection.kind === 'container'
+                        ? await client.getIssueAttachments(selection.value)
+                        : await mapWithConcurrency(
+                              selection.ids,
+                              download.DOWNLOAD_CONCURRENCY,
+                              id => client.getAttachment(id),
+                          );
+                if (selection.kind === 'container' && attachments.length === 0) {
+                    // Everything was asked for, and everything is nothing: not a
+                    // failure. No folder is created, and --json still gets its object.
+                    console.error(`${selection.value} has no attachments.`);
+                    if (json) fmt.output({ directory: null, files: [] }, true);
+                    return 0;
+                }
+                const selected = download.filterByName(attachments, options.name, a => a.filename);
+
+                const { getAuthHeader, getBaseUrl } = await import('../atlassian/lib/request.ts');
+                const summary = await download.downloadAttachments(
+                    selected.map(attachment => ({
+                        id: attachment.id,
+                        name: attachment.filename,
+                        size: attachment.size,
+                        mimeType: attachment.mimeType,
+                        url: client.attachmentContentUrl(attachment.id),
+                    })),
+                    {
+                        prefix:
+                            selection.kind === 'container'
+                                ? `af-jira-${selection.value.toUpperCase()}-`
+                                : 'af-jira-attachments-',
+                        out: options.out,
+                        force: options.force,
+                        authorization: getAuthHeader(),
+                        baseOrigin: new URL(getBaseUrl()).origin,
+                    },
+                );
+
+                const report = download.formatDownloadReport(
+                    summary,
+                    selection.kind === 'container' ? selection.value : undefined,
+                );
+                // With --out -, the bytes were the output; only failures are reported.
+                if (json) {
+                    fmt.output(summary, true);
+                } else {
+                    if (options.out !== '-') fmt.output(report.stdout, false);
+                    for (const line of report.stderr) error(line);
+                }
+                return summary.files.some(file => file.status === 'failed') ? 1 : 0;
             }
 
             case 'projects': {

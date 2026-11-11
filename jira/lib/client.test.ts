@@ -31,6 +31,9 @@ import {
     voteIssue,
     createVersion,
     updateVersion,
+    getIssueAttachments,
+    getAttachment,
+    attachmentContentUrl,
 } from './client.ts';
 
 const BASE_URL = 'https://test.atlassian.net';
@@ -740,6 +743,73 @@ describe('jira client', () => {
             const [url, init] = fetchMock.mock.calls[0]!;
             expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/votes`);
             expect((init as RequestInit).method).toBe('POST');
+        });
+    });
+
+    describe('attachments', () => {
+        const attachment = {
+            id: '10113',
+            filename: 'mobile-modules.png',
+            size: 38612,
+            mimeType: 'image/png',
+            content: `${BASE_URL}/rest/api/3/attachment/content/10113`,
+            created: '2026-01-02T09:00:00.000+0000',
+            author: { accountId: 'a1', displayName: 'Jane Doe', active: true },
+        };
+
+        it("getIssueAttachments requests only the issue's attachment field", async () => {
+            fetchMock.mockResolvedValueOnce(
+                mockJsonResponse({ key: 'MR-10', fields: { attachment: [attachment] } }),
+            );
+
+            expect(await getIssueAttachments('MR-10')).toEqual([attachment]);
+
+            const [url, init] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/issue/MR-10?fields=attachment`);
+            expect((init as RequestInit).method).toBeUndefined();
+        });
+
+        it('getIssueAttachments returns an empty array when the field is missing', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ key: 'PROJ-1', fields: {} }));
+            expect(await getIssueAttachments('PROJ-1')).toEqual([]);
+        });
+
+        it('getAttachment requests the attachment by ID', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse(attachment));
+
+            expect(await getAttachment('10113')).toEqual(attachment);
+
+            const [url] = fetchMock.mock.calls[0]!;
+            expect(String(url)).toBe(`${BASE_URL}/rest/api/3/attachment/10113`);
+        });
+
+        it("getAttachment reports Jira's message for an unknown ID", async () => {
+            fetchMock.mockResolvedValueOnce(
+                mockJsonResponse(
+                    {
+                        errorMessages: ["The attachment with id '99999999' does not exist"],
+                        errors: {},
+                    },
+                    404,
+                ),
+            );
+            await expect(getAttachment('99999999')).rejects.toThrow(
+                "The attachment with id '99999999' does not exist",
+            );
+        });
+
+        it('builds the content URL from the base URL and the ID, never the content field', async () => {
+            fetchMock.mockResolvedValueOnce(
+                mockJsonResponse({
+                    ...attachment,
+                    content: 'https://elsewhere.example/secure/attachment/10113/x.png',
+                }),
+            );
+            const fetched = await getAttachment('10113');
+
+            expect(attachmentContentUrl(fetched.id)).toBe(
+                `${BASE_URL}/rest/api/3/attachment/content/10113?redirect=false`,
+            );
         });
     });
 });

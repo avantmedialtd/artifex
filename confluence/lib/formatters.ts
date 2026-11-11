@@ -10,6 +10,7 @@ import type {
 import { adfToText } from '../../atlassian/lib/adf.ts';
 import type { AdfDocument } from '../../atlassian/lib/adf-types.ts';
 import { link } from '../../utils/output.ts';
+import { formatBytes } from '../../utils/format-bytes.ts';
 
 // Confluence URL helpers
 function getBaseUrl(): string {
@@ -255,17 +256,14 @@ export function formatAttachments(
         return lines.join('\n');
     }
 
-    lines.push(`| Filename | Size | Type |`);
-    lines.push(`|----------|------|------|`);
+    // The ID is what `af confluence download <att-id>` takes.
+    lines.push(`| ID | Filename | Size | Type |`);
+    lines.push(`|----|----------|------|------|`);
 
     for (const att of result.results) {
-        const size =
-            att.fileSize < 1024
-                ? `${att.fileSize} B`
-                : att.fileSize < 1024 * 1024
-                  ? `${(att.fileSize / 1024).toFixed(1)} KB`
-                  : `${(att.fileSize / 1024 / 1024).toFixed(1)} MB`;
-        lines.push(`| ${att.title} | ${size} | ${att.mediaType} |`);
+        lines.push(
+            `| ${att.id} | ${att.title} | ${formatBytes(att.fileSize)} | ${att.mediaType} |`,
+        );
     }
 
     return lines.join('\n');
