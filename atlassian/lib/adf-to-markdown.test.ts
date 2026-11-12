@@ -1,7 +1,8 @@
 // cspell:words autolinks kwargs
 
 import { describe, expect, it } from 'vitest';
-import { textToAdf } from './adf.ts';
+import { validateAdf } from '../../test/helpers/adf.ts';
+import { adfToText, textToAdf } from './adf.ts';
 import { adfToMarkdown } from './adf-to-markdown.ts';
 import type { AdfDocument, AdfMark, AdfNode } from './adf-types.ts';
 
@@ -1393,6 +1394,340 @@ describe('adfToMarkdown', () => {
             const paragraph = { type: 'paragraph', content: [text('cycle')] as unknown[] };
             paragraph.content.push(paragraph);
             expect(renderUntyped(doc(paragraph as AdfNode))).toBe('cycle');
+        });
+    });
+});
+
+// Media nodes (design D2 of round-trip-adf-media). Documents use the shapes Jira and
+// Confluence store (design Context); what textToAdf makes of the output is asserted
+// where the test is about reading it back.
+describe('adfToMarkdown: media', () => {
+    const MR4 = '0ab844aa-b95b-46bd-9d6c-a7d69ac7b901';
+    const DIAGRAM = '7f1e2d3c-4b5a-4968-8776-655443322110';
+    const REPORT = '22222222-3333-4444-5555-666666666666';
+
+    const media = (attrs: Record<string, unknown>): AdfNode => ({ type: 'media', attrs });
+    const file = (id: string, alt?: string, more: Record<string, unknown> = {}): AdfNode =>
+        media({ type: 'file', id, collection: '', ...(alt === undefined ? {} : { alt }), ...more });
+    const single = (attrs: Record<string, unknown>, ...content: AdfNode[]): AdfNode => ({
+        type: 'mediaSingle',
+        attrs,
+        content,
+    });
+    const image = (id: string, alt?: string): AdfNode =>
+        single({ layout: 'center' }, file(id, alt));
+    const caption = (...content: (AdfNode | string)[]): AdfNode => ({
+        type: 'caption',
+        content: content.map(node => (typeof node === 'string' ? text(node) : node)),
+    });
+    const group = (...content: AdfNode[]): AdfNode => ({ type: 'mediaGroup', content });
+    const inline = (id: string, alt?: string): AdfNode => ({
+        type: 'mediaInline',
+        attrs: { type: 'file', id, collection: '', ...(alt === undefined ? {} : { alt }) },
+    });
+
+    /** Renders, checks the markdown, and reads it back: the result must be valid ADF. */
+    function readBack(adf: AdfDocument, markdown: string): AdfDocument {
+        expect(adfToMarkdown(adf)).toBe(markdown);
+        const back = textToAdf(markdown);
+        expect(validateAdf(back)).toBeNull();
+        return back;
+    }
+
+    describe('one rule per row of design D2', () => {
+        it('writes an embedded image as its own block, the MR-4 shape included', () => {
+            const mr4 = doc(
+                p(text('Screenshot:', strong)),
+                single(
+                    { layout: 'align-start', width: 694, widthType: 'pixel' },
+                    file(MR4, 'image-20251217-080021.png', { width: 1916, height: 155 }),
+                ),
+            );
+            expect(adfToMarkdown(mr4)).toBe(
+                `**Screenshot:**\n\n![image-20251217-080021.png](media:${MR4})`,
+            );
+        });
+
+        it('writes file cards as one block, one reference per line', () => {
+            const back = readBack(
+                doc(group(file(MR4, 'report.pdf'), file(DIAGRAM, 'data.csv'))),
+                `[report.pdf](media:${MR4})\n[data.csv](media:${DIAGRAM})`,
+            );
+            expect(back).toStrictEqual(
+                doc(group(file(MR4, 'report.pdf'), file(DIAGRAM, 'data.csv'))),
+            );
+        });
+
+        it('writes an inline file in place, inside its sentence', () => {
+            const adf = doc(p('See ', inline(REPORT, 'report.pdf'), ' for details'));
+            expect(readBack(adf, `See [report.pdf](media:${REPORT}) for details`)).toStrictEqual(
+                adf,
+            );
+        });
+
+        it('writes an external image as an image of its URL, which reads back as a link', () => {
+            const external = (url: string, alt?: string): AdfNode =>
+                single(
+                    { layout: 'center' },
+                    media({ type: 'external', url, ...(alt === undefined ? {} : { alt }) }),
+                );
+            expect(
+                readBack(
+                    doc(external('https://example.com/shot.png', 'shot')),
+                    '![shot](https://example.com/shot.png)',
+                ),
+            ).toStrictEqual(doc(p(text('shot', link('https://example.com/shot.png')))));
+            expect(render(external('https://example.com/a b.png'))).toBe(
+                '![](<https://example.com/a b.png>)',
+            );
+        });
+
+        it('writes media without a usable id or url as its alt text, or not at all', () => {
+            expect(
+                render(
+                    p('before'),
+                    single({ layout: 'center' }, media({ type: 'file', id: 'x', alt: 'kept.png' })),
+                    single({ layout: 'center' }, media({ type: 'file', id: 'x' })),
+                    single({ layout: 'center' }, media({ type: 'external', alt: 'no url' })),
+                    group(media({ type: 'file', id: '', collection: '' })),
+                    p('after ', { type: 'mediaInline', attrs: { id: 'm', alt: '# alt' } }),
+                ),
+            ).toBe('before\n\nkept.png\n\nno url\n\nafter # alt');
+        });
+    });
+
+    describe('names, captions and mediaNames', () => {
+        it('writes the plain text of a caption as the title, which reads back as the caption', () => {
+            const adf = doc(
+                single(
+                    { layout: 'center' },
+                    file(MR4, 'flow.png'),
+                    caption(text('Login', strong), { type: 'hardBreak' }, 'flow'),
+                ),
+            );
+            const back = readBack(adf, `![flow.png](media:${MR4} "Login flow")`);
+            expect(back).toStrictEqual(
+                doc(single({ layout: 'center' }, file(MR4, 'flow.png'), caption('Login flow'))),
+            );
+            // An empty caption writes no title.
+            expect(render(single({ layout: 'center' }, file(MR4, 'a.png'), caption()))).toBe(
+                `![a.png](media:${MR4})`,
+            );
+        });
+
+        it('escapes a quote and backslashes in a title, so that it reads back unchanged', () => {
+            const title = 'Say "hi" \\ to C:\\temp\\';
+            const markdown = adfToMarkdown(
+                doc(single({ layout: 'center' }, file(MR4, 'a.png'), caption(title))),
+            );
+            expect(markdown).toBe(`![a.png](media:${MR4} "Say \\"hi\\" \\ to C:\\temp\\\\")`);
+            expect(textToAdf(markdown)).toStrictEqual(
+                doc(single({ layout: 'center' }, file(MR4, 'a.png'), caption(title))),
+            );
+        });
+
+        it('takes the name from mediaNames when alt is absent', () => {
+            const adf = doc(
+                single(
+                    { layout: 'center', width: 760, widthType: 'pixel' },
+                    media({ type: 'file', id: DIAGRAM, collection: 'contentId-12345' }),
+                ),
+            );
+            const mediaNames = new Map([[DIAGRAM, 'diagram.png']]);
+            expect(adfToMarkdown(adf, { mediaNames })).toBe(`![diagram.png](media:${DIAGRAM})`);
+            expect(adfToText(adf, { mediaNames })).toBe(`![diagram.png](media:${DIAGRAM})`);
+            // Without a name, the reference is empty; adfToText's second argument is optional.
+            expect(adfToText(adf)).toBe(`![](media:${DIAGRAM})`);
+            // alt wins over mediaNames.
+            expect(adfToMarkdown(doc(image(DIAGRAM, 'own.png')), { mediaNames })).toBe(
+                `![own.png](media:${DIAGRAM})`,
+            );
+        });
+
+        it('keeps no mediaNames from one call to the next', () => {
+            const adf = doc(image(DIAGRAM));
+            adfToMarkdown(adf, { mediaNames: new Map([[DIAGRAM, 'diagram.png']]) });
+            expect(adfToMarkdown(adf)).toBe(`![](media:${DIAGRAM})`);
+        });
+
+        it('escapes names so that they read back unchanged', () => {
+            for (const name of [
+                'a]b.png',
+                '[draft] plan.pdf',
+                'C:\\shots\\x.png',
+                'trailing\\',
+                '_init_.py',
+                '__init__.png',
+                'my_file_v2.png',
+                '*star*.png',
+                'tick`s.png',
+                '~$report.docx',
+                'a<b>c.png',
+                '<https://example.com>',
+                'R&D &#42; &amp;.png',
+                'www.example.com.png',
+                'me@example.com.png',
+                'Look! ![x](y)',
+                '  padded  ',
+                'café_naïve_名前.png',
+            ]) {
+                const markdown = adfToMarkdown(doc(image(MR4, name)));
+                expect(textToAdf(markdown), `${name} as ${markdown}`).toStrictEqual(
+                    doc(image(MR4, name)),
+                );
+                const inlineDoc = doc(p('See ', inline(MR4, name), ' now'));
+                expect(textToAdf(adfToMarkdown(inlineDoc)), name).toStrictEqual(inlineDoc);
+            }
+            expect(render(image(MR4, 'a]b.png'))).toBe(`![a\\]b.png](media:${MR4})`);
+            expect(render(image(MR4, 'my_file_v2.png'))).toBe(`![my_file_v2.png](media:${MR4})`);
+            expect(render(image(MR4, 'image-20251217-080021.png'))).toBe(
+                `![image-20251217-080021.png](media:${MR4})`,
+            );
+        });
+
+        it('writes a line ending in a name as a space', () => {
+            expect(render(image(MR4, 'two\nlines\r\nhere'))).toBe(
+                `![two lines here](media:${MR4})`,
+            );
+        });
+    });
+
+    describe('positions', () => {
+        it('writes an image in a list item as a block of the item', () => {
+            const adf = doc(ul(li(p('Steps'), image(MR4, 'step.png'), p('Done'))));
+            expect(readBack(adf, `- Steps\n\n  ![step.png](media:${MR4})\n\n  Done`)).toStrictEqual(
+                adf,
+            );
+        });
+
+        it('writes media in a blockquote as blocks of the quote', () => {
+            const adf = doc(
+                quote(p('Before'), image(MR4, 'shot.png'), group(file(DIAGRAM, 'log.txt'))),
+            );
+            expect(
+                readBack(
+                    adf,
+                    `> Before\n>\n> ![shot.png](media:${MR4})\n>\n> [log.txt](media:${DIAGRAM})`,
+                ),
+            ).toStrictEqual(adf);
+        });
+
+        it('writes media in a table cell inline in the cell', () => {
+            const adf = doc(
+                table(
+                    row(th(p('Shot')), th(p('Files'))),
+                    row(
+                        td(image(MR4, 'a|b.png')),
+                        td(p('see'), group(file(DIAGRAM, 'x.pdf'), file(REPORT, 'y.pdf'))),
+                    ),
+                ),
+            );
+            const back = readBack(
+                adf,
+                `| Shot | Files |\n| --- | --- |\n| ![a\\|b.png](media:${MR4}) | see [x.pdf](media:${DIAGRAM}) [y.pdf](media:${REPORT}) |`,
+            );
+            // A cell of only an image reads back as that image; files there read back inline.
+            expect(back).toStrictEqual(
+                doc(
+                    table(
+                        row(th(p('Shot')), th(p('Files'))),
+                        row(
+                            td(image(MR4, 'a|b.png')),
+                            td(p('see ', inline(DIAGRAM, 'x.pdf'), ' ', inline(REPORT, 'y.pdf'))),
+                        ),
+                    ),
+                ),
+            );
+        });
+
+        it('keeps a reference apart from what is around it', () => {
+            // `![` would start an image, a backslash before it would escape it, a bare URL
+            // would run over it, and two references next to each other stay two.
+            expect(render(p('Look!', inline(MR4, 'f')))).toBe(`Look\\![f](media:${MR4})`);
+            expect(render(p('a\\', inline(MR4, 'f')))).toBe(`a\\\\[f](media:${MR4})`);
+            expect(
+                render(
+                    p({ type: 'inlineCard', attrs: { url: 'https://x.test/a' } }, inline(MR4, 'f')),
+                ),
+            ).toBe(`<https://x.test/a>[f](media:${MR4})`);
+            const two = doc(p('Files: ', inline(MR4, 'a'), inline(DIAGRAM, 'b'), '.'));
+            expect(readBack(two, `Files: [a](media:${MR4})[b](media:${DIAGRAM}).`)).toStrictEqual(
+                two,
+            );
+            const bold = doc(p(text('Bold', strong), inline(MR4, 'f'), text('bold', strong)));
+            expect(readBack(bold, `**Bold**[f](media:${MR4})**bold**`)).toStrictEqual(bold);
+        });
+
+        it('reads a paragraph of only inline files back as file cards (design D3)', () => {
+            expect(readBack(doc(p(inline(MR4, 'a.pdf'))), `[a.pdf](media:${MR4})`)).toStrictEqual(
+                doc(group(file(MR4, 'a.pdf'))),
+            );
+        });
+    });
+
+    describe('text that looks like a reference', () => {
+        it('escapes it, so that it reads back as text and never as media', () => {
+            for (const value of [
+                `![x](media:${MR4})`,
+                `See [the file](media:${MR4}) here`,
+                `[x]( <media:${MR4}> )`,
+                `<media:${MR4}>`,
+            ]) {
+                const adf = doc(p(value));
+                const markdown = adfToMarkdown(adf);
+                expect(markdown, value).not.toBe(value);
+                expect(textToAdf(markdown), `${value} as ${markdown}`).toStrictEqual(adf);
+            }
+            expect(render(p(`![x](media:${MR4})`))).toBe(`!\\[x](media:${MR4})`);
+            // A `[` that a backslash already escapes stays as it is; the backslash itself is
+            // lost on the way back, as before punctuation anywhere in running text.
+            expect(textToAdf(adfToMarkdown(doc(p(`a \\[b](media:${MR4})`))))).toStrictEqual(
+                doc(p(`a [b](media:${MR4})`)),
+            );
+            // Split across marks or lines, it is escaped all the same.
+            const split = doc(p(text('[x', strong), `](media:${MR4})`));
+            expect(textToAdf(adfToMarkdown(split))).toStrictEqual(split);
+            const broken = doc(p('[x](', br, `media:${MR4})`));
+            expect(textToAdf(adfToMarkdown(broken))).toStrictEqual(broken);
+        });
+
+        it('leaves brackets alone in text without a media look-alike', () => {
+            expect(render(p('[x](https://example.com) and [y]'))).toBe(
+                '[x](https://example.com) and [y]',
+            );
+        });
+    });
+
+    describe('robustness', () => {
+        it('does not throw on media without attrs, or with attrs of the wrong type', () => {
+            expect(
+                renderUntyped({
+                    type: 'doc',
+                    version: 1,
+                    content: [
+                        { type: 'mediaSingle', content: [{ type: 'media' }] },
+                        { type: 'mediaSingle', attrs: 'x', content: [{ type: 'media', attrs: 7 }] },
+                        { type: 'mediaSingle' },
+                        { type: 'mediaGroup', content: [{ type: 'media' }, null, 'x'] },
+                        { type: 'mediaGroup' },
+                        {
+                            type: 'paragraph',
+                            content: [
+                                { type: 'mediaInline' },
+                                { type: 'mediaInline', attrs: { id: 42, alt: ['x'] } },
+                                text('text'),
+                            ],
+                        },
+                        { type: 'mediaSingle', content: [p('no media here')] },
+                    ],
+                }),
+            ).toBe('text\n\nno media here');
+        });
+
+        it('renders a mediaNames map without the UUID as no name', () => {
+            expect(adfToMarkdown(doc(image(MR4)), { mediaNames: new Map() })).toBe(
+                `![](media:${MR4})`,
+            );
         });
     });
 });

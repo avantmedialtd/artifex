@@ -5,9 +5,19 @@
 // maps its tokens to ADF. The mapping owns the compatibility policies: a single newline is a hard
 // break, raw HTML stays literal text, `code` combines only with `link`, nested quotes are
 // flattened, task items become ballot-box bullets, and no text node is empty or holds a CR.
+// `media:<uuid>` references become media nodes (design D3 of round-trip-adf-media).
 
 import { Marked, Tokenizer, type Token, type Tokens } from 'marked';
-import type { AdfDocument, AdfMark, AdfNode } from './adf-types.ts';
+import { isMediaUrl, mediaIdOf } from './adf-media.ts';
+import type {
+    AdfDocument,
+    AdfMark,
+    AdfMedia,
+    AdfMediaFileAttrs,
+    AdfMediaInline,
+    AdfMediaSingle,
+    AdfNode,
+} from './adf-types.ts';
 
 // --- Input normalization (design D4) -------------------------------------------------------------
 
@@ -749,18 +759,21 @@ const CHECKED_TASK = '\u2611 ';
 const emptyParagraph = (): AdfNode => ({ type: 'paragraph', content: [] });
 
 function mapBlocks(tokens: readonly Token[], context: BlockContext, out: AdfNode[]): void {
-    for (const token of tokens) mapBlock(token, context, out);
+    tokens.forEach((token, k) => mapBlock(token, context, out, tokens[k - 1]?.type === 'checkbox'));
 }
 
-function mapBlock(token: Token, context: BlockContext, out: AdfNode[]): void {
+// `afterTaskBox`: the token follows a tight task item's checkbox, whose ballot box makes its
+// paragraph hold more than media.
+function mapBlock(token: Token, context: BlockContext, out: AdfNode[], afterTaskBox = false): void {
     switch (token.type) {
         case 'space':
         case 'def':
         case 'checkbox': // a tight task item's checkbox, read by mapListItem
             return;
         case 'heading': {
+            // ADF allows no media in a heading, so media references in one stay text.
             const heading = token as Tokens.Heading;
-            const content = mapInline(heading.tokens);
+            const content = mapInline(heading.tokens, NO_MARKS, [], false);
             out.push(
                 context === 'document'
                     ? { type: 'heading', attrs: { level: heading.depth }, content }
@@ -769,9 +782,15 @@ function mapBlock(token: Token, context: BlockContext, out: AdfNode[]): void {
             return;
         }
         case 'paragraph':
-        case 'text': // the block-level text of a tight list item
-            out.push({ type: 'paragraph', content: mapInline(blockInlineTokens(token)) });
+        case 'text': {
+            // The block-level text of a tight list item is a `text` token.
+            const tokens = blockInlineTokens(token);
+            const media = afterTaskBox
+                ? undefined
+                : mediaBlock(tokens, { group: context !== 'listItem' });
+            out.push(media ?? { type: 'paragraph', content: mapInline(tokens) });
             return;
+        }
         case 'code':
             out.push(mapCode(token as Tokens.Code));
             return;
@@ -899,11 +918,17 @@ function prefixFirstParagraph(content: AdfNode[], prefix: string): void {
 }
 
 function mapTable(table: Tokens.Table): AdfNode {
+    // A cell whose only content is a media image holds that image (design D3).
     const row = (cells: Tokens.TableCell[], type: 'tableHeader' | 'tableCell'): AdfNode => ({
         type: 'tableRow',
         content: cells.map(cell => ({
             type,
-            content: [{ type: 'paragraph', content: mapInline(cell.tokens) }],
+            content: [
+                mediaBlock(cell.tokens, { group: false }) ?? {
+                    type: 'paragraph',
+                    content: mapInline(cell.tokens),
+                },
+            ],
         })),
     });
     return {
@@ -1000,16 +1025,19 @@ function pushTextLines(out: AdfNode[], text: string, marks: readonly AdfMark[]):
     }
 }
 
+// `media`: whether a valid media reference may become a `mediaInline` here; not in a heading.
 function mapInline(
     tokens: readonly Token[],
     marks: readonly AdfMark[] = NO_MARKS,
     out: AdfNode[] = [],
+    media = true,
 ): AdfNode[] {
     for (const token of tokens) {
         switch (token.type) {
             case 'text': {
                 const text = token as Tokens.Text;
-                if (text.tokens && text.tokens.length > 0) mapInline(text.tokens, marks, out);
+                if (text.tokens && text.tokens.length > 0)
+                    mapInline(text.tokens, marks, out, media);
                 else pushTextLines(out, text.text, marks);
                 break;
             }
@@ -1017,13 +1045,13 @@ function mapInline(
                 pushText(out, (token as Tokens.Escape).text, marks);
                 break;
             case 'strong':
-                mapInline((token as Tokens.Strong).tokens, withMark(marks, STRONG), out);
+                mapInline((token as Tokens.Strong).tokens, withMark(marks, STRONG), out, media);
                 break;
             case 'em':
-                mapInline((token as Tokens.Em).tokens, withMark(marks, EM), out);
+                mapInline((token as Tokens.Em).tokens, withMark(marks, EM), out, media);
                 break;
             case 'del':
-                mapInline((token as Tokens.Del).tokens, withMark(marks, STRIKE), out);
+                mapInline((token as Tokens.Del).tokens, withMark(marks, STRIKE), out, media);
                 break;
             case 'codespan': {
                 // `code` combines only with `link`: other inherited marks are dropped here.
@@ -1038,7 +1066,7 @@ function mapInline(
                 break;
             case 'link':
             case 'image':
-                mapLink(token as Tokens.Link | Tokens.Image, marks, out);
+                mapLink(token as Tokens.Link | Tokens.Image, marks, out, media);
                 break;
             case 'checkbox': // a loose task item's checkbox, read by mapListItem
                 break;
@@ -1052,15 +1080,28 @@ function mapInline(
 
 // A link, or an image as its alt text linking to the image. Inside a link, the outer link wins.
 // When nothing carries the link (empty link text or alt text), the URL becomes the text.
+//
+// A `media:` URL is no link (design D3 of round-trip-adf-media). A valid reference becomes an
+// inline file, where `media` allows one and no outer link wins; any other `media:` URL becomes
+// its text with the marks around it, or the URL when the text is empty.
 function mapLink(
     token: Tokens.Link | Tokens.Image,
     marks: readonly AdfMark[],
     out: AdfNode[],
+    media = true,
 ): void {
-    const linked = marks.some(mark => mark.type === 'link')
-        ? marks
-        : withMark(marks, linkMark(token.href, token.title));
-    const inner = mapInline(token.tokens, linked);
+    const outerLink = marks.some(mark => mark.type === 'link');
+    let linked = marks;
+    if (isMediaUrl(token.href)) {
+        const id = mediaIdOf(token.href);
+        if (id !== undefined && media && !outerLink) {
+            out.push(mediaInlineNode(id, mediaAlt(token)));
+            return;
+        }
+    } else if (!outerLink) {
+        linked = withMark(marks, linkMark(token.href, token.title));
+    }
+    const inner = mapInline(token.tokens, linked, [], media && !isMediaUrl(token.href));
     if (!inner.some(node => node.type === 'text')) pushText(inner, token.href, linked);
     for (const node of inner) {
         if (node.type === 'text') pushText(out, node.text ?? '', node.marks ?? NO_MARKS);
@@ -1068,10 +1109,115 @@ function mapLink(
     }
 }
 
+// --- Media references (design D3 of round-trip-adf-media) -------------------------------------------
+
+// The plain text of inline tokens, as an image's alt text reads: text and escapes as they read,
+// code spans as their text, the text inside emphasis and links, and a line ending as a space
+// (a name is one line). Inline HTML and anything else count as their source.
+function plainTextOf(tokens: readonly Token[] | undefined): string {
+    let text = '';
+    for (const token of tokens ?? []) {
+        switch (token.type) {
+            case 'text': {
+                const inner = token as Tokens.Text;
+                text += inner.tokens?.length ? plainTextOf(inner.tokens) : inner.text;
+                break;
+            }
+            case 'escape':
+            case 'codespan':
+                text += (token as Tokens.Escape | Tokens.Codespan).text;
+                break;
+            case 'br':
+                text += ' ';
+                break;
+            case 'strong':
+            case 'em':
+            case 'del':
+            case 'link':
+            case 'image':
+                text += plainTextOf((token as Tokens.Strong).tokens);
+                break;
+            case 'checkbox':
+                break;
+            default:
+                text += token.raw;
+        }
+    }
+    return text.replace(/\n/g, ' ');
+}
+
+// A media reference's name: its link or alt text, or none when that is empty or merely the URL
+// (an autolink such as `<media:…>`).
+function mediaAlt(token: Tokens.Link | Tokens.Image): string {
+    const text = plainTextOf(token.tokens);
+    return text === token.href ? '' : text;
+}
+
+// D3's defaults for a node new to the document: the smallest attributes the ADF schema accepts,
+// which both Jira and Confluence accept (spike, 2026-11-12). On an update, reconcileMedia gives a
+// known UUID its stored attributes back. The name, when not empty, is the alt text.
+function fileAttrs(id: string, alt: string): AdfMediaFileAttrs {
+    return alt === ''
+        ? { type: 'file', id, collection: '' }
+        : { type: 'file', id, collection: '', alt };
+}
+
+function mediaInlineNode(id: string, alt: string): AdfMediaInline {
+    return { type: 'mediaInline', attrs: fileAttrs(id, alt) };
+}
+
+function mediaNode(id: string, alt: string): AdfMedia {
+    return { type: 'media', attrs: fileAttrs(id, alt) };
+}
+
+// An embedded image, centered at its natural size, with the title (when there is one) as its
+// caption, line endings as hard breaks.
+function mediaSingleNode(
+    id: string,
+    alt: string,
+    title: string | null | undefined,
+): AdfMediaSingle {
+    const content: AdfNode[] = [mediaNode(id, alt)];
+    if (title) {
+        const caption: AdfNode[] = [];
+        pushSourceLines(caption, title, NO_MARKS);
+        content.push({ type: 'caption', content: caption });
+    }
+    return { type: 'mediaSingle', attrs: { layout: 'center' }, content };
+}
+
+// Whitespace between references in a paragraph: a line ending (`br`), or text of only whitespace.
+function isBlank(token: Token): boolean {
+    if (token.type === 'br') return true;
+    return token.type === 'text' && /^\s*$/.test((token as Tokens.Text).text);
+}
+
+// The media block that a paragraph's inline tokens stand for, or undefined: exactly one image with
+// a valid reference (whitespace aside) is an embedded image, and only links with valid references,
+// separated by whitespace or line endings, are file cards. `group: false` where ADF allows no
+// mediaGroup, as in a list item, or where only an image counts, as in a table cell.
+function mediaBlock(tokens: readonly Token[], { group }: { group: boolean }): AdfNode | undefined {
+    const items = tokens.filter(token => !isBlank(token));
+    if (items.length === 0) return undefined;
+    if (items.length === 1 && items[0].type === 'image') {
+        const image = items[0] as Tokens.Image;
+        const id = mediaIdOf(image.href);
+        return id === undefined ? undefined : mediaSingleNode(id, mediaAlt(image), image.title);
+    }
+    if (!group) return undefined;
+    const content: AdfNode[] = [];
+    for (const item of items) {
+        const id = item.type === 'link' ? mediaIdOf((item as Tokens.Link).href) : undefined;
+        if (id === undefined) return undefined;
+        content.push(mediaNode(id, mediaAlt(item as Tokens.Link)));
+    }
+    return { type: 'mediaGroup', content };
+}
+
 // --- Entry point ----------------------------------------------------------------------------------
 
 // Swaps the sentinels back to U+2028 / U+2029 in every emitted string: text, code body, language,
-// href and title.
+// a media node's alt text, href and title.
 function restoreSeparators(nodes: AdfNode[], sentinels: Sentinels): void {
     const restore = (value: string): string =>
         value
@@ -1081,6 +1227,8 @@ function restoreSeparators(nodes: AdfNode[], sentinels: Sentinels): void {
         if (node.text !== undefined) node.text = restore(node.text);
         const language = node.attrs?.language;
         if (node.attrs && typeof language === 'string') node.attrs.language = restore(language);
+        const alt = node.attrs?.alt;
+        if (node.attrs && typeof alt === 'string') node.attrs.alt = restore(alt);
         for (const mark of node.marks ?? []) {
             if (typeof mark.attrs?.href === 'string') mark.attrs.href = restore(mark.attrs.href);
             if (typeof mark.attrs?.title === 'string') mark.attrs.title = restore(mark.attrs.title);

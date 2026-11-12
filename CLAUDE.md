@@ -30,9 +30,10 @@ commands/            - Command handler modules
 └── help.ts          - help command
 atlassian/lib/       - Shared Atlassian infrastructure
 ├── config.ts        - Shared config (ATLASSIAN_* / JIRA_* env vars)
-├── adf.ts           - ADF converter facade: textToAdf / adfToText (shared by Jira + Confluence)
+├── adf.ts           - ADF converter facade: textToAdf / adfToText / textToAdfKeepingMedia (shared by Jira + Confluence)
 ├── markdown-to-adf.ts - Markdown → ADF: marked's GFM lexer plus af's own mapper
 ├── adf-to-markdown.ts - ADF → markdown renderer
+├── adf-media.ts     - media: references and reconcileMedia (keeps embedded images through an update)
 ├── adf-types.ts     - ADF type definitions
 ├── download.ts      - Attachment downloads shared by Jira + Confluence (safe names, temp-file writes)
 └── request.ts       - Shared HTTP request helper with auth
@@ -352,10 +353,20 @@ Legacy variables (`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`) are also supp
 The shared infrastructure lives in `atlassian/lib/`:
 
 - `config.ts` - Reads env vars with fallback logic
-- `adf.ts` - Markdown ↔ ADF converters used by both Jira and Confluence. A facade over two modules:
+- `adf.ts` - Markdown ↔ ADF converters used by both Jira and Confluence. A facade over three modules:
     - `markdown-to-adf.ts` lexes GitHub-flavored markdown with `marked` (one module-level `Marked` instance, `.lexer()` only, never `setOptions`/`use`) and maps the tokens to ADF with af's own rules: a single newline is a hard break, raw HTML stays literal text, the `code` mark is combined only with links, nested quotes are flattened, and task items become ☐ / ☑ bullets rather than ADF task items. Input nested more than 100 levels deep, or deep enough to overflow the stack, is kept as written.
     - `---` directly under a line of text is a setext heading underline (as on GitHub), so a separator needs a blank line before it.
     - `adf-to-markdown.ts` renders ADF back to canonical markdown, including tables, nested lists, task items, mentions, emoji and inline cards; it never throws. For the regression corpus and typical agent text, `textToAdf → adfToText → textToAdf` reproduces the same ADF; text typed in the Jira UI can hit documented limits (delimiter characters in running text, emphasis forms marked cannot express).
+    - **Media.** Embedded images and files are no longer skipped (this supersedes decision D11 of the archived `replace-markdown-adf-converter`).
+        - `adfToText` writes them as `media:` references: a `mediaSingle` as `![name](media:<uuid>)` on its own line, with its caption as the title; a `mediaGroup` as one `[name](media:<uuid>)` line per file; a `mediaInline` as `[name](media:<uuid>)` in its sentence; and an external image as `![alt](url)`, which reads back as a link.
+        - The name is `alt`, or else the name an optional `adfToText(adf, { mediaNames })` map gives for the UUID (Confluence passes attachment `fileId` → title). It is escaped so that it reads back unchanged.
+        - Only a UUID makes a usable `id`. Text that merely looks like a reference gets backslashes and stays text.
+        - `textToAdf` reads a valid reference (`media:` plus a UUID, in any case) back with default presentation (`mediaSingle { layout: "center" }`, `collection: ""`). A paragraph of exactly one image becomes a `mediaSingle`, a paragraph of only file links becomes a `mediaGroup`, and a reference among other text becomes a `mediaInline`. A `media:` URL that is not valid, or one in a heading, stays text.
+        - ADF allows no `mediaGroup` in a list item, so file links there stay inline. A table cell is promoted only when it holds exactly one image.
+    - `adf-media.ts` holds the reference helpers and `reconcileMedia(next, current, mediaNames?)`. That function matches media by UUID against the stored document and copies back the stored attributes and marks (layout, width, collection, pixel size, …).
+        - An alt equal to the name the stored node shows stays as stored, absent included. An unchanged caption keeps its formatting.
+        - It returns `{ doc, removed, unknown }`. `textToAdfKeepingMedia(markdown, current, mediaNames?)` is `reconcileMedia(textToAdf(markdown), …)`, and every update path uses it.
+        - A spike on 2026-11-12 confirmed that both products accept the defaults and keep the attachment when an embed is removed. Jira accepts only media from the issue's own attachments; Confluence renders a node copied from another page.
     - Tests validate every output against the vendored ADF JSON schema (`test/fixtures/adf-schema-full.json`) and the regression corpus of agent-style markdown (`test/fixtures/adf-corpus.json`), using the helpers in `test/helpers/adf.ts`.
 - `request.ts` - Authenticated HTTP request helpers:
     - `request<T>(url)` for JSON endpoints
@@ -399,6 +410,7 @@ Beyond CRUD, `af jira` covers transitions-with-screens, issue moves, worklogs, b
 
 - **Transitions carry screens.** `af jira transition KEY --to Done --resolution Fixed --comment "…" --field name=value` sends `fields` + `update` to `POST /issue/{key}/transitions`; the comment is ADF in `update.comment`; a 409 (concurrent transition) retries with backoff. `af jira transitions KEY` requests `?expand=transitions.fields` and shows which transitions present a screen and what they require. (A field goes in either `fields` or `update`, never both.)
 - **Reparent.** `af jira update KEY --parent PARENT` sets the canonical `parent` field (it replaced Epic Link); `--clear-parent` attempts `parent: null` (provisional — Jira's clearing behavior is undocumented and varies by project type).
+- **Embedded images.** `af jira get` and the comment listing show embedded media as `media:` references (see `adf-media.ts` above). `update --description…` and `comment edit` read the current document first (`GET /issue/{key}?fields=description`, `GET /issue/{key}/comment/{id}`), build the new one with `textToAdfKeepingMedia`, and then PUT it. So a kept `![…](media:…)` line keeps its image exactly. When the new text drops media, a warning on stderr names them and says the attachment is still on the issue; the exit code stays 0, and `--json` output is unchanged. `--description ""` still clears the description, and warns too. Creating an issue, adding a comment, and transition and worklog comments send default attributes with no extra request. Jira rejects a write whose media are not attachments of that issue (400 `ATTACHMENT_VALIDATION_ERROR`), so a reference copied from another issue fails, and `create` cannot embed an existing file.
 - **Comments.** `af jira comment KEY --body …` adds a comment (`--add` is an alias of `--body`; with no body flag the comments are listed), and `--body-file <path>` or `--body-file -` (stdin) takes the body from a file. `comment edit KEY <id>` takes the same flags; `comment delete KEY <id>`. `--visibility "Role"` (or `group:Name`) restricts the platform comment. `--internal` / `--public` route through the JSM Service Desk API (`/rest/servicedeskapi/...`), since the platform `jsdPublic` flag is read-only; that text is sent as typed and JSM renders it as wiki markup, not markdown.
 - **Multi-line text.** Every prose flag has a `-file` twin taking a path or `-` for stdin: `--body-file`, `--description-file` (issue and version descriptions) and `--comment-file` (transition and worklog comments). Inside quotes the shell passes `\n` through as a backslash and an `n`, and double quotes also run backticks and expand `$`, so send multi-line markdown with a quoted heredoc, flush-left: `af jira comment KEY --body-file - <<'AF_BODY'` … `AF_BODY`. Stdin is read only on an explicit `-`. The resolver is `readProse` in `utils/text-input.ts`; it never unescapes `\n`.
 - **Strict parsing.** The prose subcommands (`comment`, `create`, `update`, `transition`, `worklog`, `version-create`, `version-update`) and the attachment subcommands (`attachments`, `download`) reject unknown options and extra positionals with a suggestion (`checkStrictArgs` in `utils/cli-args.ts`); other subcommands stay lenient. Every subcommand accepts `--name=value`.
@@ -600,6 +612,12 @@ af confluence spaces                     # List all spaces
 The Confluence client uses the v2 API (`/wiki/api/v2/`) for most operations and falls back to v1 (`/wiki/rest/api/`) for search (CQL), label management, and attachment uploads. Page content is stored as ADF (Atlassian Document Format), with automatic markdown conversion.
 
 `--body-file` takes a path, or `-` to read stdin, on `create`, `update` and `comment` (`af confluence comment <page-id> --body-file - <<'AF_BODY'`). `--body` with `--body-file` is an error. `create`, `update`, `comment` and `download` reject unknown options and extra positionals; every subcommand accepts `--name=value`.
+
+**Embedded images.** `af confluence get` and `comments` show embedded media as `media:` references (see `adf-media.ts` under Atlassian Configuration).
+
+- Confluence media nodes carry no `alt`. When some media node of the page lacks one, `get` fetches every page of the page's attachments once and names each node by the attachment whose `fileId` equals its `id`. `comments` and `--json` make no lookup.
+- `update` reconciles the new body against the body it already fetches for the version number (`textToAdfKeepingMedia`), doing the same lookup only when needed. A kept image therefore comes back exactly: no `alt` added, and its `contentId-…` collection and sizes kept. `updatePage` returns `{ page, removed }`, and media the new body drops are named in a warning on stderr (exit 0).
+- `create` and `comment` send default attributes. Confluence fills in the collection, and it renders a reference copied from another page.
 
 `af confluence attachments <page-id>` lists one page of results (`--limit`, default 50) with each attachment's ID (`att<digits>`), so a single one can be downloaded. `af confluence download` takes one page ID (bare digits) or one or more attachment IDs, never both. For a page it reads every page of `GET /wiki/api/v2/pages/{id}/attachments?limit=250` (250 is the maximum), following each site-relative `_links.next`; for IDs it reads `GET /wiki/api/v2/attachments/{id}`. Each file comes from `{base}/wiki{downloadLink}`, which redirects to a pre-signed media URL that is fetched without credentials; an attachment whose `downloadLink` does not start with `/` fails, and nothing is fetched for it. `--name`, `--out <dir|->`, `--force`, `--json`, the output and the fresh temporary folder (`af-confluence-<page-id>-…` or `af-confluence-attachments-…`) work as for `af jira download` (see Jira Attachments), through the same helper.
 

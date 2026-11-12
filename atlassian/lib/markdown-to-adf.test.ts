@@ -1042,3 +1042,222 @@ describe('mayHaveSetextUnderline', () => {
         expect(mayHaveSetextUnderline('a\n|-| x\n---')).toBe(true);
     });
 });
+
+// `media:` references (design D3 of round-trip-adf-media). Every conversion goes through
+// `convert`, so each output is also checked against the vendored ADF schema.
+describe('markdownToAdf: media references', () => {
+    const MR4 = '0ab844aa-b95b-46bd-9d6c-a7d69ac7b901';
+    const DIAGRAM = '7f1e2d3c-4b5a-4968-8776-655443322110';
+
+    const fileAttrs = (id: string, alt?: string): Record<string, unknown> =>
+        alt === undefined
+            ? { type: 'file', id, collection: '' }
+            : { type: 'file', id, collection: '', alt };
+    const media = (id: string, alt?: string): AdfNode => ({
+        type: 'media',
+        attrs: fileAttrs(id, alt),
+    });
+    const image = (id: string, alt?: string, ...caption: AdfNode[]): AdfNode => ({
+        type: 'mediaSingle',
+        attrs: { layout: 'center' },
+        content:
+            caption.length > 0
+                ? [media(id, alt), { type: 'caption', content: caption }]
+                : [media(id, alt)],
+    });
+    const files = (...content: AdfNode[]): AdfNode => ({ type: 'mediaGroup', content });
+    const inline = (id: string, alt?: string): AdfNode => ({
+        type: 'mediaInline',
+        attrs: fileAttrs(id, alt),
+    });
+
+    describe('one rule per row of design D3', () => {
+        it('reads a paragraph of exactly one image reference as an embedded image', () => {
+            expect(convert(`![shot.png](media:${MR4})`)).toStrictEqual(doc(image(MR4, 'shot.png')));
+            // Whitespace around it does not count.
+            expect(convert(`  ![shot.png](media:${MR4})  `)).toStrictEqual(
+                doc(image(MR4, 'shot.png')),
+            );
+        });
+
+        it('makes the title a caption', () => {
+            expect(convert(`![flow.png](media:${MR4} "Login flow")`)).toStrictEqual(
+                doc(image(MR4, 'flow.png', txt('Login flow'))),
+            );
+            // An empty title is no title.
+            expect(convert(`![flow.png](media:${MR4} "")`)).toStrictEqual(
+                doc(image(MR4, 'flow.png')),
+            );
+        });
+
+        it('reads a paragraph of only link references as file cards', () => {
+            const cards = doc(files(media(MR4, 'report.pdf'), media(DIAGRAM, 'data.csv')));
+            expect(
+                convert(`[report.pdf](media:${MR4})\n[data.csv](media:${DIAGRAM})`),
+            ).toStrictEqual(cards);
+            expect(
+                convert(`[report.pdf](media:${MR4}) [data.csv](media:${DIAGRAM})`),
+            ).toStrictEqual(cards);
+            expect(convert(`[report.pdf](media:${MR4})`)).toStrictEqual(
+                doc(files(media(MR4, 'report.pdf'))),
+            );
+        });
+
+        it('reads a reference among other inline content as an inline file', () => {
+            expect(convert(`See [report.pdf](media:${MR4}) for details`)).toStrictEqual(
+                doc(para(txt('See '), inline(MR4, 'report.pdf'), txt(' for details'))),
+            );
+            // An image among other content is inline too, and so are two images.
+            expect(convert(`Before ![shot.png](media:${MR4})`)).toStrictEqual(
+                doc(para(txt('Before '), inline(MR4, 'shot.png'))),
+            );
+            expect(convert(`![a](media:${MR4})\n![b](media:${DIAGRAM})`)).toStrictEqual(
+                doc(para(inline(MR4, 'a'), br, inline(DIAGRAM, 'b'))),
+            );
+            // An inline file carries no mark, whatever surrounds it.
+            expect(convert(`**See [r.pdf](media:${MR4}) now**`)).toStrictEqual(
+                doc(para(txt('See ', strong), inline(MR4, 'r.pdf'), txt(' now', strong))),
+            );
+        });
+
+        it('reads a media: URL that is not a valid reference as its text, with no link', () => {
+            expect(convert('![shot](media:not-a-uuid)')).toStrictEqual(doc(para(txt('shot'))));
+            expect(convert(`See [file](media:${MR4}x) here`)).toStrictEqual(
+                doc(para(txt('See file here'))),
+            );
+            // Without text, the URL is the text.
+            expect(convert('[](media:not-a-uuid)')).toStrictEqual(
+                doc(para(txt('media:not-a-uuid'))),
+            );
+            // The marks around it stay.
+            expect(convert('**a ![b](media:bad) c**')).toStrictEqual(
+                doc(para(txt('a b c', strong))),
+            );
+        });
+
+        it('reads a valid reference where ADF allows no media as its text, with its marks', () => {
+            expect(convert(`## Result ![shot](media:${MR4})`)).toStrictEqual(
+                doc(heading(2, txt('Result shot'))),
+            );
+            expect(convert(`## **Result [log](media:${MR4})**`)).toStrictEqual(
+                doc(heading(2, txt('Result log', strong))),
+            );
+            // Inside another link's text, the outer link wins.
+            expect(convert(`[![shot](media:${MR4})](https://example.com)`)).toStrictEqual(
+                doc(para(txt('shot', link('https://example.com')))),
+            );
+        });
+    });
+
+    describe('names', () => {
+        it('takes the plain text of the alt or link text as the name, and none when empty', () => {
+            expect(convert(`![](media:${MR4})`)).toStrictEqual(doc(image(MR4)));
+            expect(convert(`[](media:${MR4})`)).toStrictEqual(doc(files(media(MR4))));
+            expect(convert(`![*shot* \`v2\`.png](media:${MR4})`)).toStrictEqual(
+                doc(image(MR4, 'shot v2.png')),
+            );
+            expect(convert(`![a\\]b \\_x\\_.png](media:${MR4})`)).toStrictEqual(
+                doc(image(MR4, 'a]b _x_.png')),
+            );
+        });
+
+        it('takes no name from an autolink, whose text is the URL', () => {
+            expect(convert(`Logs: <media:${MR4}>`)).toStrictEqual(
+                doc(para(txt('Logs: '), inline(MR4))),
+            );
+        });
+
+        it('keeps the UUID as written, in any case', () => {
+            const upper = MR4.toUpperCase();
+            expect(convert(`![x](media:${upper})`)).toStrictEqual(doc(image(upper, 'x')));
+        });
+
+        it('keeps U+2028 in a name, which the mapper hides from marked', () => {
+            const ls = String.fromCharCode(0x2028);
+            expect(convert(`![a${ls}b](media:${MR4})`)).toStrictEqual(doc(image(MR4, `a${ls}b`)));
+        });
+    });
+
+    describe('positions', () => {
+        it('reads media blocks in a blockquote', () => {
+            expect(
+                convert(`> ![shot.png](media:${MR4})\n>\n> [log.txt](media:${DIAGRAM})`),
+            ).toStrictEqual(doc(quote(image(MR4, 'shot.png'), files(media(DIAGRAM, 'log.txt')))));
+        });
+
+        it('reads an image in a list item as a block of the item', () => {
+            expect(convert(`- ![shot.png](media:${MR4})`)).toStrictEqual(
+                doc(bullets(listItem(image(MR4, 'shot.png')))),
+            );
+            expect(convert(`1. Step\n\n   ![shot.png](media:${MR4})`)).toStrictEqual(
+                doc(ordered(listItem(para(txt('Step')), image(MR4, 'shot.png')))),
+            );
+        });
+
+        it('reads link references in a list item as inline files, since ADF allows no mediaGroup there', () => {
+            expect(convert(`- [a.pdf](media:${MR4})\n  [b.pdf](media:${DIAGRAM})`)).toStrictEqual(
+                doc(bullets(item(inline(MR4, 'a.pdf'), br, inline(DIAGRAM, 'b.pdf')))),
+            );
+            // A quote in a list item joins the item, under the same rule.
+            expect(convert(`- > [a.pdf](media:${MR4})`)).toStrictEqual(
+                doc(bullets(item(inline(MR4, 'a.pdf')))),
+            );
+        });
+
+        it('reads a table cell of only an image as that image, and other references inline', () => {
+            const cellOf = (type: 'tableHeader' | 'tableCell', node: AdfNode): AdfNode => ({
+                type,
+                content: [node],
+            });
+            expect(
+                convert(
+                    `| Shot | Files |\n| --- | --- |\n| ![a.png](media:${MR4}) | [b.pdf](media:${DIAGRAM}) |`,
+                ),
+            ).toStrictEqual(
+                doc(
+                    table(
+                        row(cell('tableHeader', txt('Shot')), cell('tableHeader', txt('Files'))),
+                        row(
+                            cellOf('tableCell', image(MR4, 'a.png')),
+                            cell('tableCell', inline(DIAGRAM, 'b.pdf')),
+                        ),
+                    ),
+                ),
+            );
+        });
+
+        it('keeps the ballot box of a task item, so its paragraph is no media block', () => {
+            expect(convert(`- [ ] ![shot.png](media:${MR4})`)).toStrictEqual(
+                doc(bullets(item(txt('\u2610 '), inline(MR4, 'shot.png')))),
+            );
+            expect(convert(`- [x] [a.pdf](media:${MR4})\n\n  more`)).toStrictEqual(
+                doc(
+                    bullets(
+                        listItem(para(txt('\u2611 '), inline(MR4, 'a.pdf')), para(txt('more'))),
+                    ),
+                ),
+            );
+        });
+
+        it('turns line endings in a title into hard breaks in the caption', () => {
+            expect(convert(`![a.png](media:${MR4} "one\ntwo")`)).toStrictEqual(
+                doc(image(MR4, 'a.png', txt('one'), br, txt('two'))),
+            );
+        });
+    });
+
+    it('converts images and links with any other URL as before', () => {
+        expect(convert('![screenshot](https://example.com/shot.png)')).toStrictEqual(
+            doc(para(txt('screenshot', link('https://example.com/shot.png')))),
+        );
+        expect(convert('[docs](https://example.com) and [media](mediaX:1)')).toStrictEqual(
+            doc(
+                para(
+                    txt('docs', link('https://example.com')),
+                    txt(' and '),
+                    txt('media', link('mediaX:1')),
+                ),
+            ),
+        );
+    });
+});

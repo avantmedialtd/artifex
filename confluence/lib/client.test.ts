@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { getAllAttachments, getAttachment } from './client.ts';
+import {
+    addComment,
+    createPage,
+    getAllAttachments,
+    getAttachment,
+    mediaNamesOf,
+    parseAdfBody,
+    updatePage,
+} from './client.ts';
+import type { ConfluenceAttachment } from './types.ts';
 
 const BASE_URL = 'https://test.atlassian.net';
 
@@ -125,6 +134,214 @@ describe('confluence client', () => {
                 name: 'AtlassianHttpError',
                 status: 404,
             });
+        });
+    });
+
+    describe('embedded media (design D6 of round-trip-adf-media)', () => {
+        const DIAGRAM = '7f1e2d3c-4b5a-4968-8776-655443322110';
+        const caption = {
+            type: 'caption',
+            content: [
+                { type: 'text', text: 'Login', marks: [{ type: 'strong' }] },
+                { type: 'text', text: ' flow' },
+            ],
+        };
+        // An image as Confluence stores it: no alt, a contentId collection, pixel sizes.
+        const storedImage = {
+            type: 'mediaSingle',
+            attrs: { layout: 'center', width: 760, widthType: 'pixel' },
+            content: [
+                {
+                    type: 'media',
+                    attrs: {
+                        width: 1520,
+                        id: DIAGRAM,
+                        collection: 'contentId-12345',
+                        type: 'file',
+                        height: 980,
+                    },
+                },
+                caption,
+            ],
+        };
+        const body = (...content: unknown[]): string =>
+            JSON.stringify({ type: 'doc', version: 1, content });
+        const page = (value: string): Record<string, unknown> => ({
+            id: '12345',
+            status: 'current',
+            title: 'Design',
+            spaceId: '1',
+            version: { number: 7 },
+            body: { atlas_doc_format: { representation: 'atlas_doc_format', value } },
+        });
+        const intro = { type: 'paragraph', content: [{ type: 'text', text: 'Intro' }] };
+
+        /** The ADF document the last request sent, as its body value. */
+        function sentDocument(): Record<string, unknown> {
+            const [, init] = fetchMock.mock.calls.at(-1)!;
+            const sent = JSON.parse((init as RequestInit).body as string);
+            return JSON.parse(sent.body.value);
+        }
+
+        it('keeps an image without alt exactly, naming it from one attachments fetch', async () => {
+            fetchMock
+                .mockResolvedValueOnce(mockJsonResponse(page(body(intro, storedImage))))
+                .mockResolvedValueOnce(
+                    mockJsonResponse({
+                        results: [{ ...attachment('att1'), fileId: DIAGRAM, title: 'diagram.png' }],
+                    }),
+                )
+                .mockResolvedValueOnce(mockJsonResponse({ id: '12345', title: 'Design' }));
+
+            const result = await updatePage('12345', {
+                bodyMarkdown: `Intro, reworded\n\n![diagram.png](media:${DIAGRAM} "Login flow")\n`,
+            });
+
+            expect(requestedUrls()).toEqual([
+                `${BASE_URL}/wiki/api/v2/pages/12345?body-format=atlas_doc_format`,
+                `${BASE_URL}/wiki/api/v2/pages/12345/attachments?limit=250`,
+                `${BASE_URL}/wiki/api/v2/pages/12345`,
+            ]);
+            expect(sentDocument()).toStrictEqual({
+                type: 'doc',
+                version: 1,
+                content: [
+                    { type: 'paragraph', content: [{ type: 'text', text: 'Intro, reworded' }] },
+                    storedImage,
+                ],
+            });
+            expect(result).toEqual({ page: { id: '12345', title: 'Design' }, removed: [] });
+        });
+
+        it('fetches no attachments when every media node has alt', async () => {
+            const withAlt = structuredClone(storedImage);
+            (withAlt.content[0] as { attrs: Record<string, unknown> }).attrs.alt = 'diagram.png';
+            fetchMock
+                .mockResolvedValueOnce(mockJsonResponse(page(body(withAlt))))
+                .mockResolvedValueOnce(mockJsonResponse({ id: '12345', title: 'Design' }));
+
+            await updatePage('12345', {
+                bodyMarkdown: `![diagram.png](media:${DIAGRAM} "Login flow")`,
+            });
+
+            expect(requestedUrls()).toHaveLength(2);
+            expect(sentDocument()).toStrictEqual({ type: 'doc', version: 1, content: [withAlt] });
+        });
+
+        it('returns the media the new body drops, with its looked-up name', async () => {
+            fetchMock
+                .mockResolvedValueOnce(mockJsonResponse(page(body(intro, storedImage))))
+                .mockResolvedValueOnce(
+                    mockJsonResponse({
+                        results: [{ ...attachment('att1'), fileId: DIAGRAM, title: 'diagram.png' }],
+                    }),
+                )
+                .mockResolvedValueOnce(mockJsonResponse({ id: '12345', title: 'Design' }));
+
+            const result = await updatePage('12345', { bodyMarkdown: 'Text only' });
+
+            expect(result.removed).toEqual([{ id: DIAGRAM, name: 'diagram.png', kind: 'image' }]);
+            expect(sentDocument()).toStrictEqual({
+                type: 'doc',
+                version: 1,
+                content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Text only' }] }],
+            });
+        });
+
+        it('keeps the stored body, and looks nothing up, when only the title changes', async () => {
+            const stored = body(intro, storedImage);
+            fetchMock
+                .mockResolvedValueOnce(mockJsonResponse(page(stored)))
+                .mockResolvedValueOnce(mockJsonResponse({ id: '12345', title: 'New' }));
+
+            const result = await updatePage('12345', { title: 'New' });
+
+            expect(requestedUrls()).toHaveLength(2);
+            const [, init] = fetchMock.mock.calls[1]!;
+            expect(JSON.parse((init as RequestInit).body as string).body.value).toBe(stored);
+            expect(result.removed).toEqual([]);
+        });
+
+        it('creates a page with default media attributes and no extra request', async () => {
+            fetchMock
+                .mockResolvedValueOnce(mockJsonResponse({ results: [{ id: '1', key: 'DOCS' }] }))
+                .mockResolvedValueOnce(mockJsonResponse({ id: '777', title: 'Runbook' }));
+
+            await createPage('DOCS', 'Runbook', `![diagram.png](media:${DIAGRAM})`);
+
+            expect(requestedUrls()).toEqual([
+                `${BASE_URL}/wiki/api/v2/spaces?keys=DOCS&limit=1`,
+                `${BASE_URL}/wiki/api/v2/pages`,
+            ]);
+            expect(sentDocument()).toStrictEqual({
+                type: 'doc',
+                version: 1,
+                content: [
+                    {
+                        type: 'mediaSingle',
+                        attrs: { layout: 'center' },
+                        content: [
+                            {
+                                type: 'media',
+                                attrs: {
+                                    type: 'file',
+                                    id: DIAGRAM,
+                                    collection: '',
+                                    alt: 'diagram.png',
+                                },
+                            },
+                        ],
+                    },
+                ],
+            });
+        });
+
+        it('adds a comment with a default inline file in one request', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: 'c1' }));
+
+            await addComment('12345', `See [diagram.png](media:${DIAGRAM})`);
+
+            expect(requestedUrls()).toEqual([`${BASE_URL}/wiki/api/v2/footer-comments`]);
+            expect(sentDocument()).toStrictEqual({
+                type: 'doc',
+                version: 1,
+                content: [
+                    {
+                        type: 'paragraph',
+                        content: [
+                            { type: 'text', text: 'See ' },
+                            {
+                                type: 'mediaInline',
+                                attrs: {
+                                    type: 'file',
+                                    id: DIAGRAM,
+                                    collection: '',
+                                    alt: 'diagram.png',
+                                },
+                            },
+                        ],
+                    },
+                ],
+            });
+        });
+
+        it('parses a body, and maps attachments by fileId', () => {
+            expect(parseAdfBody(body(intro))).toEqual({
+                type: 'doc',
+                version: 1,
+                content: [intro],
+            });
+            expect(parseAdfBody('not json')).toBeUndefined();
+            expect(parseAdfBody(undefined)).toBeUndefined();
+            const names = mediaNamesOf([
+                {
+                    ...attachment('att1'),
+                    fileId: DIAGRAM,
+                    title: 'diagram.png',
+                } as ConfluenceAttachment,
+                { ...attachment('att2'), fileId: undefined } as ConfluenceAttachment,
+            ]);
+            expect([...names]).toEqual([[DIAGRAM, 'diagram.png']]);
         });
     });
 });

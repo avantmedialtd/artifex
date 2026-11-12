@@ -8,15 +8,23 @@
 // paragraph lines (among them the `<` of an HTML block, the `[` of a link
 // reference definition and a table delimiter row), `|` in table cells, code
 // fences sized to their content, `<...>` link destinations, a heading's
-// closing-sequence look-alike, link text taken from its URL, and a `*` that
-// would pair with an emphasis delimiter. Running text is otherwise left alone,
+// closing-sequence look-alike, link text taken from its URL, a `*` that would
+// pair with an emphasis delimiter, and the `[` and `<` of text that would read
+// back as a media reference. Running text is otherwise left alone,
 // a link whose text is its URL is written as an autolink, and a plain
 // paragraph that marked reads back as an HTML block is written verbatim.
+//
+// Media nodes are written as `media:` references (design D2 of
+// round-trip-adf-media): an embedded image as `![name](media:<uuid>)`, with its
+// caption as the title, file cards as one `[name](media:<uuid>)` line each, an
+// inline file as `[name](media:<uuid>)` in its sentence, and an external image
+// as `![alt](url)`. Names are escaped so that they read back unchanged.
 //
 // ADF read from Jira or Confluence is untrusted JSON. A missing or non-array
 // `content` counts as empty, nodes the renderer does not know keep their text,
 // and it never throws.
 
+import { MEDIA_UUID, captionText, displayAlt, mediaUrl, type MediaNames } from './adf-media.ts';
 import type { AdfDocument } from './adf-types.ts';
 
 type Json = Record<string, unknown>;
@@ -108,6 +116,11 @@ interface TextChunk {
     ends: Map<string, number>;
     /** The URL of an inline card written bare, which reads back as a link only inline. */
     card?: boolean;
+    /**
+     * A media reference (see pushMedia): `text` is its whole markdown, escaped,
+     * and is written as it is. It has no marks and never merges with a neighbor.
+     */
+    ref?: boolean;
 }
 
 /** A text chunk, or `null` for a hard break. */
@@ -172,6 +185,8 @@ function collectInline(nodes: Json[], breakAsSpace: boolean, chunks: Chunk[] = [
         } else if (node.type === 'hardBreak') {
             if (breakAsSpace) pushText(chunks, ' ', undefined);
             else chunks.push(null);
+        } else if (node.type === 'mediaInline') {
+            pushMedia(chunks, node, false);
         } else {
             const text = atomText(node);
             if (text === undefined) {
@@ -232,6 +247,7 @@ function runsOver(nodes: Json[], from: number, trailing: RegExp): boolean | unde
         if (node.type === 'hardBreak') return false;
         let text: string | undefined;
         if (node.type === 'text') text = typeof node.text === 'string' ? node.text : '';
+        else if (node.type === 'mediaInline') text = mediaMarkdown(node, false).text;
         else text = atomText(node);
         if (text === undefined) {
             const inner = runsOver(childrenOf(node), 0, trailing);
@@ -239,7 +255,8 @@ function runsOver(nodes: Json[], from: number, trailing: RegExp): boolean | unde
             continue;
         }
         if (text === '') continue;
-        const { marks, code } = readMarks(node.marks);
+        // A media reference or name is written without the node's marks.
+        const { marks, code } = readMarks(node.type === 'mediaInline' ? undefined : node.marks);
         // A code span or a delimiter comes first, unless emphasis moves whitespace out before it.
         if (code || marks.length > 0) {
             return code || !marks.every(isEmphasis) || !isFlankingSpace(text, 0);
@@ -361,6 +378,8 @@ function prepareChunks(chunks: Chunk[]): Chunk[] {
         if (
             chunk &&
             previous &&
+            !chunk.ref &&
+            !previous.ref &&
             previous.code === chunk.code &&
             sameKeys(previous.keys, chunk.keys)
         ) {
@@ -510,6 +529,10 @@ interface OpenMark {
  */
 function renderInline(input: Chunk[], { autolinks = true, cell = false } = {}): string {
     const chunks = prepareChunks(input);
+    // Text that would read back as a media reference (`[x](media:…)` or
+    // `<media:…>`) gets backslashes (see escapeMediaLookalike), so that it stays
+    // text; references themselves are chunks of their own (TextChunk.ref).
+    const mediaLookalike = looksLikeMediaReference(chunks);
     // Hard breaks after the last text end no line: the paragraph drops them.
     let lastText = chunks.length - 1;
     while (lastText >= 0 && chunks[lastText] === null) lastText--;
@@ -589,7 +612,7 @@ function renderInline(input: Chunk[], { autolinks = true, cell = false } = {}): 
     const stretchHas = (from: number, to: number, char: string): boolean => {
         for (let k = from; k <= to; k++) {
             const chunk = chunks[k];
-            if (!chunk || chunk.code || hasUrlText(chunk)) continue;
+            if (!chunk || chunk.code || chunk.ref || hasUrlText(chunk)) continue;
             if (chunk.text.includes(char)) return true;
         }
         return false;
@@ -770,6 +793,7 @@ function renderInline(input: Chunk[], { autolinks = true, cell = false } = {}): 
             written = text.replace(/[\\`*_~[\]<!&(]/g, '\\$&');
         } else {
             written = open.some(mark => mark.escapeStars) ? escapeLiteralStars(text) : text;
+            if (mediaLookalike) written = escapeMediaLookalike(written);
             if (cell) written = written.replace(/\\+(?=\|)/g, '$&$&');
         }
         // A literal `*`, `_` or `~` right after a delimiter of the same character
@@ -900,8 +924,19 @@ function renderInline(input: Chunk[], { autolinks = true, cell = false } = {}): 
             writeDelimiter(delimiter);
             open.push({ key: mark.key, close: delimiter, end, escapeStars });
         });
-        if (chunk.code) write(codeSpan(text), false);
-        else write(chunkText(chunk, text), true);
+        if (chunk.ref) {
+            // A media reference, already escaped. `![` would make a file's
+            // `[name](…)` an image, and an unpaired backslash before it would
+            // escape its first character. Written as markup, not text, so that
+            // no later escape reaches into it.
+            if (text.startsWith('[')) escapeEnd('!', false);
+            pairTrailingBackslash();
+            write(text, false);
+        } else if (chunk.code) {
+            write(codeSpan(text), false);
+        } else {
+            write(chunkText(chunk, text), true);
+        }
     }
     closeTo(0);
     write(pending, true);
@@ -954,6 +989,29 @@ function isUrlText(text: string, href: string): boolean {
 /** Whether a chunk is the text of a link made from its URL (see isUrlText). */
 function hasUrlText(chunk: TextChunk): boolean {
     return chunk.marks.some(mark => mark.type === 'link' && isUrlText(chunk.text, mark.href));
+}
+
+/**
+ * Whether the text of chunks holds what markdown would read as a media
+ * reference: `](media:` (after optional whitespace and `<`) or `<media:`. The
+ * text of every chunk counts, whatever its marks, since delimiters between
+ * chunks do not stop a link; references themselves do not.
+ */
+function looksLikeMediaReference(chunks: Chunk[]): boolean {
+    const text = chunks
+        .map(chunk => (chunk === null ? '\n' : chunk.ref ? ' ' : chunk.text))
+        .join('');
+    return /\]\(\s*<?media:|<media:/.test(text);
+}
+
+/**
+ * Gives a backslash to each `[`, and to each `<` before `media:`, that has
+ * none: in text that looks like a media reference, no link can then start.
+ */
+function escapeMediaLookalike(text: string): string {
+    return text.replace(/(\\*)(\[|<(?=media:))/g, (match, run: string, char: string) =>
+        run.length % 2 === 0 ? `${run}\\${char}` : match,
+    );
 }
 
 /** Gives a backslash to each `*` that has none, so that it pairs with no delimiter. */
@@ -1057,6 +1115,112 @@ function longestRun(text: string, char: string): number {
         if (run > longest) longest = run;
     }
     return longest;
+}
+
+// ---------------------------------------------------------------------------
+// Media (design D2 of round-trip-adf-media)
+//
+// A media node is written as one reference chunk (see TextChunk.ref): an image
+// as `![name](media:<uuid> "caption")`, a file as `[name](media:<uuid>)`, and an
+// external image as `![alt](url)`. Only a UUID makes a usable `id`, since only a
+// UUID reads back as a reference. A node without a usable `id` or `url` is its
+// name as plain text, or nothing.
+
+/** The names for media without `alt` in the render under way (set by adfToMarkdown). */
+let mediaNames: MediaNames | undefined;
+
+const NAME_ALPHANUMERIC = /^[\p{L}\p{N}]$/u;
+
+/**
+ * A media name as link text that markdown reads back unchanged: a backslash
+ * before each `\`, `` ` ``, `*`, `~`, `[`, `]` and `<`, before a `&` that starts
+ * a numeric reference, and before a `_` that is not between two letters or
+ * digits (where no `_` can open or close emphasis). marked takes the
+ * backslashes off `\[` and `\]` in link text before reading it, so a `(` right
+ * after a `]` gets one too: `[x](y)` in a name would otherwise become a link.
+ * The name is one line of the paragraph, so a line ending becomes a space.
+ */
+function escapeMediaName(name: string): string {
+    const text = name.replace(/\r\n?|\n/g, ' ');
+    let out = '';
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const escaped =
+            '\\`*~[]<'.includes(char) ||
+            (char === '(' && text[i - 1] === ']') ||
+            (char === '&' && text[i + 1] === '#') ||
+            (char === '_' &&
+                !(
+                    NAME_ALPHANUMERIC.test(text[i - 1] ?? '') &&
+                    NAME_ALPHANUMERIC.test(text[i + 1] ?? '')
+                ));
+        out += escaped ? `\\${char}` : char;
+    }
+    return out;
+}
+
+/**
+ * The markdown of a media node: its reference (`ref`), or its name as plain
+ * text. `image` writes a file as an image, with the plain text of `caption`,
+ * when it has any, as the title; an external media node is always an image.
+ */
+function mediaMarkdown(node: Json, image: boolean, caption?: Json): { text: string; ref: boolean } {
+    const attrs = attrsOf(node);
+    const name = displayAlt(attrs, mediaNames);
+    let url: string | undefined;
+    let asImage = image;
+    if (attrs.type === 'external') {
+        url = nonEmpty(attrs.url);
+        asImage = true;
+    } else if (typeof attrs.id === 'string' && MEDIA_UUID.test(attrs.id)) {
+        url = mediaUrl(attrs.id);
+    }
+    if (url === undefined) return { text: name, ref: false };
+    const title = asImage && caption !== undefined ? captionText(caption) : '';
+    const close = closingDelimiter({
+        type: 'link',
+        key: '',
+        href: url,
+        title: title === '' ? undefined : title,
+    });
+    return { text: `${asImage ? '!' : ''}[${escapeMediaName(name)}${close}`, ref: true };
+}
+
+/** Pushes a media node as a reference chunk, or as its name in plain text. */
+function pushMedia(chunks: Chunk[], node: Json, image: boolean, caption?: Json): void {
+    const { text, ref } = mediaMarkdown(node, image, caption);
+    if (!ref) {
+        pushText(chunks, text, undefined);
+        return;
+    }
+    chunks.push({ text, code: false, marks: [], keys: new Set(), ends: new Map(), ref: true });
+}
+
+/** The chunks of a `mediaSingle`: its image, with the caption as the title. */
+function mediaSingleChunks(node: Json): Chunk[] | undefined {
+    const children = childrenOf(node);
+    const media = children.find(child => child.type === 'media');
+    if (media === undefined) return undefined;
+    const chunks: Chunk[] = [];
+    pushMedia(
+        chunks,
+        media,
+        true,
+        children.find(child => child.type === 'caption'),
+    );
+    return chunks;
+}
+
+/** The chunks of each `media` in a `mediaGroup` that writes anything, one list per file. */
+function mediaGroupItems(node: Json): Chunk[][] {
+    const items: Chunk[][] = [];
+    for (const media of childrenOf(node)) {
+        if (media.type !== 'media') continue;
+        const chunks: Chunk[] = [];
+        pushMedia(chunks, media, false);
+        if (chunks.length > 0) items.push(chunks);
+    }
+    return items;
 }
 
 // ---------------------------------------------------------------------------
@@ -1164,7 +1328,7 @@ function verbatimHtmlParagraph(chunks: Chunk[]): { text: string; open: boolean }
     let text = '';
     for (const chunk of chunks) {
         if (chunk === null) text += '\n';
-        else if (chunk.code || chunk.marks.length > 0) return undefined;
+        else if (chunk.code || chunk.ref || chunk.marks.length > 0) return undefined;
         else text += chunk.text;
     }
     const lines = text.split('\n');
@@ -1222,7 +1386,7 @@ function verbatimTableParagraph(chunks: Chunk[]): string | undefined {
     let text = '';
     for (const chunk of chunks) {
         if (chunk === null) text += '\n';
-        else if (chunk.code || chunk.marks.length > 0 || chunk.card) return undefined;
+        else if (chunk.code || chunk.marks.length > 0 || chunk.card || chunk.ref) return undefined;
         else text += chunk.text;
     }
     const lines = text.split('\n');
@@ -1468,6 +1632,24 @@ function collectBlocks(nodes: Json[], context: Context, out: Block[]): Block[] {
             case 'embedCard': {
                 const chunks: Chunk[] = [];
                 pushText(chunks, cardUrl(node), undefined);
+                add(paragraph(chunks));
+                break;
+            }
+            case 'mediaSingle': {
+                // An embedded image, its own block. Without a media node, the
+                // children render as they did before media had a rule.
+                const chunks = mediaSingleChunks(node);
+                if (chunks === undefined) collectBlocks(childrenOf(node), context, out);
+                else add(paragraph(chunks));
+                break;
+            }
+            case 'mediaGroup': {
+                // File cards: one block, one reference per line.
+                const chunks: Chunk[] = [];
+                for (const item of mediaGroupItems(node)) {
+                    if (chunks.length > 0) chunks.push(null);
+                    chunks.push(...item);
+                }
                 add(paragraph(chunks));
                 break;
             }
@@ -1781,12 +1963,20 @@ function cellChunks(nodes: Json[], chunks: Chunk[]): void {
             continue;
         }
         flush();
+        const image = node.type === 'mediaSingle' ? mediaSingleChunks(node) : undefined;
         if (node.type === 'codeBlock') {
             separate();
             pushText(chunks, codeBody(node), [{ type: 'code' }]);
         } else if (node.type === 'blockCard' || node.type === 'embedCard') {
             separate();
             pushText(chunks, cardUrl(node), undefined);
+        } else if (image !== undefined || node.type === 'mediaGroup') {
+            // An image, or each file of a group, inline in the cell.
+            for (const item of image === undefined ? mediaGroupItems(node) : [image]) {
+                if (item.length === 0) continue;
+                separate();
+                chunks.push(...item);
+            }
         } else {
             const title = expandTitle(node);
             if (title !== undefined) {
@@ -1802,13 +1992,22 @@ function cellChunks(nodes: Json[], chunks: Chunk[]): void {
 // ---------------------------------------------------------------------------
 // Entry point
 
+export interface AdfToMarkdownOptions {
+    /** Names for media nodes without `alt`, by UUID (see displayAlt). */
+    mediaNames?: MediaNames;
+}
+
 /**
  * Renders an ADF document as markdown. A string is returned unchanged, and
  * `null` or `undefined` gives an empty string.
  */
-export function adfToMarkdown(adf: AdfDocument | string | null | undefined): string {
+export function adfToMarkdown(
+    adf: AdfDocument | string | null | undefined,
+    options: AdfToMarkdownOptions = {},
+): string {
     if (adf === null || adf === undefined) return '';
     if (typeof adf === 'string') return adf;
+    mediaNames = options.mediaNames;
     try {
         const text = isRecord(adf)
             ? joinBlocks(collectBlocks(childrenOf(adf), TOP, []), false)
@@ -1820,6 +2019,8 @@ export function adfToMarkdown(adf: AdfDocument | string | null | undefined): str
         // Only nesting deeper than the call stack allows, or an object that
         // contains itself, gets here.
         return plainText(adf);
+    } finally {
+        mediaNames = undefined;
     }
 }
 

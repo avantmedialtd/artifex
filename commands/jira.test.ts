@@ -9,6 +9,8 @@ import { isAbsolute, join, relative } from 'node:path';
 vi.mock('../jira/lib/client.ts', async importOriginal => ({
     ...(await importOriginal<typeof import('../jira/lib/client.ts')>()),
     getIssue: vi.fn(),
+    getIssueDescription: vi.fn(),
+    getComment: vi.fn(),
     getComments: vi.fn(),
     addComment: vi.fn(),
     updateComment: vi.fn(),
@@ -48,6 +50,8 @@ import { resolveFieldFlags } from '../jira/lib/fields/resolve-flags.ts';
 import { defaultTextInputIo, type TextInputIo } from '../utils/text-input.ts';
 import { downloadAttachments, type DownloadSummary } from '../atlassian/lib/download.ts';
 import { getAuthHeader, getBaseUrl } from '../atlassian/lib/request.ts';
+import { textToAdf } from '../atlassian/lib/adf.ts';
+import type { AdfDocument } from '../atlassian/lib/adf-types.ts';
 import type { JiraAttachment } from '../jira/lib/types.ts';
 
 const HINT = 'Reading --body-file from stdin. Type the text, then press Ctrl-D on an empty line.';
@@ -416,6 +420,11 @@ describe('handleJira prose input', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         vi.mocked(client.getComments).mockResolvedValue([]);
+        vi.mocked(client.getIssueDescription).mockResolvedValue(null);
+        vi.mocked(client.getComment).mockResolvedValue({
+            id: '10042',
+            body: textToAdf('Old text'),
+        } as never);
         vi.mocked(client.addComment).mockResolvedValue({ id: '10001' } as never);
         vi.mocked(client.updateComment).mockResolvedValue({ id: '10042' } as never);
         vi.mocked(client.addServiceDeskComment).mockResolvedValue({ id: '10002' } as never);
@@ -668,10 +677,11 @@ describe('handleJira prose input', () => {
         it('replaces the comment with text from stdin', async () => {
             stdin(MARKDOWN);
             expect(await run('comment', 'edit', 'PROJ-1', '10042', '--body-file', '-')).toBe(0);
+            expect(client.getComment).toHaveBeenCalledWith('PROJ-1', '10042');
             expect(client.updateComment).toHaveBeenCalledWith(
                 'PROJ-1',
                 '10042',
-                MARKDOWN,
+                textToAdf(MARKDOWN),
                 undefined,
             );
         });
@@ -683,7 +693,7 @@ describe('handleJira prose input', () => {
             expect(client.updateComment).toHaveBeenCalledWith(
                 'PROJ-1',
                 '10042',
-                'Updated text',
+                textToAdf('Updated text'),
                 undefined,
             );
         });
@@ -784,7 +794,10 @@ describe('handleJira prose input', () => {
         it('updates only the description from a file', async () => {
             const path = writeTemp('desc.md', MARKDOWN);
             expect(await run('update', 'PROJ-1', '--description-file', path)).toBe(0);
-            expect(client.updateIssue).toHaveBeenCalledWith('PROJ-1', { description: MARKDOWN });
+            expect(client.getIssueDescription).toHaveBeenCalledWith('PROJ-1');
+            expect(client.updateIssue).toHaveBeenCalledWith('PROJ-1', {
+                description: textToAdf(MARKDOWN),
+            });
         });
 
         it('passes an empty --description through as "", which clears it', async () => {
@@ -834,6 +847,214 @@ describe('handleJira prose input', () => {
             });
             expect(client.updateIssue).toHaveBeenCalledWith('PROJ-1', {
                 customFields: { customfield_10016: 5 },
+            });
+        });
+    });
+
+    describe('embedded media (design D5 of round-trip-adf-media)', () => {
+        const MR4 = '0ab844aa-b95b-46bd-9d6c-a7d69ac7b901';
+        const SHOT = `![image-20251217-080021.png](media:${MR4})`;
+        const storedImage = {
+            type: 'mediaSingle',
+            attrs: { layout: 'align-start', width: 694, widthType: 'pixel' },
+            content: [
+                {
+                    type: 'media',
+                    attrs: {
+                        type: 'file',
+                        id: MR4,
+                        collection: '',
+                        alt: 'image-20251217-080021.png',
+                        width: 1916,
+                        height: 155,
+                    },
+                },
+            ],
+        };
+        // MR-4's description as Jira stores it.
+        const mr4: AdfDocument = {
+            type: 'doc',
+            version: 1,
+            content: [
+                {
+                    type: 'paragraph',
+                    content: [{ type: 'text', text: 'Screenshot:', marks: [{ type: 'strong' }] }],
+                },
+                storedImage,
+            ],
+        };
+        const WARNING =
+            'Warning: this update removed 1 embedded image from MR-4: image-20251217-080021.png. The attachment is still on the issue.';
+
+        /** The description the update sent. */
+        function sentDescription(): unknown {
+            const updates = vi.mocked(client.updateIssue).mock.calls[0]![1];
+            return updates.description;
+        }
+
+        it('reads the description before the write, and keeps an untouched image exactly', async () => {
+            vi.mocked(client.getIssueDescription).mockResolvedValue(mr4);
+            const path = writeTemp('edited.md', `**Screenshot (reworded):**\n\n${SHOT}\n`);
+            expect(await run('update', 'MR-4', '--description-file', path)).toBe(0);
+            expect(client.getIssueDescription).toHaveBeenCalledWith('MR-4');
+            const getOrder = vi.mocked(client.getIssueDescription).mock.invocationCallOrder[0]!;
+            const putOrder = vi.mocked(client.updateIssue).mock.invocationCallOrder[0]!;
+            expect(getOrder).toBeLessThan(putOrder);
+            expect(sentDescription()).toStrictEqual({
+                type: 'doc',
+                version: 1,
+                content: [
+                    {
+                        type: 'paragraph',
+                        content: [
+                            {
+                                type: 'text',
+                                text: 'Screenshot (reworded):',
+                                marks: [{ type: 'strong' }],
+                            },
+                        ],
+                    },
+                    storedImage,
+                ],
+            });
+            expect(errors).toEqual([]);
+        });
+
+        it('warns on stderr when the text drops an image, and still exits 0', async () => {
+            vi.mocked(client.getIssueDescription).mockResolvedValue(mr4);
+            expect(
+                await run(
+                    'update',
+                    'MR-4',
+                    '--description',
+                    'Fixed; screenshot no longer relevant',
+                ),
+            ).toBe(0);
+            expect(sentDescription()).toStrictEqual(
+                textToAdf('Fixed; screenshot no longer relevant'),
+            );
+            expect(errors).toEqual([WARNING]);
+            expect(stripVTControlCharacters(logs.join('\n'))).toContain('Updated issue');
+        });
+
+        it('warns when --description "" clears a description that held an image', async () => {
+            vi.mocked(client.getIssueDescription).mockResolvedValue(mr4);
+            expect(await run('update', 'MR-4', '--description', '')).toBe(0);
+            expect(client.updateIssue).toHaveBeenCalledWith('MR-4', { description: '' });
+            expect(errors).toEqual([WARNING]);
+        });
+
+        it('keeps standard output to the JSON result with --json', async () => {
+            vi.mocked(client.getIssueDescription).mockResolvedValue(mr4);
+            expect(await run('update', 'MR-4', '--description', 'Text only', '--json')).toBe(0);
+            expect(logs).toHaveLength(1);
+            expect(JSON.parse(logs[0]!)).toEqual({ success: true, key: 'MR-4' });
+            expect(errors).toEqual([WARNING]);
+        });
+
+        it('makes no GET when the description does not change', async () => {
+            expect(await run('update', 'MR-4', '--summary', 'New title')).toBe(0);
+            expect(client.getIssueDescription).not.toHaveBeenCalled();
+            expect(client.updateIssue).toHaveBeenCalledWith('MR-4', { summary: 'New title' });
+        });
+
+        it('writes nothing when the GET fails', async () => {
+            vi.mocked(client.getIssueDescription).mockRejectedValue(
+                new Error('Issue does not exist or you do not have permission to see it.'),
+            );
+            expect(await run('update', 'MR-4', '--description', 'New text')).toBe(1);
+            expect(client.updateIssue).not.toHaveBeenCalled();
+            expect(stderr()).toContain('Issue does not exist');
+        });
+
+        it('keeps the layout of an image in an edited comment', async () => {
+            const wide = {
+                type: 'mediaSingle',
+                attrs: { layout: 'wide' },
+                content: [
+                    {
+                        type: 'media',
+                        attrs: { type: 'file', id: MR4, collection: '', alt: 'trace.png' },
+                    },
+                ],
+            };
+            vi.mocked(client.getComment).mockResolvedValue({
+                id: '10042',
+                body: { type: 'doc', version: 1, content: [wide] },
+            } as never);
+            const path = writeTemp('edited.md', `Updated note\n\n![trace.png](media:${MR4})\n`);
+            expect(await run('comment', 'edit', 'PROJ-1', '10042', '--body-file', path)).toBe(0);
+            expect(client.getComment).toHaveBeenCalledWith('PROJ-1', '10042');
+            const getOrder = vi.mocked(client.getComment).mock.invocationCallOrder[0]!;
+            const putOrder = vi.mocked(client.updateComment).mock.invocationCallOrder[0]!;
+            expect(getOrder).toBeLessThan(putOrder);
+            const body = vi.mocked(client.updateComment).mock.calls[0]![2] as AdfDocument;
+            expect(body.content[1]).toStrictEqual(wide);
+            expect(errors).toEqual([]);
+        });
+
+        it('warns when an edited comment drops its image', async () => {
+            vi.mocked(client.getComment).mockResolvedValue({ id: '10042', body: mr4 } as never);
+            expect(await run('comment', 'edit', 'PROJ-1', '10042', '--body', 'No image')).toBe(0);
+            expect(errors).toEqual([
+                'Warning: this update removed 1 embedded image from PROJ-1: image-20251217-080021.png. The attachment is still on the issue.',
+            ]);
+        });
+
+        it('writes no comment when its GET fails', async () => {
+            vi.mocked(client.getComment).mockRejectedValue(new Error('HTTP 404: Not Found'));
+            expect(await run('comment', 'edit', 'PROJ-1', '10042', '--body', 'x')).toBe(1);
+            expect(client.updateComment).not.toHaveBeenCalled();
+        });
+
+        it('sends only the POST when adding a comment, with a default inline file', async () => {
+            const SITE = 'https://test.atlassian.net';
+            vi.stubEnv('ATLASSIAN_BASE_URL', SITE);
+            vi.stubEnv('ATLASSIAN_EMAIL', 'user@test.com');
+            vi.stubEnv('ATLASSIAN_API_TOKEN', 'tok');
+            const real =
+                await vi.importActual<typeof import('../jira/lib/client.ts')>(
+                    '../jira/lib/client.ts',
+                );
+            vi.mocked(client.addComment).mockImplementation(real.addComment);
+            const requests: { url: string; init: RequestInit }[] = [];
+            vi.stubGlobal(
+                'fetch',
+                vi.fn(async (url: string, init: RequestInit) => {
+                    requests.push({ url: String(url), init });
+                    return new Response(JSON.stringify({ id: '10001' }), {
+                        status: 201,
+                        headers: { 'Content-Type': 'application/json' },
+                    });
+                }),
+            );
+            try {
+                expect(
+                    await run('comment', 'PROJ-1', '--body', `See ![shot.png](media:${MR4})`),
+                ).toBe(0);
+            } finally {
+                vi.unstubAllEnvs();
+            }
+            expect(client.getComment).not.toHaveBeenCalled();
+            expect(client.getIssueDescription).not.toHaveBeenCalled();
+            expect(requests.map(({ url, init }) => [init.method, url])).toEqual([
+                ['POST', `${SITE}/rest/api/3/issue/PROJ-1/comment`],
+            ]);
+            expect(JSON.parse(requests[0]!.init.body as string).body).toStrictEqual({
+                type: 'doc',
+                version: 1,
+                content: [
+                    {
+                        type: 'paragraph',
+                        content: [
+                            { type: 'text', text: 'See ' },
+                            {
+                                type: 'mediaInline',
+                                attrs: { type: 'file', id: MR4, collection: '', alt: 'shot.png' },
+                            },
+                        ],
+                    },
+                ],
             });
         });
     });
@@ -1593,6 +1814,22 @@ describe('handleJira attachments and download', () => {
                 'version-create, version-update, attachments and download\n  reject options they do not know',
             );
             expect(text).toContain('  af jira download 10046 --out - | less');
+        });
+
+        it('explains media: lines in an EMBEDDED IMAGES note (design D11)', async () => {
+            expect(await handleJira(['--help'])).toBe(0);
+            const lines = stdout().split('\n');
+            const start = lines.indexOf('EMBEDDED IMAGES:');
+            expect(start).toBeGreaterThan(-1);
+            const note = lines.slice(start, lines.indexOf('', start)).join('\n');
+            expect(note).toContain('![name](media:<uuid>)');
+            expect(note).toContain('[name](media:<uuid>)');
+            expect(note).toContain('to keep the embed');
+            expect(note).toContain('move the line to move the embed');
+            expect(note).toContain('delete it to remove the embed');
+            expect(note).toContain('The attachment stays on the issue');
+            expect(note).toContain('works only on the issue that holds the attachment');
+            expect(note).toContain("    af jira download <KEY> --name '<name>'");
         });
     });
 });

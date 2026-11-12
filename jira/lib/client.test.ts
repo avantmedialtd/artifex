@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     createIssue,
     updateIssue,
+    getIssueDescription,
+    getComment,
     getFields,
     getCreateMeta,
     getTransitions,
@@ -294,6 +296,143 @@ describe('jira client', () => {
             const [, init] = fetchMock.mock.calls[0]!;
             const body = JSON.parse((init as RequestInit).body as string);
             expect(body.fields.parent).toBeNull();
+        });
+    });
+
+    describe('embedded media (design D5 of round-trip-adf-media)', () => {
+        const MR4 = '0ab844aa-b95b-46bd-9d6c-a7d69ac7b901';
+        const description = {
+            type: 'doc',
+            version: 1,
+            content: [
+                {
+                    type: 'mediaSingle',
+                    attrs: { layout: 'align-start', width: 694, widthType: 'pixel' },
+                    content: [
+                        {
+                            type: 'media',
+                            attrs: { type: 'file', id: MR4, collection: '', alt: 'shot.png' },
+                        },
+                    ],
+                },
+            ],
+        } as const;
+
+        function sent(index = 0): { url: string; method?: string; body: Record<string, unknown> } {
+            const [url, init] = fetchMock.mock.calls[index]!;
+            const { method, body } = init as RequestInit;
+            return { url: String(url), method, body: body ? JSON.parse(body as string) : {} };
+        }
+
+        it('getIssueDescription asks for the description only, and returns it', async () => {
+            fetchMock.mockResolvedValueOnce(
+                mockJsonResponse({ key: 'MR-4', fields: { description } }),
+            );
+            expect(await getIssueDescription('MR-4')).toStrictEqual(description);
+            expect(sent().url).toBe(`${BASE_URL}/rest/api/3/issue/MR-4?fields=description`);
+        });
+
+        it('getIssueDescription returns null for an issue without a description', async () => {
+            fetchMock.mockResolvedValueOnce(
+                mockJsonResponse({ key: 'MR-4', fields: { description: null } }),
+            );
+            expect(await getIssueDescription('MR-4')).toBeNull();
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ key: 'MR-4', fields: {} }));
+            expect(await getIssueDescription('MR-4')).toBeNull();
+        });
+
+        it('getComment GETs one comment', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '10042', body: description }));
+            expect(await getComment('PROJ-1', '10042')).toMatchObject({ id: '10042' });
+            expect(sent().url).toBe(`${BASE_URL}/rest/api/3/issue/PROJ-1/comment/10042`);
+        });
+
+        it('updateIssue sends an ADF description as it is, and still converts markdown', async () => {
+            fetchMock.mockResolvedValue(mockEmpty());
+            await updateIssue('MR-4', { description: description as never });
+            expect(sent(0).body).toStrictEqual({ fields: { description } });
+            await updateIssue('MR-4', { description: '**Bold**' });
+            expect(sent(1).body).toStrictEqual({
+                fields: {
+                    description: {
+                        type: 'doc',
+                        version: 1,
+                        content: [
+                            {
+                                type: 'paragraph',
+                                content: [
+                                    { type: 'text', text: 'Bold', marks: [{ type: 'strong' }] },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            });
+        });
+
+        it('updateComment sends an ADF body as it is, and still converts markdown', async () => {
+            // A fresh response each time: a body can be read once.
+            fetchMock.mockImplementation(async () => mockJsonResponse({ id: '9' }));
+            await updateComment('PROJ-1', '9', description as never, {
+                type: 'role',
+                value: 'Administrators',
+            });
+            expect(sent(0)).toMatchObject({ method: 'PUT' });
+            expect(sent(0).body).toStrictEqual({
+                body: description,
+                visibility: { type: 'role', value: 'Administrators' },
+            });
+            await updateComment('PROJ-1', '9', 'Edited');
+            expect(sent(1).body).toStrictEqual({
+                body: {
+                    type: 'doc',
+                    version: 1,
+                    content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Edited' }] }],
+                },
+            });
+        });
+
+        it('addComment sends a media reference as a default inline file', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '1' }));
+            await addComment('PROJ-1', `See [log.txt](media:${MR4})`);
+            expect(fetchMock).toHaveBeenCalledOnce();
+            expect(sent().body.body).toStrictEqual({
+                type: 'doc',
+                version: 1,
+                content: [
+                    {
+                        type: 'paragraph',
+                        content: [
+                            { type: 'text', text: 'See ' },
+                            {
+                                type: 'mediaInline',
+                                attrs: { type: 'file', id: MR4, collection: '', alt: 'log.txt' },
+                            },
+                        ],
+                    },
+                ],
+            });
+        });
+
+        it('createIssue sends an image reference as a default embedded image', async () => {
+            fetchMock.mockResolvedValueOnce(mockJsonResponse({ id: '1', key: 'PROJ-1' }));
+            await createIssue('PROJ', 'Task', 'Title', `![shot.png](media:${MR4})`);
+            expect((sent().body.fields as Record<string, unknown>).description).toStrictEqual({
+                type: 'doc',
+                version: 1,
+                content: [
+                    {
+                        type: 'mediaSingle',
+                        attrs: { layout: 'center' },
+                        content: [
+                            {
+                                type: 'media',
+                                attrs: { type: 'file', id: MR4, collection: '', alt: 'shot.png' },
+                            },
+                        ],
+                    },
+                ],
+            });
         });
     });
 

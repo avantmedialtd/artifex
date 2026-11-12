@@ -126,6 +126,7 @@
         "ENEEDAUTH",
         "INPROGRESS",
         "Bvalues",
-        "resends"
+        "resends",
+        "recognise"
     ]
 }

@@ -10,7 +10,12 @@ import {
     getAuthHeader,
     getBaseUrl,
 } from '../../atlassian/lib/request.ts';
-import { textToAdf, adfToText } from '../../atlassian/lib/adf.ts';
+import { textToAdf, adfToText, textToAdfKeepingMedia } from '../../atlassian/lib/adf.ts';
+import {
+    hasMediaWithoutAlt,
+    type MediaNames,
+    type RemovedMedia,
+} from '../../atlassian/lib/adf-media.ts';
 import type {
     ConfluencePage,
     ConfluenceSpace,
@@ -108,6 +113,39 @@ export async function createPage(
     });
 }
 
+/**
+ * The ADF document of a page or comment body (its `atlas_doc_format` value),
+ * or undefined when there is none or it is not JSON.
+ */
+export function parseAdfBody(value: string | undefined): unknown {
+    if (!value) return undefined;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Display names for media nodes without `alt`: each attachment's `fileId`,
+ * which a media node's `id` names, to its title (design D6).
+ */
+export function mediaNamesOf(attachments: readonly ConfluenceAttachment[]): MediaNames {
+    const names = new Map<string, string>();
+    for (const attachment of attachments) {
+        if (attachment.fileId) names.set(attachment.fileId, attachment.title);
+    }
+    return names;
+}
+
+/**
+ * Updates a page. A new body (`bodyMarkdown`) is reconciled against the body
+ * this already fetches for the version number, so its media keep their
+ * presentation (design D6): an untouched image is sent back as stored. When a
+ * media node of the current body has no `alt`, the page's attachments are
+ * fetched once, to name it by `fileId`. Returns the updated page, and the
+ * media that the new body no longer references.
+ */
 export async function updatePage(
     pageId: string,
     updates: {
@@ -116,7 +154,7 @@ export async function updatePage(
         status?: 'current' | 'draft';
         versionMessage?: string;
     },
-): Promise<ConfluencePage> {
+): Promise<{ page: ConfluencePage; removed: RemovedMedia[] }> {
     // Fetch current page to get version number and current values
     const current = await getPage(pageId);
     const currentVersion = current.version?.number ?? 0;
@@ -126,9 +164,15 @@ export async function updatePage(
 
     // Build body - use new content or keep current
     let bodyValue: string;
+    let removed: RemovedMedia[] = [];
     if (updates.bodyMarkdown !== undefined) {
-        const adf = textToAdf(updates.bodyMarkdown);
-        bodyValue = JSON.stringify(adf);
+        const currentBody = parseAdfBody(current.body?.atlas_doc_format?.value);
+        const mediaNames = hasMediaWithoutAlt(currentBody)
+            ? mediaNamesOf(await getAllAttachments(pageId))
+            : undefined;
+        const kept = textToAdfKeepingMedia(updates.bodyMarkdown, currentBody, mediaNames);
+        bodyValue = JSON.stringify(kept.doc);
+        removed = kept.removed;
     } else if (current.body?.atlas_doc_format?.value) {
         bodyValue = current.body.atlas_doc_format.value;
     } else {
@@ -149,10 +193,11 @@ export async function updatePage(
         },
     };
 
-    return request<ConfluencePage>(v2Url(`/pages/${pageId}`), {
+    const page = await request<ConfluencePage>(v2Url(`/pages/${pageId}`), {
         method: 'PUT',
         body: JSON.stringify(body),
     });
+    return { page, removed };
 }
 
 export async function deletePage(pageId: string): Promise<void> {

@@ -27,6 +27,7 @@ import type {
     JiraBoard,
     JiraSprint,
     JiraAttachment,
+    JiraAdfDocument,
 } from './types.ts';
 import type { JiraFieldCatalogEntry, JiraCreateMetaResponse } from './fields/codec-types.ts';
 
@@ -119,6 +120,18 @@ export async function getIssue(issueKey: string): Promise<JiraIssue> {
     return request<JiraIssue>(`/issue/${issueKey}?expand=renderedFields&fields=*all`);
 }
 
+/**
+ * An issue's description as stored, or `null` when it has none: the current
+ * document that an update reconciles its media against (design D5 of
+ * round-trip-adf-media).
+ */
+export async function getIssueDescription(issueKey: string): Promise<JiraAdfDocument | null> {
+    const issue = await request<{ fields?: { description?: JiraAdfDocument | null } }>(
+        `/issue/${issueKey}?fields=description`,
+    );
+    return issue.fields?.description ?? null;
+}
+
 export async function searchIssues(
     jql: string,
     maxResults: number = 50,
@@ -191,11 +204,16 @@ export async function createIssue(
     });
 }
 
+/**
+ * Updates an issue's fields. A `description` given as markdown is converted
+ * with `textToAdf`, and `''` clears it; one given as an ADF document is sent as
+ * it is, as `af jira update` does after restoring its media.
+ */
 export async function updateIssue(
     issueKey: string,
     updates: {
         summary?: string;
-        description?: string;
+        description?: string | JiraAdfDocument;
         priority?: string;
         labels?: string[];
         originalEstimate?: string;
@@ -213,7 +231,9 @@ export async function updateIssue(
         body.fields.summary = updates.summary;
     }
     if (updates.description !== undefined) {
-        body.fields.description = updates.description ? textToAdf(updates.description) : null;
+        const { description } = updates;
+        if (typeof description !== 'string') body.fields.description = description;
+        else body.fields.description = description ? textToAdf(description) : null;
     }
     if (updates.priority !== undefined) {
         body.fields.priority = { name: updates.priority };
@@ -281,13 +301,25 @@ export async function addComment(
     });
 }
 
+/** One comment as stored: the current document that `comment edit` reconciles its media against. */
+export async function getComment(issueKey: string, commentId: string): Promise<JiraComment> {
+    return request<JiraComment>(`/issue/${issueKey}/comment/${commentId}`);
+}
+
+/**
+ * Replaces a comment's body. Markdown is converted with `textToAdf`; an ADF
+ * document is sent as it is, as `af jira comment edit` does after restoring
+ * its media.
+ */
 export async function updateComment(
     issueKey: string,
     commentId: string,
-    text: string,
+    text: string | JiraAdfDocument,
     visibility?: JiraVisibility,
 ): Promise<JiraComment> {
-    const body: { body: unknown; visibility?: JiraVisibility } = { body: textToAdf(text) };
+    const body: { body: unknown; visibility?: JiraVisibility } = {
+        body: typeof text === 'string' ? textToAdf(text) : text,
+    };
     if (visibility) body.visibility = visibility;
     return request<JiraComment>(`/issue/${issueKey}/comment/${commentId}`, {
         method: 'PUT',

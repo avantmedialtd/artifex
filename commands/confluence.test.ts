@@ -83,7 +83,10 @@ beforeEach(() => {
     );
     vi.mocked(client.addComment).mockResolvedValue({ id: 'c1' } as never);
     vi.mocked(client.createPage).mockResolvedValue({ id: '777', title: 'Runbook' } as never);
-    vi.mocked(client.updatePage).mockResolvedValue({ id: '12345', title: 'New' } as never);
+    vi.mocked(client.updatePage).mockResolvedValue({
+        page: { id: '12345', title: 'New' },
+        removed: [],
+    } as never);
     dir = mkdtempSync(join(tmpdir(), 'af-text-input-'));
 });
 
@@ -678,6 +681,136 @@ describe('af confluence update', () => {
     });
 });
 
+describe('embedded media (design D6 of round-trip-adf-media)', () => {
+    const DIAGRAM = '7f1e2d3c-4b5a-4968-8776-655443322110';
+    const FLOW = '99999999-8888-4777-8666-555555555555';
+    const image = (id: string, attrs: Record<string, unknown> = {}) => ({
+        type: 'mediaSingle',
+        attrs: { layout: 'center', width: 760, widthType: 'pixel' },
+        content: [
+            {
+                type: 'media',
+                attrs: { type: 'file', id, collection: 'contentId-12345', ...attrs },
+            },
+        ],
+    });
+    const pageWith = (...content: unknown[]) => ({
+        id: '12345',
+        status: 'current',
+        title: 'Design',
+        spaceId: '1',
+        body: {
+            atlas_doc_format: {
+                representation: 'atlas_doc_format',
+                value: JSON.stringify({ type: 'doc', version: 1, content }),
+            },
+        },
+    });
+    const attachment = (fileId: string, title: string): ConfluenceAttachment => ({
+        id: `att-${title}`,
+        status: 'current',
+        title,
+        mediaType: 'image/png',
+        fileSize: 100,
+        fileId,
+    });
+
+    it('names media without alt by their attachments, fetched once', async () => {
+        vi.mocked(client.getPage).mockResolvedValue(
+            pageWith(image(DIAGRAM), image(FLOW), image(DIAGRAM)) as never,
+        );
+        vi.mocked(client.getAllAttachments).mockResolvedValue([
+            attachment(DIAGRAM, 'diagram.png'),
+            attachment('other', 'unrelated.pdf'),
+        ]);
+        expect(await handleConfluence(['get', '12345'])).toBe(0);
+        expect(client.getAllAttachments).toHaveBeenCalledTimes(1);
+        expect(client.getAllAttachments).toHaveBeenCalledWith('12345');
+        const output = stripVTControlCharacters(out.join('\n'));
+        expect(output).toContain(`![diagram.png](media:${DIAGRAM})`);
+        // No attachment holds this fileId, so its name stays empty.
+        expect(output).toContain(`![](media:${FLOW})`);
+    });
+
+    it('fetches no attachments when every media node has alt, or there is no media', async () => {
+        vi.mocked(client.getPage).mockResolvedValue(
+            pageWith(image(DIAGRAM, { alt: 'diagram.png' })) as never,
+        );
+        expect(await handleConfluence(['get', '12345'])).toBe(0);
+        expect(stripVTControlCharacters(out.join('\n'))).toContain(
+            `![diagram.png](media:${DIAGRAM})`,
+        );
+
+        vi.mocked(client.getPage).mockResolvedValue(
+            pageWith({ type: 'paragraph', content: [{ type: 'text', text: 'Text' }] }) as never,
+        );
+        expect(await handleConfluence(['get', '12345'])).toBe(0);
+        expect(client.getAllAttachments).not.toHaveBeenCalled();
+    });
+
+    it('leaves --json output unchanged, and looks nothing up for it', async () => {
+        const page = pageWith(image(DIAGRAM));
+        vi.mocked(client.getPage).mockResolvedValue(page as never);
+        expect(await handleConfluence(['get', '12345', '--json'])).toBe(0);
+        expect(JSON.parse(out.join('\n'))).toEqual(page);
+        expect(client.getAllAttachments).not.toHaveBeenCalled();
+    });
+
+    it('renders media in comments without a lookup', async () => {
+        vi.mocked(client.getComments).mockResolvedValue({
+            results: [
+                {
+                    id: 'c1',
+                    status: 'current',
+                    body: {
+                        atlas_doc_format: {
+                            representation: 'atlas_doc_format',
+                            value: JSON.stringify({
+                                type: 'doc',
+                                version: 1,
+                                content: [image(DIAGRAM)],
+                            }),
+                        },
+                    },
+                },
+            ],
+        } as never);
+        expect(await handleConfluence(['comments', '12345'])).toBe(0);
+        expect(stripVTControlCharacters(out.join('\n'))).toContain(`![](media:${DIAGRAM})`);
+        expect(client.getAllAttachments).not.toHaveBeenCalled();
+    });
+
+    it('warns on stderr after an update that removed media, and still exits 0', async () => {
+        vi.mocked(client.updatePage).mockResolvedValue({
+            page: { id: '12345', title: 'Design' },
+            removed: [{ id: DIAGRAM, name: 'diagram.png', kind: 'image' }],
+        } as never);
+        expect(await handleConfluence(['update', '12345', '--body', 'Text only'])).toBe(0);
+        expect(client.updatePage).toHaveBeenCalledWith('12345', { bodyMarkdown: 'Text only' });
+        expect(err).toEqual([
+            'Warning: this update removed 1 embedded image from page 12345: diagram.png. The attachment is still on the page.',
+        ]);
+        expect(stripVTControlCharacters(out.join('\n'))).toContain('Updated page');
+    });
+
+    it('keeps standard output to the JSON page with --json', async () => {
+        vi.mocked(client.updatePage).mockResolvedValue({
+            page: { id: '12345', title: 'Design' },
+            removed: [{ id: DIAGRAM, name: '', kind: 'file' }],
+        } as never);
+        expect(await handleConfluence(['update', '12345', '--body', 'Text', '--json'])).toBe(0);
+        expect(JSON.parse(out.join('\n'))).toEqual({ id: '12345', title: 'Design' });
+        expect(err).toEqual([
+            `Warning: this update removed 1 embedded file from page 12345: media ${DIAGRAM}. The attachment is still on the page.`,
+        ]);
+    });
+
+    it('prints no warning when nothing was removed', async () => {
+        expect(await handleConfluence(['update', '12345', '--body', 'Text'])).toBe(0);
+        expect(err).toEqual([]);
+    });
+});
+
 describe('other subcommands', () => {
     it('keep --add on label as label names', async () => {
         vi.mocked(client.addLabels).mockResolvedValue([] as never);
@@ -984,6 +1117,20 @@ describe('help', () => {
             '- First point',
             'AF_BODY',
         ]);
+    });
+
+    it('explains media: lines in an EMBEDDED IMAGES note (design D11)', async () => {
+        const lines = (await help(['--help'])).split('\n');
+        const start = lines.indexOf('EMBEDDED IMAGES:');
+        expect(start).toBeGreaterThan(-1);
+        const note = lines.slice(start, lines.indexOf('', start)).join('\n');
+        expect(note).toContain('![name](media:<uuid>)');
+        expect(note).toContain('[name](media:<uuid>)');
+        expect(note).toContain('to keep the embed');
+        expect(note).toContain('move the line to move the embed');
+        expect(note).toContain('delete it to remove the embed');
+        expect(note).toContain('attachment stays on the page');
+        expect(note).toContain("    af confluence download <page-id> --name '<name>'");
     });
 
     it('explains that \\n inside quotes is not a newline', async () => {

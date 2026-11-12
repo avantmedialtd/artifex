@@ -1,4 +1,5 @@
 import type { DownloadForms } from '../atlassian/lib/download.ts';
+import { formatRemovedMediaWarning, hasMediaWithoutAlt } from '../atlassian/lib/adf-media.ts';
 import { checkStrictArgs, splitOptionToken, type StrictRule } from '../utils/cli-args.ts';
 import { mapWithConcurrency } from '../utils/concurrency.ts';
 import { error } from '../utils/output.ts';
@@ -272,6 +273,15 @@ DOWNLOAD OPTIONS:
   IDs) and prints the folder's and each file's absolute path. Nothing lands in
   the working tree. Pass --out to keep the files somewhere else.
 
+EMBEDDED IMAGES:
+  get and comments show an embedded image as ![name](media:<uuid>), and a file
+  in the text as [name](media:<uuid>). These lines are attachments. Keep such a
+  line in the text you send back to keep the embed, with its size and layout;
+  move the line to move the embed; delete it to remove the embed. The
+  attachment stays on the page, and update prints a warning to say so. To get
+  the file itself:
+    af confluence download <page-id> --name '<name>'
+
 MULTI-LINE TEXT:
   Inside "double" or 'single' quotes, \\n stays a backslash and an n; it is never
   a newline. Double quotes also run \`commands\` and expand $VARS. For multi-line
@@ -352,7 +362,18 @@ export async function handleConfluence(args: string[]): Promise<number> {
                     return 1;
                 }
                 const page = await client.getPage(pageId);
-                fmt.output(json ? page : fmt.formatPage(page), json);
+                if (json) {
+                    fmt.output(page, true);
+                    break;
+                }
+                // Confluence media nodes carry no alt: they are named by the
+                // attachment whose fileId they hold, fetched once and only when
+                // some media node needs a name (design D6).
+                const body = client.parseAdfBody(page.body?.atlas_doc_format?.value);
+                const mediaNames = hasMediaWithoutAlt(body)
+                    ? client.mediaNamesOf(await client.getAllAttachments(pageId))
+                    : undefined;
+                fmt.output(fmt.formatPage(page, { mediaNames }), false);
                 break;
             }
 
@@ -430,7 +451,7 @@ export async function handleConfluence(args: string[]): Promise<number> {
                     updates.status = options.status as 'current' | 'draft';
                 if (options.message !== undefined) updates.versionMessage = options.message;
 
-                const page = await client.updatePage(pageId, updates);
+                const { page, removed } = await client.updatePage(pageId, updates);
                 fmt.output(
                     json
                         ? page
@@ -439,6 +460,12 @@ export async function handleConfluence(args: string[]): Promise<number> {
                           ),
                     json,
                 );
+                // stderr, so that `--json` output stays parseable.
+                if (removed.length > 0) {
+                    console.error(
+                        formatRemovedMediaWarning(removed, { kind: 'page', key: pageId }),
+                    );
+                }
                 break;
             }
 

@@ -9,6 +9,7 @@ import {
 } from '../utils/text-input.ts';
 import type { CustomFieldDef } from '../jira/lib/fields/codec-types.ts';
 import type { DownloadForms } from '../atlassian/lib/download.ts';
+import { formatRemovedMediaWarning, type RemovedMedia } from '../atlassian/lib/adf-media.ts';
 
 /**
  * Resolve a comma-separated `--show-field` argument into CustomFieldDef entries.
@@ -593,6 +594,16 @@ AGILE OPTIONS (Jira Software):
   --project <key>           Restrict boards to a project (boards)
   --state <s>               Sprint states, e.g. future,active,closed (sprints)
 
+EMBEDDED IMAGES:
+  get and the comment listing show an embedded image as ![name](media:<uuid>),
+  and a file in the text as [name](media:<uuid>). These lines are attachments.
+  Keep such a line in the text you send back to keep the embed, with its size
+  and layout; move the line to move the embed; delete it to remove the embed.
+  The attachment stays on the issue, and update and comment edit say so in a
+  warning. A media: line works only on the issue that holds the attachment:
+  Jira rejects one copied from another issue. To get the file itself:
+    af jira download <KEY> --name '<name>'
+
 MULTI-LINE TEXT:
   Inside "double" or 'single' quotes, \\n stays a backslash and an n; it is never
   a newline. Double quotes also run \`commands\` and expand $VARS. For multi-line
@@ -847,11 +858,22 @@ export async function handleJira(args: string[]): Promise<number> {
                     await import('../jira/lib/fields/resolve-flags.ts');
                 validateFieldFlags(updateFieldFlags);
                 const descriptionText = readProse(description);
-                if (descriptionText !== undefined) updates.description = descriptionText;
 
                 const resolvedUpdate = await resolveUpdateFlags(updateFieldFlags);
                 if (resolvedUpdate) {
                     updates.customFields = resolvedUpdate.customFields;
+                }
+
+                // A new description is built against the current one, read just
+                // before the write (design D5): its media keep their presentation,
+                // and the ones the text drops are reported. "" still clears it.
+                let removed: RemovedMedia[] = [];
+                if (descriptionText !== undefined) {
+                    const current = await client.getIssueDescription(issueKey);
+                    const { textToAdfKeepingMedia } = await import('../atlassian/lib/adf.ts');
+                    const kept = textToAdfKeepingMedia(descriptionText, current);
+                    updates.description = descriptionText === '' ? '' : kept.doc;
+                    removed = kept.removed;
                 }
 
                 await client.updateIssue(issueKey, updates);
@@ -861,6 +883,12 @@ export async function handleJira(args: string[]): Promise<number> {
                         : fmt.formatSuccess(`Updated issue ${fmt.issueLink(issueKey)}`),
                     json,
                 );
+                // stderr, so that `--json` output stays parseable.
+                if (removed.length > 0) {
+                    console.error(
+                        formatRemovedMediaWarning(removed, { kind: 'issue', key: issueKey }),
+                    );
+                }
                 break;
             }
 
@@ -895,10 +923,14 @@ export async function handleJira(args: string[]): Promise<number> {
                     }
                     // Given, so never undefined; an empty or blank body is an error.
                     const text = readProse(body, { required: true }) as string;
+                    // Built against the current comment, as a description is (design D5).
+                    const current = await client.getComment(issueKey, commentId);
+                    const { textToAdfKeepingMedia } = await import('../atlassian/lib/adf.ts');
+                    const kept = textToAdfKeepingMedia(text, current.body);
                     const comment = await client.updateComment(
                         issueKey,
                         commentId,
-                        text,
+                        kept.doc,
                         parseVisibility(options.visibility),
                     );
                     fmt.output(
@@ -909,6 +941,14 @@ export async function handleJira(args: string[]): Promise<number> {
                               ),
                         json,
                     );
+                    if (kept.removed.length > 0) {
+                        console.error(
+                            formatRemovedMediaWarning(kept.removed, {
+                                kind: 'issue',
+                                key: issueKey,
+                            }),
+                        );
+                    }
                     break;
                 }
                 if (action === 'delete') {

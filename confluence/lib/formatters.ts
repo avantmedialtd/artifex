@@ -8,6 +8,7 @@ import type {
     ConfluenceSearchResult,
 } from './types.ts';
 import { adfToText } from '../../atlassian/lib/adf.ts';
+import type { MediaNames } from '../../atlassian/lib/adf-media.ts';
 import type { AdfDocument } from '../../atlassian/lib/adf-types.ts';
 import { link } from '../../utils/output.ts';
 import { formatBytes } from '../../utils/format-bytes.ts';
@@ -51,17 +52,21 @@ function formatDate(dateStr: string): string {
     });
 }
 
-// Parse ADF body from Confluence page/comment
-function parseBody(body?: {
-    storage?: { representation: string; value: string };
-    atlas_doc_format?: { representation: string; value: string };
-}): string {
+// Parse ADF body from Confluence page/comment. `mediaNames` names media
+// nodes without `alt` (design D6 of round-trip-adf-media).
+function parseBody(
+    body?: {
+        storage?: { representation: string; value: string };
+        atlas_doc_format?: { representation: string; value: string };
+    },
+    options: { mediaNames?: MediaNames } = {},
+): string {
     if (!body) return '';
 
     if (body.atlas_doc_format?.value) {
         try {
             const adf = JSON.parse(body.atlas_doc_format.value) as AdfDocument;
-            return adfToText(adf);
+            return adfToText(adf, { mediaNames: options.mediaNames });
         } catch {
             return body.atlas_doc_format.value;
         }
@@ -75,8 +80,11 @@ function parseBody(body?: {
     return '';
 }
 
-// Single page to markdown
-export function formatPage(page: ConfluencePage): string {
+// Single page to markdown. `mediaNames` names its media nodes without `alt`.
+export function formatPage(
+    page: ConfluencePage,
+    options: { mediaNames?: MediaNames } = {},
+): string {
     const lines: string[] = [];
 
     lines.push(`# ${pageLink(page.id, page.title, page._links?.webui)}`);
@@ -104,7 +112,7 @@ export function formatPage(page: ConfluencePage): string {
     }
 
     // Body content
-    const content = parseBody(page.body);
+    const content = parseBody(page.body, options);
     if (content) {
         lines.push('');
         lines.push('## Content');

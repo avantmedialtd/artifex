@@ -1,0 +1,164 @@
+[
+    {
+        "id": "jira-description",
+        "note": "MR-4's description as Jira stores it (2026-11-11): an aligned, sized image with alt",
+        "doc": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        { "type": "text", "text": "Screenshot:", "marks": [{ "type": "strong" }] }
+                    ]
+                },
+                {
+                    "type": "mediaSingle",
+                    "attrs": { "layout": "align-start", "width": 694, "widthType": "pixel" },
+                    "content": [
+                        {
+                            "type": "media",
+                            "attrs": {
+                                "type": "file",
+                                "id": "0ab844aa-b95b-46bd-9d6c-a7d69ac7b901",
+                                "collection": "",
+                                "alt": "image-20251217-080021.png",
+                                "width": 1916,
+                                "height": 155
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "markdown": "**Screenshot:**\n\n![image-20251217-080021.png](media:0ab844aa-b95b-46bd-9d6c-a7d69ac7b901)"
+    },
+    {
+        "id": "confluence-body",
+        "note": "A Confluence page body: a captioned image with a contentId collection, pixel sizes and no alt, named by its attachment",
+        "doc": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [{ "type": "text", "text": "The sign-in sequence:" }]
+                },
+                {
+                    "type": "mediaSingle",
+                    "attrs": { "layout": "center", "width": 760, "widthType": "pixel" },
+                    "content": [
+                        {
+                            "type": "media",
+                            "attrs": {
+                                "width": 1520,
+                                "id": "7f1e2d3c-4b5a-4968-8776-655443322110",
+                                "collection": "contentId-12345",
+                                "type": "file",
+                                "height": 980
+                            }
+                        },
+                        {
+                            "type": "caption",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Login",
+                                    "marks": [{ "type": "strong" }]
+                                },
+                                { "type": "text", "text": " flow" }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "mediaNames": { "7f1e2d3c-4b5a-4968-8776-655443322110": "diagram.png" },
+        "markdown": "The sign-in sequence:\n\n![diagram.png](media:7f1e2d3c-4b5a-4968-8776-655443322110 \"Login flow\")"
+    },
+    {
+        "id": "file-cards",
+        "note": "A mediaGroup with two files",
+        "doc": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "mediaGroup",
+                    "content": [
+                        {
+                            "type": "media",
+                            "attrs": {
+                                "type": "file",
+                                "id": "22222222-3333-4444-5555-666666666666",
+                                "collection": "",
+                                "alt": "report.pdf"
+                            }
+                        },
+                        {
+                            "type": "media",
+                            "attrs": {
+                                "type": "file",
+                                "id": "33333333-4444-5555-6666-777777777777",
+                                "collection": "",
+                                "alt": "data.csv"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "markdown": "[report.pdf](media:22222222-3333-4444-5555-666666666666)\n[data.csv](media:33333333-4444-5555-6666-777777777777)"
+    },
+    {
+        "id": "inline-file",
+        "note": "A sentence with a mediaInline, in the shape Confluence stores (no type, a contentId collection, no alt)",
+        "doc": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        { "type": "text", "text": "See " },
+                        {
+                            "type": "mediaInline",
+                            "attrs": {
+                                "id": "44444444-5555-6666-7777-888888888888",
+                                "collection": "contentId-12345"
+                            }
+                        },
+                        { "type": "text", "text": " for the figures." }
+                    ]
+                }
+            ]
+        },
+        "mediaNames": { "44444444-5555-6666-7777-888888888888": "figures.xlsx" },
+        "markdown": "See [figures.xlsx](media:44444444-5555-6666-7777-888888888888) for the figures."
+    },
+    {
+        "id": "external-image",
+        "note": "An external image, which reads back as a link (design D2)",
+        "doc": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "mediaSingle",
+                    "attrs": { "layout": "center" },
+                    "content": [
+                        {
+                            "type": "media",
+                            "attrs": {
+                                "type": "external",
+                                "url": "https://example.com/diagram.png",
+                                "alt": "diagram"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "markdown": "![diagram](https://example.com/diagram.png)"
+    }
+]
