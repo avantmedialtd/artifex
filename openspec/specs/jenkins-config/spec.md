@@ -1,4 +1,10 @@
-## ADDED Requirements
+# jenkins-config Specification
+
+## Purpose
+
+Configure `af jenkins` through the `JENKINS_BASE_URL`, `JENKINS_USER` and `JENKINS_API_TOKEN` environment variables, validated only when a Jenkins command runs, and authenticate with HTTP Basic auth.
+
+## Requirements
 
 ### Requirement: Jenkins environment variables
 

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# jenkins-command Specification
+
+## Purpose
+
+Inspect a Jenkins server from the command line with `af jenkins`: list jobs and the branches of multibranch pipelines, read builds, console output and the build queue, and follow pipeline stages and their logs, with JSON output for scripts.
+
+## Requirements
 
 ### Requirement: Jenkins command routing
 
